@@ -340,6 +340,8 @@ class ChatMessage(BaseModel):
     suggest: list[str] = Field(default_factory=list)    # 建议补查或补充的材料
     not_found: bool = False                             # 数据里没有，回答"没查到"
     dropped: int = 0                                    # 被程序丢掉的出处或引文（编造的 id、对不上的原文）
+    rewrites: int = 0                                   # 回答越界（定性、推测后果）后让模型重写的次数
+    blocked: list[str] = Field(default_factory=list)    # 被程序拦下的越界说法
     version: int
     mode: Literal["model", "replay", "template", "guard"] | None = None
     recorded_at: str | None = None                      # 离线回放时，响应的录制时间

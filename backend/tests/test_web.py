@@ -108,10 +108,19 @@ def test_fictional_demo_company_is_not_searched(tmp_path):
     assert seen == []
 
 
-def test_assistant_verdict_words_fall_back_to_template(tmp_path):
+def test_assistant_verdict_words_then_gateway_down_falls_back_to_template(tmp_path):
     c, _ = client(tmp_path)
     case = new_case(CaseIn(company_name=NAME, need="我妈想存钱理财"), keyword_intake("我妈想存钱理财"), services(c))
     fake = FakeLLM(['{"answer": "它相对安全，可以买 [credit.official_web]", "citations": ["credit.official_web"]}'],
                    tmp_path / "llm")
-    msg = answer(case, ChatIn(text="它被处罚过吗"), fake)
+    msg = answer(case, ChatIn(text="它被处罚过吗"), fake)   # 第一次越界，要它重写时网关断了，才退回模板
     assert msg.mode == "template" and "相对安全" not in msg.text and "credit.official_web" in msg.citations
+    assert msg.rewrites == 1 and msg.blocked == ["相对安全"]
+
+
+def test_assistant_may_relay_characterization_written_in_official_records(tmp_path):
+    c, _ = client(tmp_path)
+    case = new_case(CaseIn(company_name=NAME, need="我妈想存钱理财"), keyword_intake("我妈想存钱理财"), services(c))
+    fake = FakeLLM(['{"answer": "浙江省政府的风险提示点名它涉嫌非法集资 [risk.regulator_warning]"}'], tmp_path / "llm")
+    msg = answer(case, ChatIn(text="政府说过它什么"), fake)
+    assert msg.mode == "model" and msg.rewrites == 0 and not msg.blocked

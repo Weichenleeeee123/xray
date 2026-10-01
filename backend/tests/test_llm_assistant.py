@@ -98,6 +98,41 @@ def test_assistant_hints_add_to_case_for_new_info(case, tmp_path):
     assert any("加入案卷" in s for s in msg.suggest)
 
 
+def _ans(text: str, cites=()) -> str:
+    return json.dumps({"answer": text, "citations": list(cites), "quotes": [], "not_found": False, "suggest": []},
+                      ensure_ascii=False)
+
+
+def test_overreach_rules():
+    from app.assistant import overreach
+    data = "风险提示：近期该公司涉嫌非法集资。严重违法失信名单：否。经营范围不含金融业务"
+    assert overreach("急用时很可能拿不回来，属于超范围经营", data) == ["很可能", "超范围经营"]
+    assert overreach("它是安全的，风险很低", data) == ["是安全", "风险很低"]
+    assert overreach("政府网站的风险提示说它涉嫌非法集资 [R7]", data) == []   # 记录原文写了，可以转述
+    assert overreach("它不在严重违法失信名单上 [credit.dishonest]", data) == []
+    assert overreach("它违法经营，不受法律保护", data) == ["违法", "不受法律保护"]  # "违法"两个字太短，要连上下文对得上
+    assert overreach("会不会拿不回来，要看合同怎么写", data) == []            # 问句，不是推测
+    assert overreach('宣传单上写着"安全稳健"', data) == []                   # 引号里是对方原话
+
+
+def test_assistant_rewrites_overreach_instead_of_downgrading(case, tmp_path):
+    fake = FakeLLM([_ans("持牌名单里查不到它 [A1]，钱很可能拿不回来，属于超范围经营"),
+                    _ans("持牌名单里查不到它 [A1]；退款写没写进合同还不知道 [A8]。", ["A1"])], tmp_path)
+    msg = answer(case, ChatIn(text="钱能拿回来吗"), fake)
+    assert msg.mode == "model" and msg.rewrites == 1 and msg.blocked == ["很可能", "超范围经营"]
+    assert "很可能" not in msg.text and "A1" in msg.citations
+    feedback = fake.calls[1]
+    assert feedback[-2]["role"] == "assistant" and "很可能" in feedback[-1]["content"]   # 告诉了模型哪句越界
+
+
+def test_assistant_downgrades_only_after_rewrites_run_out(case, tmp_path):
+    bad = _ans("它违法经营 [A1]")
+    fake = FakeLLM([bad, bad, bad], tmp_path)
+    msg = answer(case, ChatIn(text="它有资格吗"), fake)
+    assert msg.mode == "template" and msg.rewrites == 2 and msg.blocked == ["违法"]
+    assert len(fake.calls) == 3 and "违法经营" not in msg.text
+
+
 def test_intake_uses_model_but_rejects_unknown_scenario(tmp_path):
     good = FakeLLM(['{"scenario": "prepaid", "focus": ["会不会突然关门跑路"], "for_whom": "妈妈", "amount": 5000}'], tmp_path)
     got = run_intake("我妈想办张养生馆的卡", good)

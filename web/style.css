@@ -328,6 +328,8 @@ textarea.box:focus,.box:focus{outline:2px solid var(--ink);outline-offset:0}
 .sugg .chip{font-size:12.5px;padding:1px 10px}
 .add-case{margin-top:8px;padding:8px 10px;background:var(--amber-bg);border-radius:3px;font-size:13px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
 .msg-meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:8px;font-size:11.5px;color:var(--ink-3)}
+.rw{margin-top:6px;font-size:12px;color:var(--ink-3)}
+.rw summary{cursor:pointer;color:var(--amber);font-weight:600}
 .mode{font-weight:700}
 .mode.replay{color:var(--amber)} .mode.template{color:var(--grey)} .mode.guard{color:var(--red)} .mode.model{color:var(--green)}
 .typing{align-self:flex-start;display:flex;gap:4px;padding:11px 13px;background:var(--paper);border:1px solid var(--rule);border-radius:3px}

@@ -721,6 +721,10 @@ function msgHtml(m, prev) {
   const other = m.suggest.filter(s => !s.includes('加入案卷'));
   const vNote = S.case && m.version !== ver().no ? `<span>基于第 ${m.version} 版</span>` : '';
   const mode = m.mode ? `<span class="mode ${m.mode}">${MODE[m.mode]}${m.mode === 'replay' && m.recorded_at ? `（录于 ${esc(fmtTime(m.recorded_at))}）` : ''}</span>` : '';
+  const blocked = (m.blocked || []).map(b => `“${esc(b)}”`).join('、');
+  const rewrite = m.rewrites ? `<details class="rw"><summary>${m.mode === 'template'
+    ? `模型的回答越界，重写 ${m.rewrites} 次没成功，改用模板回答` : `程序拦下了越界说法，让模型重写了 ${m.rewrites} 次`}</summary>
+    被拦下的：${blocked}。这些是推测或定性，记录和规则里没有这样写。</details>` : '';
   return `<div class="msg ai${m.not_found ? ' nf' : ''}${m.mode === 'guard' ? ' guard' : ''}">
     <div class="ans">${citeText(m.text)}</div>
     ${m.quotes.length ? `<div class="quotes"><div class="ql">原文（程序逐字核对过）</div>${m.quotes.map(q => `<blockquote>${esc(q.text)} ${/^R\d+$/.test(q.ref)
@@ -728,6 +732,7 @@ function msgHtml(m, prev) {
     ${other.length ? `<div class="sugg"><span>可以补充：</span>${other.map(s => `<button type="button" class="chip" data-act="supplement" data-kind="material" data-title="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
     <div class="msg-meta">${mode}${m.not_found ? '<span>数据里没有</span>' : ''}${m.dropped ? `<span>程序丢掉了 ${m.dropped} 条对不上的出处或引文</span>` : ''}${vNote}</div>
+    ${rewrite}
   </div>`;
 }
 function refreshChat() {
