@@ -6,8 +6,13 @@ from app.analysis.extract import Extraction
 from app.analysis.fmt import money, months_between
 from app.analysis.verify import qualification_review, return_review
 from app.config import LOW_PAID_RATIO, YOUNG_COMPANY_MONTHS
-from app.models import AmacHit, ClaimKind, CompanyProfile, LicenseHit, Signal, SignalItem, Status, Verdict
+from app.models import (AmacHit, Assertion, ClaimKind, CompanyProfile, LicenseHit, Scenario, Signal, SignalItem,
+                        Status, Verdict)
 
+# 和钱的去向有关的说法，结论同时放进风险信号
+MONEY_KINDS = (ClaimKind.payee, ClaimKind.refund, ClaimKind.upfront_fee)
+VERDICT_STATUS = {Verdict.mismatch: Status.bad, Verdict.redline: Status.bad, Verdict.misleading: Status.warn,
+                  Verdict.attention: Status.warn, Verdict.unverifiable: Status.miss, Verdict.consistent: Status.ok}
 CASH_TOPIC = re.compile(r"兑付|提现|退款|跑路|失联|拿不回")
 DEAD_STATUS = re.compile(r"吊销|注销|撤销|停业|清算")
 QUAL_KEYS = ["bank_list", "amac", "product_code", "scope"]
@@ -18,19 +23,24 @@ def _flags(items: list[SignalItem]) -> int:
 
 
 def _not_covered(key: str) -> list[SignalItem]:
-    return [SignalItem(key=key, label="登记数据", value="没查", detail="演示版没有这家公司的登记数据",
+    return [SignalItem(key=key, label="登记数据", value="没查", detail="还没有这家公司的登记数据",
                        status=Status.none, source="registry")]
 
 
-def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit) -> Signal:
+def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
+                scenario: Scenario, assertions: list[Assertion]) -> Signal:
     items: list[SignalItem] = []
-    if ext.is_financial or lic.found:
+    if scenario.license_checks or ext.is_financial or lic.found:
         checks, _, _ = qualification_review(ext, company, lic, amac)
         items += [SignalItem(key=k, label=c.label, value=c.result, status=c.status, source=c.source)
                   for k, c in zip(QUAL_KEYS, checks)]
     else:
-        items.append(SignalItem(key="bank_list", label="金融牌照", value="材料不涉及理财或投资，不适用",
-                                status=Status.ok, source="flyer"))
+        items.append(SignalItem(key="bank_list", label="金融牌照", value="你的需求和材料都不涉及理财或投资，不适用",
+                                status=Status.ok, source="material"))
+    for a in assertions:
+        if a.kind in MONEY_KINDS:
+            items.append(SignalItem(key=a.kind.value, label=a.kind_label, value=a.plain,
+                                    status=VERDICT_STATUS[a.verdict], source=a.checks[0].source))
 
     if promise := ext.claims.get(ClaimKind.return_promise):
         checks, verdict, plain = return_review(promise)
@@ -38,18 +48,18 @@ def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit
         items.append(SignalItem(key="promise", label="收益承诺", value=plain, status=status, source=checks[0].source))
     elif ext.is_financial:
         items.append(SignalItem(key="promise", label="收益承诺", value="未发现保本或高收益承诺",
-                                status=Status.ok, source="flyer"))
+                                status=Status.ok, source="material"))
     if ext.benchmark_rates:
         items.append(SignalItem(key="benchmark", label="业绩比较基准",
                                 value=f"{'、'.join(f'{r:g}%' for r in ext.benchmark_rates)}（是参考，不是承诺）",
-                                status=Status.ok, source="flyer"))
+                                status=Status.ok, source="material"))
     if ext.is_financial:
         items.append(SignalItem(key="disclosure", label="风险提示语",
                                 value="有" if ext.has_risk_disclosure else "材料上没有任何风险提示",
                                 status=Status.ok if ext.has_risk_disclosure else Status.warn, source="reg_wm_sales"))
     if ext.pressure:
         items.append(SignalItem(key="pressure", label="施压话术", value="、".join(f"\"{p}\"" for p in ext.pressure),
-                                detail="制造紧迫感，让人没时间核实", status=Status.warn, source="flyer"))
+                                detail="制造紧迫感，让人没时间核实", status=Status.warn, source="material"))
     return Signal(key="risk", title="风险", lede="最关键的一条：它有没有资格收你的钱。", flags=_flags(items), items=items)
 
 
@@ -108,7 +118,7 @@ def credit_signal(company: CompanyProfile | None, as_of: date) -> Signal:
                                      ("dishonest", "失信被执行人", company.dishonest, "有", "无")]:
         items.append(SignalItem(key=key, label=label, value=yes if hit else no,
                                 status=Status.bad if hit else Status.ok, source="registry"))
-    items.append(SignalItem(key="litigation", label="司法诉讼", value="没查", detail="演示版未接入",
+    items.append(SignalItem(key="litigation", label="司法诉讼", value="没查", detail="司法诉讼数据还没接入",
                             status=Status.none, source="registry"))
     return Signal(key="credit", title="信用", lede=lede, flags=_flags(items), items=items)
 
@@ -117,7 +127,7 @@ def reputation_signal(data: dict | None) -> Signal:
     lede = "单条投诉不能证明什么，可能有误会或夸大。我们看的是趋势和集中的主题。"
     if data is None:
         return Signal(key="reputation", title="口碑", lede=lede, flags=0,
-                      items=[SignalItem(key="complaints", label="投诉", value="没查", detail="演示版没有这家公司的投诉数据",
+                      items=[SignalItem(key="complaints", label="投诉", value="没查", detail="还没有这家公司的投诉数据",
                                         status=Status.none, source="complaints")])
     counts = data["counts"]
     total, last3 = sum(counts), sum(counts[-3:])
@@ -143,8 +153,15 @@ def reputation_signal(data: dict | None) -> Signal:
 
 
 def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
-                  complaints: dict | None, as_of: date) -> list[Signal]:
+                  complaints: dict | None, as_of: date, scenario: Scenario,
+                  assertions: list[Assertion] = ()) -> list[Signal]:
+    """四个信号的内容不随场景变；场景只改排序和开头那句话。"""
     scale = ext.claims.get(ClaimKind.scale)
     stores = scale.numbers.get("stores") if scale else None
-    return [risk_signal(ext, company, lic, amac), finance_signal(company, stores),
-            credit_signal(company, as_of), reputation_signal(complaints)]
+    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions)),
+                                  finance_signal(company, stores), credit_signal(company, as_of),
+                                  reputation_signal(complaints)]}
+    for key, lede in scenario.signal_ledes.items():
+        if key in signals:
+            signals[key].lede = lede
+    return [signals[k] for k in scenario.signal_order]

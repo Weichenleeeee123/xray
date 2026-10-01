@@ -1,0 +1,57 @@
+{
+  "id": "takeover",
+  "label": "接手 / 入股一家公司",
+  "keywords": [
+    "接手",
+    "接盘",
+    "收购",
+    "入股",
+    "股权",
+    "转让",
+    "并购",
+    "合伙",
+    "尽调",
+    "财务状况",
+    "盘下",
+    "参股"
+  ],
+  "hand_over": "资金和经营责任",
+  "first_question": "股权干不干净（出质、冻结），有没有对外担保和欠税",
+  "license_checks": [],
+  "claim_kinds": [
+    "capital",
+    "scale",
+    "background",
+    "partner",
+    "payee",
+    "qualification"
+  ],
+  "signal_order": [
+    "finance",
+    "risk",
+    "credit",
+    "reputation"
+  ],
+  "signal_ledes": {
+    "finance": "接手之前先看它欠了什么：股权有没有押出去、有没有被执行、欠不欠税、实缴了多少。",
+    "risk": "接手之前，看它对外说过什么、收过谁的钱，这些责任会跟着公司一起转给你。"
+  },
+  "must_ask": [
+    {
+      "about": "equity",
+      "ask": "股权有没有出质、冻结，有没有代持",
+      "check_where": "国家企业信用信息公示系统的股权出质登记；法院的股权冻结公示"
+    },
+    {
+      "about": "debts",
+      "ask": "有没有对外担保、没打完的官司和欠税",
+      "check_where": "中国执行信息公开网、中国裁判文书网、税务局欠税公告"
+    },
+    {
+      "about": "financials",
+      "ask": "最近三年的财务报表和银行流水能不能看",
+      "check_where": "让对方提供审计报告；关键数字和银行流水、纳税记录对一对"
+    }
+  ],
+  "onepager_title": "接手之前，先确认这几件事"
+}

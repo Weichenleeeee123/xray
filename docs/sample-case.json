@@ -1,0 +1,2216 @@
+{
+ "id": "8b18e1c58044",
+ "created_at": "2026-10-02T03:53:07",
+ "case": {
+  "company_name": "杭州满盈禾康养健康咨询有限公司",
+  "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来",
+  "scenario": "savings",
+  "for_whom": "妈妈",
+  "amount": 200000.0,
+  "material_text": "满盈禾 康养·财富\n颐养天年 财富无忧\n保本保息\n年化 9%\n到期还本付息 · 稳稳的幸福\n正规理财 · 安全稳健\n国资背景\n某大型银行 资金存管\n注册资本 5000 万 · 实力雄厚\n全国 30 家门店 · 10 万会员的信赖\n名额有限 · 先到先得\n咨询热线 400-***-****  地址：杭州市某区某路 88 号\n",
+  "material_title": "满盈禾宣传单（虚构）"
+ },
+ "scenario": "savings",
+ "focus": [
+  "急用时钱能不能拿回来"
+ ],
+ "current": 2,
+ "versions": [
+  {
+   "no": 1,
+   "created_at": "2026-10-02T03:53:07",
+   "trigger": "initial",
+   "trigger_label": "首次分析",
+   "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来",
+   "for_whom": "妈妈",
+   "amount": 200000.0,
+   "scenario": "savings",
+   "scenario_label": "存钱 / 理财 / 投资",
+   "focus": [
+    "急用时钱能不能拿回来"
+   ],
+   "raw_ids": [
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "R6"
+   ],
+   "company": {
+    "name": "杭州满盈禾康养健康咨询有限公司",
+    "code": "91330106MA2H******",
+    "status": "存续",
+    "founded": "2025-02-18",
+    "reg_capital": 50000000.0,
+    "paid_capital": 0.0,
+    "capital_due": "2030-01-31",
+    "scope": "健康管理咨询（不含诊疗服务）；养老服务；日用百货销售；会议及展览服务",
+    "shareholders": [
+     {
+      "name": "张某明",
+      "type": "自然人",
+      "pct": 70.0
+     },
+     {
+      "name": "李某华",
+      "type": "自然人",
+      "pct": 30.0
+     }
+    ],
+    "insured": 4,
+    "branches": 0,
+    "penalties": [
+     {
+      "date": "2026-05-12",
+      "org": "某区市场监督管理局",
+      "reason": "发布虚假广告",
+      "result": "罚款 3 万元"
+     }
+    ],
+    "pledges": [
+     {
+      "date": "2026-07-15",
+      "pledgor": "张某明",
+      "share": "70% 股权",
+      "pledgee": "宁波某投资合伙企业（有限合伙）"
+     }
+    ],
+    "mortgages": [],
+    "executions": [],
+    "tax_arrears": [],
+    "abnormal": false,
+    "serious_illegal": false,
+    "dishonest": false
+   },
+   "license": {
+    "query": "杭州满盈禾康养健康咨询有限公司",
+    "found": false,
+    "record": null,
+    "suggestions": [],
+    "source": "nfra_bank_list"
+   },
+   "amac": {
+    "coverage": "not_found",
+    "registered": false,
+    "source": "amac"
+   },
+   "assertions": [
+    {
+     "id": "A1",
+     "kind": "qualification",
+     "kind_label": "资格",
+     "text": "正规理财 · 安全稳健",
+     "quotes": [
+      "正规理财 · 安全稳健"
+     ],
+     "verdict": "mismatch",
+     "verdict_label": "与记录不符",
+     "color": "red",
+     "plain": "查不到它有卖理财的资格。",
+     "checks": [
+      {
+       "label": "银行业金融机构法人名单",
+       "result": "未收录",
+       "status": "bad",
+       "source": "nfra_bank_list",
+       "ref": "R1"
+      },
+      {
+       "label": "私募基金管理人登记",
+       "result": "未登记",
+       "status": "bad",
+       "source": "amac",
+       "ref": "R4"
+      },
+      {
+       "label": "理财产品登记编码",
+       "result": "材料上没有",
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      },
+      {
+       "label": "经营范围",
+       "result": "健康管理咨询（不含诊疗服务）；养老服务；日用百货销售……不含任何金融业务",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A2",
+     "kind": "return_promise",
+     "kind_label": "收益承诺",
+     "text": "保本保息 / 年化 9% / 到期还本付息 · 稳稳的幸福",
+     "quotes": [
+      "保本保息",
+      "年化 9%",
+      "到期还本付息 · 稳稳的幸福"
+     ],
+     "verdict": "redline",
+     "verdict_label": "不合规承诺",
+     "color": "red",
+     "plain": "正规理财不允许承诺保本；9% 约为定存的 8.2 倍。",
+     "checks": [
+      {
+       "label": "承诺\"保本、保息、还本付息\"",
+       "result": "资管新规后，资产管理产品不得承诺保本保收益",
+       "status": "bad",
+       "source": "reg_amr",
+       "ref": null
+      },
+      {
+       "label": "收益对比（演示参数）",
+       "result": "年化 9% ÷ 一年期定存 1.1% ≈ 8.2 倍",
+       "status": "warn",
+       "source": "param_rate",
+       "ref": null
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A3",
+     "kind": "partner",
+     "kind_label": "合作机构",
+     "text": "某大型银行 资金存管",
+     "quotes": [
+      "某大型银行 资金存管"
+     ],
+     "verdict": "unverifiable",
+     "verdict_label": "无法核验",
+     "color": "grey",
+     "plain": "没写是哪家银行、没给协议，无法核验；而且资金存管不等于担保。",
+     "checks": [
+      {
+       "label": "存管银行",
+       "result": "材料没写明是哪家银行",
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      },
+      {
+       "label": "存管协议",
+       "result": "未提供",
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A4",
+     "kind": "background",
+     "kind_label": "背景",
+     "text": "国资背景",
+     "quotes": [
+      "国资背景"
+     ],
+     "verdict": "mismatch",
+     "verdict_label": "与记录不符",
+     "color": "red",
+     "plain": "2 个股东都是自然人，没有任何国有持股。",
+     "checks": [
+      {
+       "label": "股东",
+       "result": "张某明 70%、李某华 30%，均为自然人",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "label": "股权穿透",
+       "result": "无国有企业或政府机构持股",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A5",
+     "kind": "capital",
+     "kind_label": "规模",
+     "text": "注册资本 5000 万 · 实力雄厚",
+     "quotes": [
+      "注册资本 5000 万 · 实力雄厚"
+     ],
+     "verdict": "misleading",
+     "verdict_label": "说法有误导",
+     "color": "amber",
+     "plain": "5000 万是\"承诺\"，实际交了 ¥0。",
+     "checks": [
+      {
+       "label": "注册资本（认缴）",
+       "result": "¥5,000 万，认缴期限 2030-01-31，与宣传一致",
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "label": "实缴资本（2025 年报）",
+       "result": "¥0（企业自行填报，未经审计）",
+       "status": "bad",
+       "source": "annual_report",
+       "ref": "R3"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A6",
+     "kind": "scale",
+     "kind_label": "规模",
+     "text": "全国 30 家门店 · 10 万会员的信赖",
+     "quotes": [
+      "全国 30 家门店 · 10 万会员的信赖"
+     ],
+     "verdict": "misleading",
+     "verdict_label": "说法有误导",
+     "color": "amber",
+     "plain": "宣称 30 家门店；年报里只有 4 人参保，登记的分支机构 0 家。",
+     "checks": [
+      {
+       "label": "参保人数（年报）",
+       "result": "4 人",
+       "status": "warn",
+       "source": "annual_report",
+       "ref": "R3"
+      },
+      {
+       "label": "分支机构（登记）",
+       "result": "0 家",
+       "status": "warn",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "label": "会员数",
+       "result": "没有公开来源，无法核验",
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    }
+   ],
+   "missing": [
+    {
+     "id": "M1",
+     "text": "理财非存款、产品有风险、投资须谨慎",
+     "plain": "正规理财的销售材料都要写风险提示，银行理财按规定要写这句话。这份材料上一句风险提示都没有。",
+     "source": "reg_wm_sales",
+     "refs": [
+      "R6"
+     ]
+    }
+   ],
+   "signals": [
+    {
+     "key": "risk",
+     "title": "风险",
+     "lede": "最关键的一条：它有没有资格收你的钱。",
+     "flags": 4,
+     "items": [
+      {
+       "key": "bank_list",
+       "label": "银行业金融机构法人名单",
+       "value": "未收录",
+       "detail": null,
+       "status": "bad",
+       "source": "nfra_bank_list",
+       "ref": "R1"
+      },
+      {
+       "key": "amac",
+       "label": "私募基金管理人登记",
+       "value": "未登记",
+       "detail": null,
+       "status": "bad",
+       "source": "amac",
+       "ref": "R4"
+      },
+      {
+       "key": "product_code",
+       "label": "理财产品登记编码",
+       "value": "材料上没有",
+       "detail": null,
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      },
+      {
+       "key": "scope",
+       "label": "经营范围",
+       "value": "健康管理咨询（不含诊疗服务）；养老服务；日用百货销售……不含任何金融业务",
+       "detail": null,
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "promise",
+       "label": "收益承诺",
+       "value": "正规理财不允许承诺保本；9% 约为定存的 8.2 倍。",
+       "detail": null,
+       "status": "bad",
+       "source": "reg_amr",
+       "ref": null
+      },
+      {
+       "key": "disclosure",
+       "label": "风险提示语",
+       "value": "材料上没有任何风险提示",
+       "detail": null,
+       "status": "warn",
+       "source": "reg_wm_sales",
+       "ref": null
+      },
+      {
+       "key": "pressure",
+       "label": "施压话术",
+       "value": "\"名额有限\"、\"先到先得\"",
+       "detail": "制造紧迫感，让人没时间核实",
+       "status": "warn",
+       "source": "material",
+       "ref": "R6"
+      }
+     ],
+     "extra": null
+    },
+    {
+     "key": "finance",
+     "title": "财务",
+     "lede": "普通公司不公开财报。但缺钱的公司，会在登记记录里留下影子。",
+     "flags": 2,
+     "items": [
+      {
+       "key": "paid_capital",
+       "label": "实缴资本",
+       "value": "¥0",
+       "detail": "认缴 ¥5,000 万，期限 2030-01-31",
+       "status": "bad",
+       "source": "annual_report",
+       "ref": "R3"
+      },
+      {
+       "key": "pledges",
+       "label": "股权出质",
+       "value": "1 笔",
+       "detail": "2026-07-15，张某明把 70% 股权押给「宁波某投资合伙企业（有限合伙）」",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "insured",
+       "label": "参保人数",
+       "value": "4 人",
+       "detail": "宣称 30 家门店",
+       "status": "warn",
+       "source": "annual_report",
+       "ref": "R3"
+      },
+      {
+       "key": "mortgages",
+       "label": "动产抵押",
+       "value": "无",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "executions",
+       "label": "被执行",
+       "value": "无",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "tax_arrears",
+       "label": "欠税公告",
+       "value": "无",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      }
+     ],
+     "extra": null
+    },
+    {
+     "key": "credit",
+     "title": "信用",
+     "lede": "\"没有不良记录\"只说明查过的地方没有，不等于可靠。",
+     "flags": 1,
+     "items": [
+      {
+       "key": "status",
+       "label": "登记状态",
+       "value": "存续",
+       "detail": "成立于 2025-02-18，1 年 7 个月",
+       "status": "warn",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "penalties",
+       "label": "行政处罚",
+       "value": "1 条",
+       "detail": "2026-05-12 某区市场监督管理局：发布虚假广告，罚款 3 万元",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "abnormal",
+       "label": "经营异常名录",
+       "value": "未列入",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "serious_illegal",
+       "label": "严重违法失信名单",
+       "value": "未列入",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "dishonest",
+       "label": "失信被执行人",
+       "value": "无",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "litigation",
+       "label": "司法诉讼",
+       "value": "没查",
+       "detail": "司法诉讼数据还没接入",
+       "status": "none",
+       "source": "registry",
+       "ref": "R2"
+      }
+     ],
+     "extra": null
+    },
+    {
+     "key": "reputation",
+     "title": "口碑",
+     "lede": "单条投诉不能证明什么，可能有误会或夸大。我们看的是趋势和集中的主题。",
+     "flags": 1,
+     "items": [
+      {
+       "key": "total",
+       "label": "近 12 个月投诉",
+       "value": "27 条",
+       "detail": null,
+       "status": "warn",
+       "source": "complaints",
+       "ref": "R5"
+      },
+      {
+       "key": "recent",
+       "label": "最近 3 个月",
+       "value": "17 条",
+       "detail": "占全年 63%",
+       "status": "warn",
+       "source": "complaints",
+       "ref": "R5"
+      },
+      {
+       "key": "top_topic",
+       "label": "集中的问题",
+       "value": "到期不兑付 / 提现困难",
+       "detail": "15 条，占 56%；例：到期三个月了，一直说钱在走流程。",
+       "status": "bad",
+       "source": "complaints",
+       "ref": "R5"
+      }
+     ],
+     "extra": {
+      "months": [
+       "2025-10",
+       "2025-11",
+       "2025-12",
+       "2026-01",
+       "2026-02",
+       "2026-03",
+       "2026-04",
+       "2026-05",
+       "2026-06",
+       "2026-07",
+       "2026-08",
+       "2026-09"
+      ],
+      "counts": [
+       0,
+       1,
+       0,
+       1,
+       1,
+       1,
+       2,
+       1,
+       3,
+       4,
+       6,
+       7
+      ],
+      "topics": [
+       {
+        "name": "到期不兑付 / 提现困难",
+        "n": 15,
+        "quote": "到期三个月了，一直说钱在走流程。"
+       },
+       {
+        "name": "联系不上业务员",
+        "n": 6,
+        "quote": "业务员换了三个，现在电话都打不通。"
+       },
+       {
+        "name": "宣传和合同不一致",
+        "n": 4,
+        "quote": "说好的保本，合同里根本没写。"
+       },
+       {
+        "name": "其他",
+        "n": 2,
+        "quote": "送的体检卡，去了说不能用。"
+       }
+      ],
+      "total": 27,
+      "last3": 17,
+      "last3_share": 0.63,
+      "top_share": 0.556
+     }
+    }
+   ],
+   "tally": {
+    "red": 3,
+    "amber": 2,
+    "grey": 1,
+    "green": 0,
+    "missing": 1
+   },
+   "notes": [
+    "演示数据 · 公司为虚构：登记、年报、投诉都是编出来的，只用来演示。"
+   ],
+   "questions": [
+    {
+     "id": "Q1",
+     "ask": "急用时多久能取回，提前取有没有违约金，写进合同了吗",
+     "why": "这类事最先要问：它有没有资格收这笔钱",
+     "check_where": "看合同原文里的赎回、退出条款，口头说的不算",
+     "linked": []
+    },
+    {
+     "id": "Q2",
+     "ask": "请给出金融许可证编号，或者理财产品登记编码",
+     "why": "查不到它有卖理财的资格。",
+     "check_where": "金融许可证到国家金融监督管理总局官网查；理财产品登记编码到中国理财网（chinawealth.com.cn）查",
+     "linked": [
+      "A1"
+     ]
+    },
+    {
+     "id": "Q3",
+     "ask": "收益从哪里来？钱投到了什么资产？写进合同了吗",
+     "why": "正规理财不允许承诺保本；9% 约为定存的 8.2 倍。",
+     "check_where": "正规理财产品有登记编码，到中国理财网查得到；承诺保本保息的都不合规",
+     "linked": [
+      "A2"
+     ]
+    },
+    {
+     "id": "Q4",
+     "ask": "说的国资背景是哪一家？持股多少",
+     "why": "2 个股东都是自然人，没有任何国有持股。",
+     "check_where": "国家企业信用信息公示系统查股东，一层层往上查到最终出资人",
+     "linked": [
+      "A4"
+     ]
+    },
+    {
+     "id": "Q5",
+     "ask": "存管银行是哪一家？请给出存管协议",
+     "why": "没写是哪家银行、没给协议，无法核验；而且资金存管不等于担保。",
+     "check_where": "打这家银行的官方客服电话，核实存管关系是否真实",
+     "linked": [
+      "A3"
+     ]
+    }
+   ],
+   "changes": [],
+   "change_summary": null,
+   "onepager": {
+    "audience": "family",
+    "title": "转账之前，先确认这几件事",
+    "subject": "替妈妈看：杭州满盈禾康养健康咨询有限公司 · 储蓄 20 万",
+    "headline": "它的说法里有 4 处和记录对不上、2 处要留意；记录里有 4 项不良情况；还有 2 项没查到。",
+    "found": [
+     {
+      "text": "实缴资本：¥0（认缴 ¥5,000 万，期限 2030-01-31）",
+      "refs": [
+       "finance.paid_capital",
+       "R3"
+      ]
+     }
+    ],
+    "mismatch": [
+     {
+      "text": "它说的\"资格\"与记录不符：查不到它有卖理财的资格。",
+      "refs": [
+       "A1",
+       "R6"
+      ]
+     },
+     {
+      "text": "它说的\"收益承诺\"不合规承诺：正规理财不允许承诺保本；9% 约为定存的 8.2 倍。",
+      "refs": [
+       "A2",
+       "R6"
+      ]
+     },
+     {
+      "text": "它说的\"背景\"与记录不符：2 个股东都是自然人，没有任何国有持股。",
+      "refs": [
+       "A4",
+       "R6"
+      ]
+     }
+    ],
+    "unknown": [
+     {
+      "text": "它说的\"合作机构\"无法核验：没写是哪家银行、没给协议，无法核验；而且资金存管不等于担保。",
+      "refs": [
+       "A3",
+       "R6"
+      ]
+     }
+    ],
+    "next_steps": [
+     {
+      "text": "急用时多久能取回，提前取有没有违约金，写进合同了吗（看合同原文里的赎回、退出条款，口头说的不算）",
+      "refs": [
+       "Q1"
+      ]
+     },
+     {
+      "text": "请给出金融许可证编号，或者理财产品登记编码（金融许可证到国家金融监督管理总局官网查；理财产品登记编码到中国理财网（chinawealth.com.cn）查）",
+      "refs": [
+       "Q2",
+       "A1"
+      ]
+     },
+     {
+      "text": "收益从哪里来？钱投到了什么资产？写进合同了吗（正规理财产品有登记编码，到中国理财网查得到；承诺保本保息的都不合规）",
+      "refs": [
+       "Q3",
+       "A2"
+      ]
+     }
+    ],
+    "footer": "结论来自公开记录和规则，AI 只负责读材料和说人话。这不是安全评分，也不是对这家公司的定性；没查到不等于没有问题。 资料截至：银行业金融机构法人名单 2025-06-30；企业登记信息 2026-10-01（演示数据）；投诉平台 2026-10-01（演示数据）"
+   }
+  },
+  {
+   "no": 2,
+   "created_at": "2026-10-02T03:53:07",
+   "trigger": "reply",
+   "trigger_label": "对方回复",
+   "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来",
+   "for_whom": "妈妈",
+   "amount": 200000.0,
+   "scenario": "savings",
+   "scenario_label": "存钱 / 理财 / 投资",
+   "focus": [
+    "急用时钱能不能拿回来"
+   ],
+   "raw_ids": [
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "R6",
+    "R7"
+   ],
+   "company": {
+    "name": "杭州满盈禾康养健康咨询有限公司",
+    "code": "91330106MA2H******",
+    "status": "存续",
+    "founded": "2025-02-18",
+    "reg_capital": 50000000.0,
+    "paid_capital": 0.0,
+    "capital_due": "2030-01-31",
+    "scope": "健康管理咨询（不含诊疗服务）；养老服务；日用百货销售；会议及展览服务",
+    "shareholders": [
+     {
+      "name": "张某明",
+      "type": "自然人",
+      "pct": 70.0
+     },
+     {
+      "name": "李某华",
+      "type": "自然人",
+      "pct": 30.0
+     }
+    ],
+    "insured": 4,
+    "branches": 0,
+    "penalties": [
+     {
+      "date": "2026-05-12",
+      "org": "某区市场监督管理局",
+      "reason": "发布虚假广告",
+      "result": "罚款 3 万元"
+     }
+    ],
+    "pledges": [
+     {
+      "date": "2026-07-15",
+      "pledgor": "张某明",
+      "share": "70% 股权",
+      "pledgee": "宁波某投资合伙企业（有限合伙）"
+     }
+    ],
+    "mortgages": [],
+    "executions": [],
+    "tax_arrears": [],
+    "abnormal": false,
+    "serious_illegal": false,
+    "dishonest": false
+   },
+   "license": {
+    "query": "杭州满盈禾康养健康咨询有限公司",
+    "found": false,
+    "record": null,
+    "suggestions": [],
+    "source": "nfra_bank_list"
+   },
+   "amac": {
+    "coverage": "not_found",
+    "registered": false,
+    "source": "amac"
+   },
+   "assertions": [
+    {
+     "id": "A1",
+     "kind": "qualification",
+     "kind_label": "资格",
+     "text": "正规理财 · 安全稳健",
+     "quotes": [
+      "正规理财 · 安全稳健"
+     ],
+     "verdict": "mismatch",
+     "verdict_label": "与记录不符",
+     "color": "red",
+     "plain": "查不到它有卖理财的资格。",
+     "checks": [
+      {
+       "label": "银行业金融机构法人名单",
+       "result": "未收录",
+       "status": "bad",
+       "source": "nfra_bank_list",
+       "ref": "R1"
+      },
+      {
+       "label": "私募基金管理人登记",
+       "result": "未登记",
+       "status": "bad",
+       "source": "amac",
+       "ref": "R4"
+      },
+      {
+       "label": "理财产品登记编码",
+       "result": "材料上没有",
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      },
+      {
+       "label": "经营范围",
+       "result": "健康管理咨询（不含诊疗服务）；养老服务；日用百货销售……不含任何金融业务",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A2",
+     "kind": "return_promise",
+     "kind_label": "收益承诺",
+     "text": "保本保息 / 年化 9% / 到期还本付息 · 稳稳的幸福",
+     "quotes": [
+      "保本保息",
+      "年化 9%",
+      "到期还本付息 · 稳稳的幸福"
+     ],
+     "verdict": "redline",
+     "verdict_label": "不合规承诺",
+     "color": "red",
+     "plain": "正规理财不允许承诺保本；9% 约为定存的 8.2 倍。",
+     "checks": [
+      {
+       "label": "承诺\"保本、保息、还本付息\"",
+       "result": "资管新规后，资产管理产品不得承诺保本保收益",
+       "status": "bad",
+       "source": "reg_amr",
+       "ref": null
+      },
+      {
+       "label": "收益对比（演示参数）",
+       "result": "年化 9% ÷ 一年期定存 1.1% ≈ 8.2 倍",
+       "status": "warn",
+       "source": "param_rate",
+       "ref": null
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A8",
+     "kind": "refund",
+     "kind_label": "退款承诺",
+     "text": "到期前急用也没事，随时可以取出来。",
+     "quotes": [
+      "到期前急用也没事，随时可以取出来。"
+     ],
+     "verdict": "unverifiable",
+     "verdict_label": "无法核验",
+     "color": "grey",
+     "plain": "说\"随时可以取\"，但没有合同条款可以对照。口头承诺出了事很难作数，先要合同。",
+     "checks": [
+      {
+       "label": "退款条款",
+       "result": "没有看到合同或退款条款",
+       "status": "miss",
+       "source": "material",
+       "ref": "R7"
+      }
+     ],
+     "refs": [
+      "R7"
+     ]
+    },
+    {
+     "id": "A7",
+     "kind": "payee",
+     "kind_label": "收款信息",
+     "text": "钱转到我们财务的个人账户就行： / 户名 张某明  开户行 某银行  账号 6222 0000 0000 0000 000",
+     "quotes": [
+      "钱转到我们财务的个人账户就行：",
+      "户名 张某明  开户行 某银行  账号 6222 0000 0000 0000 000"
+     ],
+     "verdict": "mismatch",
+     "verdict_label": "与记录不符",
+     "color": "red",
+     "plain": "钱要打给\"张某明\"，不是杭州满盈禾康养健康咨询有限公司本身。钱进了别人的账户，出了事很难追回。",
+     "checks": [
+      {
+       "label": "收款户名",
+       "result": "\"张某明\"，不是这家公司",
+       "status": "bad",
+       "source": "material",
+       "ref": "R7"
+      },
+      {
+       "label": "收款账户",
+       "result": "要求打到个人账户",
+       "status": "bad",
+       "source": "material",
+       "ref": "R7"
+      }
+     ],
+     "refs": [
+      "R7"
+     ]
+    },
+    {
+     "id": "A3",
+     "kind": "partner",
+     "kind_label": "合作机构",
+     "text": "某大型银行 资金存管",
+     "quotes": [
+      "某大型银行 资金存管"
+     ],
+     "verdict": "unverifiable",
+     "verdict_label": "无法核验",
+     "color": "grey",
+     "plain": "没写是哪家银行、没给协议，无法核验；而且资金存管不等于担保。",
+     "checks": [
+      {
+       "label": "存管银行",
+       "result": "材料没写明是哪家银行",
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      },
+      {
+       "label": "存管协议",
+       "result": "未提供",
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A4",
+     "kind": "background",
+     "kind_label": "背景",
+     "text": "国资背景",
+     "quotes": [
+      "国资背景"
+     ],
+     "verdict": "mismatch",
+     "verdict_label": "与记录不符",
+     "color": "red",
+     "plain": "2 个股东都是自然人，没有任何国有持股。",
+     "checks": [
+      {
+       "label": "股东",
+       "result": "张某明 70%、李某华 30%，均为自然人",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "label": "股权穿透",
+       "result": "无国有企业或政府机构持股",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A5",
+     "kind": "capital",
+     "kind_label": "规模",
+     "text": "注册资本 5000 万 · 实力雄厚",
+     "quotes": [
+      "注册资本 5000 万 · 实力雄厚"
+     ],
+     "verdict": "misleading",
+     "verdict_label": "说法有误导",
+     "color": "amber",
+     "plain": "5000 万是\"承诺\"，实际交了 ¥0。",
+     "checks": [
+      {
+       "label": "注册资本（认缴）",
+       "result": "¥5,000 万，认缴期限 2030-01-31，与宣传一致",
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "label": "实缴资本（2025 年报）",
+       "result": "¥0（企业自行填报，未经审计）",
+       "status": "bad",
+       "source": "annual_report",
+       "ref": "R3"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    },
+    {
+     "id": "A6",
+     "kind": "scale",
+     "kind_label": "规模",
+     "text": "全国 30 家门店 · 10 万会员的信赖",
+     "quotes": [
+      "全国 30 家门店 · 10 万会员的信赖"
+     ],
+     "verdict": "misleading",
+     "verdict_label": "说法有误导",
+     "color": "amber",
+     "plain": "宣称 30 家门店；年报里只有 4 人参保，登记的分支机构 0 家。",
+     "checks": [
+      {
+       "label": "参保人数（年报）",
+       "result": "4 人",
+       "status": "warn",
+       "source": "annual_report",
+       "ref": "R3"
+      },
+      {
+       "label": "分支机构（登记）",
+       "result": "0 家",
+       "status": "warn",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "label": "会员数",
+       "result": "没有公开来源，无法核验",
+       "status": "miss",
+       "source": "material",
+       "ref": "R6"
+      }
+     ],
+     "refs": [
+      "R6"
+     ]
+    }
+   ],
+   "missing": [
+    {
+     "id": "M1",
+     "text": "理财非存款、产品有风险、投资须谨慎",
+     "plain": "正规理财的销售材料都要写风险提示，银行理财按规定要写这句话。这份材料上一句风险提示都没有。",
+     "source": "reg_wm_sales",
+     "refs": [
+      "R6",
+      "R7"
+     ]
+    }
+   ],
+   "signals": [
+    {
+     "key": "risk",
+     "title": "风险",
+     "lede": "最关键的一条：它有没有资格收你的钱。",
+     "flags": 5,
+     "items": [
+      {
+       "key": "bank_list",
+       "label": "银行业金融机构法人名单",
+       "value": "未收录",
+       "detail": null,
+       "status": "bad",
+       "source": "nfra_bank_list",
+       "ref": "R1"
+      },
+      {
+       "key": "amac",
+       "label": "私募基金管理人登记",
+       "value": "未登记",
+       "detail": null,
+       "status": "bad",
+       "source": "amac",
+       "ref": "R4"
+      },
+      {
+       "key": "product_code",
+       "label": "理财产品登记编码",
+       "value": "材料上没有",
+       "detail": null,
+       "status": "miss",
+       "source": "material",
+       "ref": "R7"
+      },
+      {
+       "key": "scope",
+       "label": "经营范围",
+       "value": "健康管理咨询（不含诊疗服务）；养老服务；日用百货销售……不含任何金融业务",
+       "detail": null,
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "refund",
+       "label": "退款承诺",
+       "value": "说\"随时可以取\"，但没有合同条款可以对照。口头承诺出了事很难作数，先要合同。",
+       "detail": null,
+       "status": "miss",
+       "source": "material",
+       "ref": "R7"
+      },
+      {
+       "key": "payee",
+       "label": "收款信息",
+       "value": "钱要打给\"张某明\"，不是杭州满盈禾康养健康咨询有限公司本身。钱进了别人的账户，出了事很难追回。",
+       "detail": null,
+       "status": "bad",
+       "source": "material",
+       "ref": "R7"
+      },
+      {
+       "key": "promise",
+       "label": "收益承诺",
+       "value": "正规理财不允许承诺保本；9% 约为定存的 8.2 倍。",
+       "detail": null,
+       "status": "bad",
+       "source": "reg_amr",
+       "ref": null
+      },
+      {
+       "key": "disclosure",
+       "label": "风险提示语",
+       "value": "材料上没有任何风险提示",
+       "detail": null,
+       "status": "warn",
+       "source": "reg_wm_sales",
+       "ref": null
+      },
+      {
+       "key": "pressure",
+       "label": "施压话术",
+       "value": "\"名额有限\"、\"先到先得\"",
+       "detail": "制造紧迫感，让人没时间核实",
+       "status": "warn",
+       "source": "material",
+       "ref": "R7"
+      }
+     ],
+     "extra": null
+    },
+    {
+     "key": "finance",
+     "title": "财务",
+     "lede": "普通公司不公开财报。但缺钱的公司，会在登记记录里留下影子。",
+     "flags": 2,
+     "items": [
+      {
+       "key": "paid_capital",
+       "label": "实缴资本",
+       "value": "¥0",
+       "detail": "认缴 ¥5,000 万，期限 2030-01-31",
+       "status": "bad",
+       "source": "annual_report",
+       "ref": "R3"
+      },
+      {
+       "key": "pledges",
+       "label": "股权出质",
+       "value": "1 笔",
+       "detail": "2026-07-15，张某明把 70% 股权押给「宁波某投资合伙企业（有限合伙）」",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "insured",
+       "label": "参保人数",
+       "value": "4 人",
+       "detail": "宣称 30 家门店",
+       "status": "warn",
+       "source": "annual_report",
+       "ref": "R3"
+      },
+      {
+       "key": "mortgages",
+       "label": "动产抵押",
+       "value": "无",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "executions",
+       "label": "被执行",
+       "value": "无",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "tax_arrears",
+       "label": "欠税公告",
+       "value": "无",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      }
+     ],
+     "extra": null
+    },
+    {
+     "key": "credit",
+     "title": "信用",
+     "lede": "\"没有不良记录\"只说明查过的地方没有，不等于可靠。",
+     "flags": 1,
+     "items": [
+      {
+       "key": "status",
+       "label": "登记状态",
+       "value": "存续",
+       "detail": "成立于 2025-02-18，1 年 7 个月",
+       "status": "warn",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "penalties",
+       "label": "行政处罚",
+       "value": "1 条",
+       "detail": "2026-05-12 某区市场监督管理局：发布虚假广告，罚款 3 万元",
+       "status": "bad",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "abnormal",
+       "label": "经营异常名录",
+       "value": "未列入",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "serious_illegal",
+       "label": "严重违法失信名单",
+       "value": "未列入",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "dishonest",
+       "label": "失信被执行人",
+       "value": "无",
+       "detail": null,
+       "status": "ok",
+       "source": "registry",
+       "ref": "R2"
+      },
+      {
+       "key": "litigation",
+       "label": "司法诉讼",
+       "value": "没查",
+       "detail": "司法诉讼数据还没接入",
+       "status": "none",
+       "source": "registry",
+       "ref": "R2"
+      }
+     ],
+     "extra": null
+    },
+    {
+     "key": "reputation",
+     "title": "口碑",
+     "lede": "单条投诉不能证明什么，可能有误会或夸大。我们看的是趋势和集中的主题。",
+     "flags": 1,
+     "items": [
+      {
+       "key": "total",
+       "label": "近 12 个月投诉",
+       "value": "27 条",
+       "detail": null,
+       "status": "warn",
+       "source": "complaints",
+       "ref": "R5"
+      },
+      {
+       "key": "recent",
+       "label": "最近 3 个月",
+       "value": "17 条",
+       "detail": "占全年 63%",
+       "status": "warn",
+       "source": "complaints",
+       "ref": "R5"
+      },
+      {
+       "key": "top_topic",
+       "label": "集中的问题",
+       "value": "到期不兑付 / 提现困难",
+       "detail": "15 条，占 56%；例：到期三个月了，一直说钱在走流程。",
+       "status": "bad",
+       "source": "complaints",
+       "ref": "R5"
+      }
+     ],
+     "extra": {
+      "months": [
+       "2025-10",
+       "2025-11",
+       "2025-12",
+       "2026-01",
+       "2026-02",
+       "2026-03",
+       "2026-04",
+       "2026-05",
+       "2026-06",
+       "2026-07",
+       "2026-08",
+       "2026-09"
+      ],
+      "counts": [
+       0,
+       1,
+       0,
+       1,
+       1,
+       1,
+       2,
+       1,
+       3,
+       4,
+       6,
+       7
+      ],
+      "topics": [
+       {
+        "name": "到期不兑付 / 提现困难",
+        "n": 15,
+        "quote": "到期三个月了，一直说钱在走流程。"
+       },
+       {
+        "name": "联系不上业务员",
+        "n": 6,
+        "quote": "业务员换了三个，现在电话都打不通。"
+       },
+       {
+        "name": "宣传和合同不一致",
+        "n": 4,
+        "quote": "说好的保本，合同里根本没写。"
+       },
+       {
+        "name": "其他",
+        "n": 2,
+        "quote": "送的体检卡，去了说不能用。"
+       }
+      ],
+      "total": 27,
+      "last3": 17,
+      "last3_share": 0.63,
+      "top_share": 0.556
+     }
+    }
+   ],
+   "tally": {
+    "red": 4,
+    "amber": 2,
+    "grey": 2,
+    "green": 0,
+    "missing": 1
+   },
+   "notes": [
+    "演示数据 · 公司为虚构：登记、年报、投诉都是编出来的，只用来演示。"
+   ],
+   "questions": [
+    {
+     "id": "Q1",
+     "ask": "退款或提前取回的条件写进合同了吗？违约金多少",
+     "why": "说\"随时可以取\"，但没有合同条款可以对照。口头承诺出了事很难作数，先要合同。",
+     "check_where": "看合同原文的退款、赎回条款，口头承诺不算",
+     "linked": [
+      "A8"
+     ]
+    },
+    {
+     "id": "Q2",
+     "ask": "请给出金融许可证编号，或者理财产品登记编码",
+     "why": "查不到它有卖理财的资格。",
+     "check_where": "金融许可证到国家金融监督管理总局官网查；理财产品登记编码到中国理财网（chinawealth.com.cn）查",
+     "linked": [
+      "A1"
+     ]
+    },
+    {
+     "id": "Q3",
+     "ask": "收益从哪里来？钱投到了什么资产？写进合同了吗",
+     "why": "正规理财不允许承诺保本；9% 约为定存的 8.2 倍。",
+     "check_where": "正规理财产品有登记编码，到中国理财网查得到；承诺保本保息的都不合规",
+     "linked": [
+      "A2"
+     ]
+    },
+    {
+     "id": "Q4",
+     "ask": "收款账户的户名是什么？是不是公司的对公账户",
+     "why": "钱要打给\"张某明\"，不是杭州满盈禾康养健康咨询有限公司本身。钱进了别人的账户，出了事很难追回。",
+     "check_where": "只转对公账户，户名和合同上的公司全称必须一致",
+     "linked": [
+      "A7"
+     ]
+    },
+    {
+     "id": "Q5",
+     "ask": "说的国资背景是哪一家？持股多少",
+     "why": "2 个股东都是自然人，没有任何国有持股。",
+     "check_where": "国家企业信用信息公示系统查股东，一层层往上查到最终出资人",
+     "linked": [
+      "A4"
+     ]
+    }
+   ],
+   "changes": [
+    {
+     "target": "A1",
+     "label": "它说的\"资格\"",
+     "kind": "unchanged",
+     "before": "与记录不符",
+     "after": "与记录不符",
+     "because": [],
+     "quote": null,
+     "plain": "它说的\"资格\"没变，仍是\"与记录不符\"。"
+    },
+    {
+     "target": "A2",
+     "label": "它说的\"收益承诺\"",
+     "kind": "unchanged",
+     "before": "不合规承诺",
+     "after": "不合规承诺",
+     "because": [],
+     "quote": null,
+     "plain": "它说的\"收益承诺\"没变，仍是\"不合规承诺\"。"
+    },
+    {
+     "target": "A8",
+     "label": "它说的\"退款承诺\"",
+     "kind": "added",
+     "before": null,
+     "after": "无法核验",
+     "because": [
+      "R7"
+     ],
+     "quote": "到期前急用也没事，随时可以取出来。",
+     "plain": "新增：它说的\"退款承诺\"，无法核验，新信息里写着\"到期前急用也没事，随时可以取出来。\"。"
+    },
+    {
+     "target": "A7",
+     "label": "它说的\"收款信息\"",
+     "kind": "new_concern",
+     "before": null,
+     "after": "与记录不符",
+     "because": [
+      "R7"
+     ],
+     "quote": "钱转到我们财务的个人账户就行：",
+     "plain": "新疑点：它说的\"收款信息\"，与记录不符，新信息里写着\"钱转到我们财务的个人账户就行：\"。"
+    },
+    {
+     "target": "A3",
+     "label": "它说的\"合作机构\"",
+     "kind": "unchanged",
+     "before": "无法核验",
+     "after": "无法核验",
+     "because": [],
+     "quote": null,
+     "plain": "它说的\"合作机构\"没变，仍是\"无法核验\"。"
+    },
+    {
+     "target": "A4",
+     "label": "它说的\"背景\"",
+     "kind": "unchanged",
+     "before": "与记录不符",
+     "after": "与记录不符",
+     "because": [],
+     "quote": null,
+     "plain": "它说的\"背景\"没变，仍是\"与记录不符\"。"
+    },
+    {
+     "target": "A5",
+     "label": "它说的\"规模\"",
+     "kind": "unchanged",
+     "before": "说法有误导",
+     "after": "说法有误导",
+     "because": [],
+     "quote": null,
+     "plain": "它说的\"规模\"没变，仍是\"说法有误导\"。"
+    },
+    {
+     "target": "A6",
+     "label": "它说的\"规模\"",
+     "kind": "unchanged",
+     "before": "说法有误导",
+     "after": "说法有误导",
+     "because": [],
+     "quote": null,
+     "plain": "它说的\"规模\"没变，仍是\"说法有误导\"。"
+    },
+    {
+     "target": "M1",
+     "label": "该写的没写：理财非存款、产品有风险、投资须谨慎",
+     "kind": "unchanged",
+     "before": "该有的没有",
+     "after": "该有的没有",
+     "because": [],
+     "quote": null,
+     "plain": "该写的没写：理财非存款、产品有风险、投资须谨慎没变，仍是\"该有的没有\"。"
+    },
+    {
+     "target": "risk.bank_list",
+     "label": "风险 · 银行业金融机构法人名单",
+     "kind": "unchanged",
+     "before": "有问题（未收录）",
+     "after": "有问题（未收录）",
+     "because": [],
+     "quote": null,
+     "plain": "风险 · 银行业金融机构法人名单没变，仍是\"有问题（未收录）\"。"
+    },
+    {
+     "target": "risk.amac",
+     "label": "风险 · 私募基金管理人登记",
+     "kind": "unchanged",
+     "before": "有问题（未登记）",
+     "after": "有问题（未登记）",
+     "because": [],
+     "quote": null,
+     "plain": "风险 · 私募基金管理人登记没变，仍是\"有问题（未登记）\"。"
+    },
+    {
+     "target": "risk.product_code",
+     "label": "风险 · 理财产品登记编码",
+     "kind": "unchanged",
+     "before": "该有的没有（材料上没有）",
+     "after": "该有的没有（材料上没有）",
+     "because": [],
+     "quote": null,
+     "plain": "风险 · 理财产品登记编码没变，仍是\"该有的没有（材料上没有）\"。"
+    },
+    {
+     "target": "risk.scope",
+     "label": "风险 · 经营范围",
+     "kind": "unchanged",
+     "before": "有问题（健康管理咨询（不含诊疗服务）；养老服务；日用百货销售……不含任何金融业务）",
+     "after": "有问题（健康管理咨询（不含诊疗服务）；养老服务；日用百货销售……不含任何金融业务）",
+     "because": [],
+     "quote": null,
+     "plain": "风险 · 经营范围没变，仍是\"有问题（健康管理咨询（不含诊疗服务）；养老服务；日用百货销售……不含任何金融业务）\"。"
+    },
+    {
+     "target": "risk.refund",
+     "label": "风险 · 退款承诺",
+     "kind": "added",
+     "before": null,
+     "after": "该有的没有（说\"随时可以取\"，但没有合同条款可以对照。口头承诺出了事很难作数，先要合同。）",
+     "because": [
+      "R7"
+     ],
+     "quote": null,
+     "plain": "新增：风险 · 退款承诺，该有的没有（说\"随时可以取\"，但没有合同条款可以对照。口头承诺出了事很难作数，先要合同。）。"
+    },
+    {
+     "target": "risk.payee",
+     "label": "风险 · 收款信息",
+     "kind": "new_concern",
+     "before": null,
+     "after": "有问题（钱要打给\"张某明\"，不是杭州满盈禾康养健康咨询有限公司本身。钱进了别人的账户，出了事很难追回。）",
+     "because": [
+      "R7"
+     ],
+     "quote": null,
+     "plain": "新疑点：风险 · 收款信息，有问题（钱要打给\"张某明\"，不是杭州满盈禾康养健康咨询有限公司本身。钱进了别人的账户，出了事很难追回。）。"
+    },
+    {
+     "target": "risk.promise",
+     "label": "风险 · 收益承诺",
+     "kind": "unchanged",
+     "before": "有问题（正规理财不允许承诺保本；9% 约为定存的 8.2 倍。）",
+     "after": "有问题（正规理财不允许承诺保本；9% 约为定存的 8.2 倍。）",
+     "because": [],
+     "quote": null,
+     "plain": "风险 · 收益承诺没变，仍是\"有问题（正规理财不允许承诺保本；9% 约为定存的 8.2 倍。）\"。"
+    },
+    {
+     "target": "risk.disclosure",
+     "label": "风险 · 风险提示语",
+     "kind": "unchanged",
+     "before": "要留意（材料上没有任何风险提示）",
+     "after": "要留意（材料上没有任何风险提示）",
+     "because": [],
+     "quote": null,
+     "plain": "风险 · 风险提示语没变，仍是\"要留意（材料上没有任何风险提示）\"。"
+    },
+    {
+     "target": "risk.pressure",
+     "label": "风险 · 施压话术",
+     "kind": "unchanged",
+     "before": "要留意（\"名额有限\"、\"先到先得\"）",
+     "after": "要留意（\"名额有限\"、\"先到先得\"）",
+     "because": [],
+     "quote": null,
+     "plain": "风险 · 施压话术没变，仍是\"要留意（\"名额有限\"、\"先到先得\"）\"。"
+    },
+    {
+     "target": "finance.paid_capital",
+     "label": "财务 · 实缴资本",
+     "kind": "unchanged",
+     "before": "有问题（¥0）",
+     "after": "有问题（¥0）",
+     "because": [],
+     "quote": null,
+     "plain": "财务 · 实缴资本没变，仍是\"有问题（¥0）\"。"
+    },
+    {
+     "target": "finance.pledges",
+     "label": "财务 · 股权出质",
+     "kind": "unchanged",
+     "before": "有问题（1 笔）",
+     "after": "有问题（1 笔）",
+     "because": [],
+     "quote": null,
+     "plain": "财务 · 股权出质没变，仍是\"有问题（1 笔）\"。"
+    },
+    {
+     "target": "finance.insured",
+     "label": "财务 · 参保人数",
+     "kind": "unchanged",
+     "before": "要留意（4 人）",
+     "after": "要留意（4 人）",
+     "because": [],
+     "quote": null,
+     "plain": "财务 · 参保人数没变，仍是\"要留意（4 人）\"。"
+    },
+    {
+     "target": "finance.mortgages",
+     "label": "财务 · 动产抵押",
+     "kind": "unchanged",
+     "before": "没问题（无）",
+     "after": "没问题（无）",
+     "because": [],
+     "quote": null,
+     "plain": "财务 · 动产抵押没变，仍是\"没问题（无）\"。"
+    },
+    {
+     "target": "finance.executions",
+     "label": "财务 · 被执行",
+     "kind": "unchanged",
+     "before": "没问题（无）",
+     "after": "没问题（无）",
+     "because": [],
+     "quote": null,
+     "plain": "财务 · 被执行没变，仍是\"没问题（无）\"。"
+    },
+    {
+     "target": "finance.tax_arrears",
+     "label": "财务 · 欠税公告",
+     "kind": "unchanged",
+     "before": "没问题（无）",
+     "after": "没问题（无）",
+     "because": [],
+     "quote": null,
+     "plain": "财务 · 欠税公告没变，仍是\"没问题（无）\"。"
+    },
+    {
+     "target": "credit.status",
+     "label": "信用 · 登记状态",
+     "kind": "unchanged",
+     "before": "要留意（存续）",
+     "after": "要留意（存续）",
+     "because": [],
+     "quote": null,
+     "plain": "信用 · 登记状态没变，仍是\"要留意（存续）\"。"
+    },
+    {
+     "target": "credit.penalties",
+     "label": "信用 · 行政处罚",
+     "kind": "unchanged",
+     "before": "有问题（1 条）",
+     "after": "有问题（1 条）",
+     "because": [],
+     "quote": null,
+     "plain": "信用 · 行政处罚没变，仍是\"有问题（1 条）\"。"
+    },
+    {
+     "target": "credit.abnormal",
+     "label": "信用 · 经营异常名录",
+     "kind": "unchanged",
+     "before": "没问题（未列入）",
+     "after": "没问题（未列入）",
+     "because": [],
+     "quote": null,
+     "plain": "信用 · 经营异常名录没变，仍是\"没问题（未列入）\"。"
+    },
+    {
+     "target": "credit.serious_illegal",
+     "label": "信用 · 严重违法失信名单",
+     "kind": "unchanged",
+     "before": "没问题（未列入）",
+     "after": "没问题（未列入）",
+     "because": [],
+     "quote": null,
+     "plain": "信用 · 严重违法失信名单没变，仍是\"没问题（未列入）\"。"
+    },
+    {
+     "target": "credit.dishonest",
+     "label": "信用 · 失信被执行人",
+     "kind": "unchanged",
+     "before": "没问题（无）",
+     "after": "没问题（无）",
+     "because": [],
+     "quote": null,
+     "plain": "信用 · 失信被执行人没变，仍是\"没问题（无）\"。"
+    },
+    {
+     "target": "credit.litigation",
+     "label": "信用 · 司法诉讼",
+     "kind": "unchanged",
+     "before": "没查（没查）",
+     "after": "没查（没查）",
+     "because": [],
+     "quote": null,
+     "plain": "信用 · 司法诉讼没变，仍是\"没查（没查）\"。"
+    },
+    {
+     "target": "reputation.total",
+     "label": "口碑 · 近 12 个月投诉",
+     "kind": "unchanged",
+     "before": "要留意（27 条）",
+     "after": "要留意（27 条）",
+     "because": [],
+     "quote": null,
+     "plain": "口碑 · 近 12 个月投诉没变，仍是\"要留意（27 条）\"。"
+    },
+    {
+     "target": "reputation.recent",
+     "label": "口碑 · 最近 3 个月",
+     "kind": "unchanged",
+     "before": "要留意（17 条）",
+     "after": "要留意（17 条）",
+     "because": [],
+     "quote": null,
+     "plain": "口碑 · 最近 3 个月没变，仍是\"要留意（17 条）\"。"
+    },
+    {
+     "target": "reputation.top_topic",
+     "label": "口碑 · 集中的问题",
+     "kind": "unchanged",
+     "before": "有问题（到期不兑付 / 提现困难）",
+     "after": "有问题（到期不兑付 / 提现困难）",
+     "because": [],
+     "quote": null,
+     "plain": "口碑 · 集中的问题没变，仍是\"有问题（到期不兑付 / 提现困难）\"。"
+    }
+   ],
+   "change_summary": "4 项有变化（2 项更严重，2 项新增），其余 29 项没变。",
+   "onepager": {
+    "audience": "family",
+    "title": "转账之前，先确认这几件事",
+    "subject": "替妈妈看：杭州满盈禾康养健康咨询有限公司 · 储蓄 20 万",
+    "headline": "它的说法里有 5 处和记录对不上、2 处要留意；记录里有 4 项不良情况；还有 3 项没查到。",
+    "found": [
+     {
+      "text": "实缴资本：¥0（认缴 ¥5,000 万，期限 2030-01-31）",
+      "refs": [
+       "finance.paid_capital",
+       "R3"
+      ]
+     }
+    ],
+    "mismatch": [
+     {
+      "text": "它说的\"资格\"与记录不符：查不到它有卖理财的资格。",
+      "refs": [
+       "A1",
+       "R6"
+      ]
+     },
+     {
+      "text": "它说的\"收益承诺\"不合规承诺：正规理财不允许承诺保本；9% 约为定存的 8.2 倍。",
+      "refs": [
+       "A2",
+       "R6"
+      ]
+     },
+     {
+      "text": "它说的\"收款信息\"与记录不符：钱要打给\"张某明\"，不是杭州满盈禾康养健康咨询有限公司本身。钱进了别人的账户，出了事很难追回。",
+      "refs": [
+       "A7",
+       "R7"
+      ]
+     }
+    ],
+    "unknown": [
+     {
+      "text": "它说的\"退款承诺\"无法核验：说\"随时可以取\"，但没有合同条款可以对照。口头承诺出了事很难作数，先要合同。",
+      "refs": [
+       "A8",
+       "R7"
+      ]
+     }
+    ],
+    "next_steps": [
+     {
+      "text": "退款或提前取回的条件写进合同了吗？违约金多少（看合同原文的退款、赎回条款，口头承诺不算）",
+      "refs": [
+       "Q1",
+       "A8"
+      ]
+     },
+     {
+      "text": "请给出金融许可证编号，或者理财产品登记编码（金融许可证到国家金融监督管理总局官网查；理财产品登记编码到中国理财网（chinawealth.com.cn）查）",
+      "refs": [
+       "Q2",
+       "A1"
+      ]
+     },
+     {
+      "text": "收益从哪里来？钱投到了什么资产？写进合同了吗（正规理财产品有登记编码，到中国理财网查得到；承诺保本保息的都不合规）",
+      "refs": [
+       "Q3",
+       "A2"
+      ]
+     }
+    ],
+    "footer": "结论来自公开记录和规则，AI 只负责读材料和说人话。这不是安全评分，也不是对这家公司的定性；没查到不等于没有问题。 资料截至：银行业金融机构法人名单 2025-06-30；企业登记信息 2026-10-01（演示数据）；投诉平台 2026-10-01（演示数据）"
+   }
+  }
+ ],
+ "raw": [
+  {
+   "id": "R1",
+   "source_id": "nfra_bank_list",
+   "title": "银行业金融机构法人名单 · 按名称查询",
+   "kind": "official",
+   "coverage": "not_found",
+   "retrieved_at": "2026-10-02T03:53:07",
+   "as_of": "2025-06-30",
+   "url": "https://www.nfra.gov.cn/chinese/docfile/2025/86c58b1ad810422c8fa6c6d0107f1626.pdf",
+   "content": {
+    "查询名称": "杭州满盈禾康养健康咨询有限公司",
+    "是否收录": false,
+    "记录": null,
+    "名称相近的机构": []
+   },
+   "screenshot": null,
+   "note": "只含银行业金融机构；查不到不等于没有证券、保险、私募等其他牌照"
+  },
+  {
+   "id": "R2",
+   "source_id": "registry",
+   "title": "企业登记信息",
+   "kind": "demo",
+   "coverage": "found",
+   "retrieved_at": "2026-10-02T03:53:07",
+   "as_of": "2026-10-01",
+   "url": null,
+   "content": {
+    "name": "杭州满盈禾康养健康咨询有限公司",
+    "code": "91330106MA2H******",
+    "status": "存续",
+    "founded": "2025-02-18",
+    "reg_capital": 50000000.0,
+    "capital_due": "2030-01-31",
+    "scope": "健康管理咨询（不含诊疗服务）；养老服务；日用百货销售；会议及展览服务",
+    "shareholders": [
+     {
+      "name": "张某明",
+      "type": "自然人",
+      "pct": 70.0
+     },
+     {
+      "name": "李某华",
+      "type": "自然人",
+      "pct": 30.0
+     }
+    ],
+    "branches": 0,
+    "penalties": [
+     {
+      "date": "2026-05-12",
+      "org": "某区市场监督管理局",
+      "reason": "发布虚假广告",
+      "result": "罚款 3 万元"
+     }
+    ],
+    "pledges": [
+     {
+      "date": "2026-07-15",
+      "pledgor": "张某明",
+      "share": "70% 股权",
+      "pledgee": "宁波某投资合伙企业（有限合伙）"
+     }
+    ],
+    "mortgages": [],
+    "executions": [],
+    "tax_arrears": [],
+    "abnormal": false,
+    "serious_illegal": false,
+    "dishonest": false
+   },
+   "screenshot": null,
+   "note": "演示数据 · 公司为虚构"
+  },
+  {
+   "id": "R3",
+   "source_id": "annual_report",
+   "title": "企业年度报告（摘要）",
+   "kind": "demo",
+   "coverage": "found",
+   "retrieved_at": "2026-10-02T03:53:07",
+   "as_of": "2026-10-01",
+   "url": null,
+   "content": {
+    "paid_capital": 0.0,
+    "insured": 4
+   },
+   "screenshot": null,
+   "note": "演示数据 · 企业自行填报、未经审计"
+  },
+  {
+   "id": "R4",
+   "source_id": "amac",
+   "title": "私募基金管理人公示",
+   "kind": "demo",
+   "coverage": "not_found",
+   "retrieved_at": "2026-10-02T03:53:07",
+   "as_of": "2026-10-01",
+   "url": null,
+   "content": {
+    "已登记": false
+   },
+   "screenshot": null,
+   "note": "演示数据"
+  },
+  {
+   "id": "R5",
+   "source_id": "complaints",
+   "title": "投诉平台",
+   "kind": "demo",
+   "coverage": "found",
+   "retrieved_at": "2026-10-02T03:53:07",
+   "as_of": "2026-10-01",
+   "url": null,
+   "content": {
+    "months": [
+     "2025-10",
+     "2025-11",
+     "2025-12",
+     "2026-01",
+     "2026-02",
+     "2026-03",
+     "2026-04",
+     "2026-05",
+     "2026-06",
+     "2026-07",
+     "2026-08",
+     "2026-09"
+    ],
+    "counts": [
+     0,
+     1,
+     0,
+     1,
+     1,
+     1,
+     2,
+     1,
+     3,
+     4,
+     6,
+     7
+    ],
+    "topics": [
+     {
+      "name": "到期不兑付 / 提现困难",
+      "n": 15,
+      "quote": "到期三个月了，一直说钱在走流程。"
+     },
+     {
+      "name": "联系不上业务员",
+      "n": 6,
+      "quote": "业务员换了三个，现在电话都打不通。"
+     },
+     {
+      "name": "宣传和合同不一致",
+      "n": 4,
+      "quote": "说好的保本，合同里根本没写。"
+     },
+     {
+      "name": "其他",
+      "n": 2,
+      "quote": "送的体检卡，去了说不能用。"
+     }
+    ]
+   },
+   "screenshot": null,
+   "note": "演示数据"
+  },
+  {
+   "id": "R6",
+   "source_id": "material",
+   "title": "满盈禾宣传单（虚构）",
+   "kind": "user_material",
+   "coverage": "found",
+   "retrieved_at": "2026-10-02T03:53:07",
+   "as_of": null,
+   "url": null,
+   "content": "满盈禾 康养·财富\n颐养天年 财富无忧\n保本保息\n年化 9%\n到期还本付息 · 稳稳的幸福\n正规理财 · 安全稳健\n国资背景\n某大型银行 资金存管\n注册资本 5000 万 · 实力雄厚\n全国 30 家门店 · 10 万会员的信赖\n名额有限 · 先到先得\n咨询热线 400-***-****  地址：杭州市某区某路 88 号\n",
+   "screenshot": null,
+   "note": "用户提供；系统只读文字，不判断材料真伪"
+  },
+  {
+   "id": "R7",
+   "source_id": "material",
+   "title": "对方业务员的微信回复（虚构）",
+   "kind": "user_material",
+   "coverage": "found",
+   "retrieved_at": "2026-10-02T03:53:07",
+   "as_of": null,
+   "url": null,
+   "content": "阿姨您放心，我们是正规的，很多人都在买。\n钱转到我们财务的个人账户就行：\n户名 张某明  开户行 某银行  账号 6222 0000 0000 0000 000\n到期前急用也没事，随时可以取出来。\n",
+   "screenshot": null,
+   "note": "对方说的，未核实"
+  }
+ ],
+ "chat": [
+  {
+   "role": "user",
+   "text": "为什么这条对我妈很重要",
+   "refs": [
+    "A1"
+   ],
+   "citations": [],
+   "quotes": [],
+   "suggest": [],
+   "not_found": false,
+   "dropped": 0,
+   "version": 2,
+   "mode": null,
+   "recorded_at": null,
+   "created_at": "2026-10-02T03:53:07"
+  },
+  {
+   "role": "assistant",
+   "text": "它说的\"资格\"：与记录不符。查不到它有卖理财的资格。 [A1]\n· 银行业金融机构法人名单：未收录 [R1]\n· 私募基金管理人登记：未登记 [R4]\n· 理财产品登记编码：材料上没有 [R6]\n对妈妈来说，这一条关系到最先要问的事：它有没有资格收这笔钱。",
+   "refs": [],
+   "citations": [
+    "A1",
+    "R1",
+    "R4",
+    "R6"
+   ],
+   "quotes": [],
+   "suggest": [],
+   "not_found": false,
+   "dropped": 0,
+   "version": 2,
+   "mode": "template",
+   "recorded_at": null,
+   "created_at": "2026-10-02T03:53:07"
+  }
+ ],
+ "sources": {
+  "nfra_bank_list": {
+   "id": "nfra_bank_list",
+   "name": "银行业金融机构法人名单",
+   "kind": "official",
+   "as_of": "2025-06-30",
+   "url": "https://www.nfra.gov.cn/chinese/docfile/2025/86c58b1ad810422c8fa6c6d0107f1626.pdf",
+   "note": "国家金融监督管理总局公布，共 4070 家；只含银行业金融机构，不含证券、基金、保险、私募"
+  },
+  "registry": {
+   "id": "registry",
+   "name": "企业登记信息",
+   "kind": "demo",
+   "as_of": "2026-10-01",
+   "url": null,
+   "note": "演示快照，公司为虚构；真实公司要人工到国家企业信用信息公示系统查询后存证"
+  },
+  "annual_report": {
+   "id": "annual_report",
+   "name": "企业年度报告",
+   "kind": "demo",
+   "as_of": "2026-10-01",
+   "url": null,
+   "note": "企业自行填报、未经审计；从业人数、资产等字段企业可选择不公示"
+  },
+  "amac": {
+   "id": "amac",
+   "name": "私募基金管理人公示",
+   "kind": "demo",
+   "as_of": "2026-10-01",
+   "url": null,
+   "note": "演示快照；中基协实时查询待对接"
+  },
+  "complaints": {
+   "id": "complaints",
+   "name": "投诉平台",
+   "kind": "demo",
+   "as_of": "2026-10-01",
+   "url": null,
+   "note": "演示数据"
+  },
+  "self_description": {
+   "id": "self_description",
+   "name": "公司自己的公开说法",
+   "kind": "web",
+   "as_of": null,
+   "url": null,
+   "note": "官网、招聘页、宣传页上公司自己写的话；只当作\"宣称\"，不当作事实"
+  },
+  "material": {
+   "id": "material",
+   "name": "用户提供的材料",
+   "kind": "user_material",
+   "as_of": null,
+   "url": null,
+   "note": "宣传单、合同、聊天记录、对方回复；系统只读取上面的文字，不判断材料本身的真伪"
+  },
+  "reg_amr": {
+   "id": "reg_amr",
+   "name": "《关于规范金融机构资产管理业务的指导意见》",
+   "kind": "regulation",
+   "as_of": "2018",
+   "url": null,
+   "note": "资产管理产品不得承诺保本保收益"
+  },
+  "reg_wm_sales": {
+   "id": "reg_wm_sales",
+   "name": "《商业银行理财业务监督管理办法》",
+   "kind": "regulation",
+   "as_of": "2018",
+   "url": null,
+   "note": "理财产品销售文件须提示\"理财非存款、产品有风险、投资须谨慎\""
+  },
+  "reg_labor9": {
+   "id": "reg_labor9",
+   "name": "《中华人民共和国劳动合同法》第九条",
+   "kind": "regulation",
+   "as_of": "2012 修正",
+   "url": null,
+   "note": "用人单位招用劳动者，不得要求劳动者提供担保或者以其他名义向劳动者收取财物"
+  },
+  "param_rate": {
+   "id": "param_rate",
+   "name": "一年期定期存款参考利率",
+   "kind": "parameter",
+   "as_of": null,
+   "url": null,
+   "note": "演示参数 1.1%，正式版按实际挂牌利率更新"
+  }
+ }
+}

@@ -1,0 +1,65 @@
+{
+  "id": "savings",
+  "label": "存钱 / 理财 / 投资",
+  "keywords": [
+    "理财",
+    "存钱",
+    "存款",
+    "储蓄",
+    "投资",
+    "收益",
+    "利息",
+    "养老钱",
+    "年化",
+    "保本",
+    "回报",
+    "基金",
+    "认购",
+    "存进去",
+    "放在这"
+  ],
+  "hand_over": "储蓄",
+  "first_question": "它有没有资格收这笔钱",
+  "license_checks": [
+    "nfra_bank_list",
+    "amac",
+    "wm_code"
+  ],
+  "claim_kinds": [
+    "qualification",
+    "return_promise",
+    "refund",
+    "payee",
+    "partner",
+    "background",
+    "capital",
+    "scale"
+  ],
+  "signal_order": [
+    "risk",
+    "finance",
+    "credit",
+    "reputation"
+  ],
+  "signal_ledes": {
+    "risk": "最关键的一条：它有没有资格收你的钱。"
+  },
+  "must_ask": [
+    {
+      "about": "qualification",
+      "ask": "请给出金融许可证编号，或者理财产品登记编码",
+      "check_where": "金融许可证到国家金融监督管理总局官网查；理财产品登记编码到中国理财网（chinawealth.com.cn）查"
+    },
+    {
+      "about": "payee",
+      "ask": "钱打到哪个账户，户名是不是这家公司",
+      "check_where": "户名必须和合同上的公司全称一致；打到个人账户的一律不转"
+    },
+    {
+      "about": "refund",
+      "ask": "急用时多久能取回，提前取有没有违约金，写进合同了吗",
+      "check_where": "看合同原文里的赎回、退出条款，口头说的不算"
+    }
+  ],
+  "onepager_title": "转账之前，先确认这几件事"
+}

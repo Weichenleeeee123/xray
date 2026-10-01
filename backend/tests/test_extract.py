@@ -7,8 +7,9 @@ extract = RuleExtractor().extract
 demo = extract(DEMO)
 
 
-def test_demo_flyer_has_all_six_claim_kinds():
-    assert set(demo.claims) == set(ClaimKind)
+def test_demo_flyer_has_the_six_original_claim_kinds():
+    assert set(demo.claims) == {ClaimKind.qualification, ClaimKind.return_promise, ClaimKind.partner,
+                                ClaimKind.background, ClaimKind.capital, ClaimKind.scale}
 
 
 def test_demo_numbers():

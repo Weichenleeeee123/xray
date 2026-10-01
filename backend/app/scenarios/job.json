@@ -1,0 +1,61 @@
+{
+  "id": "job",
+  "label": "求职入职",
+  "keywords": [
+    "offer",
+    "入职",
+    "求职",
+    "找工作",
+    "工作",
+    "招聘",
+    "面试",
+    "应聘",
+    "上班",
+    "实习",
+    "岗位",
+    "工资",
+    "月薪",
+    "试用期",
+    "社保"
+  ],
+  "hand_over": "时间和信任，有时还有押金、培训费",
+  "first_question": "发 offer 的和交社保的是不是同一家；有没有让你先交钱",
+  "license_checks": [],
+  "claim_kinds": [
+    "upfront_fee",
+    "payee",
+    "scale",
+    "background",
+    "capital",
+    "refund"
+  ],
+  "signal_order": [
+    "reputation",
+    "credit",
+    "finance",
+    "risk"
+  ],
+  "signal_ledes": {
+    "reputation": "在这儿干过的人怎么说，比招聘广告可信。",
+    "credit": "看它是不是一家正常经营的公司：登记状态、处罚、失信。",
+    "risk": "求职最大的坑是先交钱：正规单位招人不收任何费用。"
+  },
+  "must_ask": [
+    {
+      "about": "employer",
+      "ask": "发 offer 的、签劳动合同的、交社保的是不是同一家公司",
+      "check_where": "入职后在社保 App 或当地社保查询里看缴费单位名称"
+    },
+    {
+      "about": "upfront_fee",
+      "ask": "入职前要不要交任何费用（培训费、押金、服装费）",
+      "check_where": "正规单位不收；被要求交钱可向当地人社部门劳动保障监察举报"
+    },
+    {
+      "about": "contract",
+      "ask": "试用期多长、工资多少，写进劳动合同了吗",
+      "check_where": "看劳动合同原文；试用期上限见《劳动合同法》第十九条"
+    }
+  ],
+  "onepager_title": "入职之前，先确认这几件事"
+}

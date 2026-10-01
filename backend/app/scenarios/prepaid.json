@@ -1,0 +1,64 @@
+{
+  "id": "prepaid",
+  "label": "预付消费（办卡、课程、装修、养老预付）",
+  "keywords": [
+    "办卡",
+    "充值",
+    "预付",
+    "预存",
+    "储值",
+    "会员卡",
+    "课程",
+    "报班",
+    "培训班",
+    "学费",
+    "装修",
+    "健身",
+    "美容",
+    "养老院",
+    "套餐",
+    "次卡",
+    "年卡"
+  ],
+  "hand_over": "预付款",
+  "first_question": "收钱的是不是跟你签约、给你服务的那家公司",
+  "license_checks": [],
+  "claim_kinds": [
+    "payee",
+    "refund",
+    "scale",
+    "capital",
+    "background",
+    "partner",
+    "qualification",
+    "return_promise"
+  ],
+  "signal_order": [
+    "reputation",
+    "finance",
+    "credit",
+    "risk"
+  ],
+  "signal_ledes": {
+    "reputation": "预付款最怕关门：投诉里有没有\"退不了款\"\"闭店\"，比门店装修更说明问题。",
+    "risk": "钱交给谁、能不能退，是预付消费最该先问清的两件事。"
+  },
+  "must_ask": [
+    {
+      "about": "payee",
+      "ask": "收款的是哪家公司，和签合同、提供服务的是不是同一家",
+      "check_where": "对照收据或转账记录上的户名和合同上的公司全称"
+    },
+    {
+      "about": "refund",
+      "ask": "退卡退款的条件写进合同了吗",
+      "check_where": "看合同原文的退费条款；单用途预付卡可向商务部门、消费者协会投诉"
+    },
+    {
+      "about": "closure",
+      "ask": "门店关了怎么办，预付款有没有存管或保险",
+      "check_where": "问清资金存管银行，再打该银行官方客服核实"
+    }
+  ],
+  "onepager_title": "交预付款之前，先确认这几件事"
+}

@@ -1,0 +1,36 @@
+{
+  "id": "general",
+  "label": "其他",
+  "keywords": [],
+  "hand_over": "钱或信任",
+  "first_question": "它是不是它说的那家公司，记录和说法对不对得上",
+  "license_checks": [],
+  "claim_kinds": [],
+  "signal_order": [
+    "risk",
+    "finance",
+    "credit",
+    "reputation"
+  ],
+  "signal_ledes": {
+    "risk": "钱或信任交出去之前，先看它有没有资格收、钱打给谁。"
+  },
+  "must_ask": [
+    {
+      "about": "identity",
+      "ask": "这家公司的全称和统一社会信用代码是什么",
+      "check_where": "国家企业信用信息公示系统（gsxt.gov.cn）按代码查"
+    },
+    {
+      "about": "payee",
+      "ask": "钱或资料交给谁，户名是不是这家公司",
+      "check_where": "户名必须和公司全称一致"
+    },
+    {
+      "about": "contract",
+      "ask": "出了问题找谁，写进合同了吗",
+      "check_where": "看合同原文的违约和争议解决条款"
+    }
+  ],
+  "onepager_title": "在下一步之前，先确认这几件事"
+}

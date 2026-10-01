@@ -1,0 +1,60 @@
+{
+  "id": "contract",
+  "label": "合作签约 / 付款",
+  "keywords": [
+    "合作",
+    "签约",
+    "签合同",
+    "供货",
+    "采购",
+    "货款",
+    "定金",
+    "外包",
+    "加盟",
+    "代理",
+    "下单",
+    "供应商",
+    "进货",
+    "订货"
+  ],
+  "hand_over": "货款、定金",
+  "first_question": "签约方、收款方、干活的是不是同一家，有没有所需资质",
+  "license_checks": [],
+  "claim_kinds": [
+    "payee",
+    "qualification",
+    "background",
+    "scale",
+    "capital",
+    "partner",
+    "refund"
+  ],
+  "signal_order": [
+    "credit",
+    "risk",
+    "finance",
+    "reputation"
+  ],
+  "signal_ledes": {
+    "credit": "签约之前先看它守不守约：有没有被执行、有没有失信、有没有被处罚。",
+    "risk": "签约方有没有所需资质、货款打给谁，是付款前要核的两件事。"
+  },
+  "must_ask": [
+    {
+      "about": "payee",
+      "ask": "签约方、收款方、实际干活的是不是同一家",
+      "check_where": "对照合同、发票、收款户名三处的公司全称"
+    },
+    {
+      "about": "qualification",
+      "ask": "做这件事需要什么资质，请给出证书编号",
+      "check_where": "到发证部门官网按编号查询"
+    },
+    {
+      "about": "payee_account",
+      "ask": "货款打到哪个账户，户名是不是签约的公司",
+      "check_where": "只转对公账户，户名和签约方一致"
+    }
+  ],
+  "onepager_title": "签约付款之前，先确认这几件事"
+}

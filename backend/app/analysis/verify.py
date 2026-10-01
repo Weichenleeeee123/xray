@@ -10,7 +10,7 @@ from app.analysis.fmt import money, wan
 from app.config import HIGH_RETURN_RATIO, LOW_PAID_RATIO, REF_DEPOSIT_RATE
 from app.models import (AmacHit, Assertion, Check, ClaimKind, CompanyProfile, Coverage, LicenseHit,
                         MissingItem, Status, Verdict)
-from app.sources.licenses import LicenseIndex
+from app.sources.licenses import LicenseIndex, normalize
 
 KIND_META = {
     ClaimKind.qualification: ("A1", "资格"),
@@ -19,6 +19,9 @@ KIND_META = {
     ClaimKind.background: ("A4", "背景"),
     ClaimKind.capital: ("A5", "规模"),
     ClaimKind.scale: ("A6", "规模"),
+    ClaimKind.payee: ("A7", "收款信息"),
+    ClaimKind.refund: ("A8", "退款承诺"),
+    ClaimKind.upfront_fee: ("A9", "先交钱"),
 }
 VERDICT_META = {
     Verdict.mismatch: ("与记录不符", "red"),
@@ -35,7 +38,8 @@ NEGATED_SCOPE = re.compile(r"[（(][^）)]*不得[^）)]*[）)]")
 STATE_OWNED = re.compile(r"国有资产监督管理|人民政府|财政(?:局|厅|部)|国资|国有")
 GENERIC_BANK = re.compile(r"某|大型|知名|多家|国有大行")
 
-NOT_COVERED = "没查：演示版没有这家公司的登记数据"
+NOT_COVERED = "没查：还没有这家公司的登记数据"
+NO_DATA_PLAIN = "还没有这家公司的登记数据，暂时无法核验。"
 
 Review = tuple[list[Check], Verdict, str]
 
@@ -59,7 +63,7 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
         checks.append(Check(label="银行业金融机构法人名单", result=f"未收录{hint}", status=Status.bad, source=lic.source))
 
     if amac.coverage is Coverage.not_covered:
-        checks.append(Check(label="私募基金管理人登记", result="没查：演示版未接入中基协实时查询",
+        checks.append(Check(label="私募基金管理人登记", result="没查：中基协实时查询还没接入，也没有人工查询记录",
                             status=Status.none, source=amac.source))
     else:
         checks.append(Check(label="私募基金管理人登记", result="已登记" if amac.registered else "未登记",
@@ -67,9 +71,12 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
 
     if ext.product_codes:
         checks.append(Check(label="理财产品登记编码", result=f"材料上写了 {'、'.join(ext.product_codes)}，待到中国理财网核验",
-                            status=Status.warn, source="flyer"))
+                            status=Status.warn, source="material"))
+    elif not ext.is_financial:
+        checks.append(Check(label="理财产品登记编码", result="还没有理财宣传材料，无从核对", status=Status.none,
+                            source="material"))
     else:
-        checks.append(Check(label="理财产品登记编码", result="材料上没有", status=Status.miss, source="flyer"))
+        checks.append(Check(label="理财产品登记编码", result="材料上没有", status=Status.miss, source="material"))
 
     if company is None:
         checks.append(Check(label="经营范围", result=NOT_COVERED, status=Status.none, source="registry"))
@@ -86,7 +93,7 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
         return checks, Verdict.attention, "它登记了私募基金管理人；但私募只能非公开卖给合格投资者，不能对大众公开宣传。"
     if amac.coverage is Coverage.not_found and company is not None:
         return checks, Verdict.mismatch, "查不到它有卖理财的资格。"
-    return checks, Verdict.unverifiable, "不在银行业金融机构名单里；证券、保险、私募等名单演示版还没接入，暂时下不了结论。"
+    return checks, Verdict.unverifiable, "不在银行业金融机构名单里；证券、保险等名单还没接入，私募登记也没查到记录，暂时下不了结论。"
 
 
 def return_review(claim: RawClaim) -> Review:
@@ -112,7 +119,7 @@ def partner_review(claim: RawClaim, licenses: LicenseIndex) -> Review:
     checks = []
     named = [b for b in claim.banks if not GENERIC_BANK.search(b)]
     if not named:
-        checks.append(Check(label="存管银行", result="材料没写明是哪家银行", status=Status.miss, source="flyer"))
+        checks.append(Check(label="存管银行", result="材料没写明是哪家银行", status=Status.miss, source="material"))
     for bank in named:
         hit = licenses.lookup(bank)
         record = hit.record or (hit.suggestions[0] if hit.suggestions else None)
@@ -121,7 +128,7 @@ def partner_review(claim: RawClaim, licenses: LicenseIndex) -> Review:
                                 status=Status.warn, source="nfra_bank_list"))
         else:
             checks.append(Check(label="存管银行", result=f"名单中查不到\"{bank}\"", status=Status.bad, source="nfra_bank_list"))
-    checks.append(Check(label="存管协议", result="未提供", status=Status.miss, source="flyer"))
+    checks.append(Check(label="存管协议", result="未提供", status=Status.miss, source="material"))
     lead = f"写了{named[0]}，但没给存管协议" if named else "没写是哪家银行、没给协议"
     return checks, Verdict.unverifiable, f"{lead}，无法核验；而且资金存管不等于担保。"
 
@@ -129,10 +136,10 @@ def partner_review(claim: RawClaim, licenses: LicenseIndex) -> Review:
 def background_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
     checks = []
     if any("上市" in w for w in claim.words):
-        checks.append(Check(label="上市公司", result="没查：演示版未接入上市公司名单", status=Status.none, source="registry"))
+        checks.append(Check(label="上市公司", result="没查：上市公司名单还没接入", status=Status.none, source="registry"))
     if company is None or not company.shareholders:
         checks.append(Check(label="股东", result=NOT_COVERED, status=Status.none, source="registry"))
-        return checks, Verdict.unverifiable, "演示版没有这家公司的股东数据，暂时无法核验。"
+        return checks, Verdict.unverifiable, NO_DATA_PLAIN
 
     holders = "、".join(f"{h.name} {h.pct:g}%" for h in company.shareholders)
     state = [h for h in company.shareholders if STATE_OWNED.search(h.name)]
@@ -152,7 +159,7 @@ def background_review(claim: RawClaim, company: CompanyProfile | None) -> Review
 def capital_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
     if company is None:
         return ([Check(label="注册资本", result=NOT_COVERED, status=Status.none, source="registry")],
-                Verdict.unverifiable, "演示版没有这家公司的登记数据，暂时无法核验。")
+                Verdict.unverifiable, NO_DATA_PLAIN)
     checks = []
     claimed, reg, paid = claim.numbers.get("capital"), company.reg_capital, company.paid_capital
     same = claimed is not None and abs(claimed - reg) <= reg * 0.01
@@ -180,7 +187,7 @@ def scale_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
     stores, members = claim.numbers.get("stores"), claim.numbers.get("members")
     if company is None:
         return ([Check(label="规模", result=NOT_COVERED, status=Status.none, source="registry")],
-                Verdict.unverifiable, "演示版没有这家公司的登记数据，暂时无法核验。")
+                Verdict.unverifiable, NO_DATA_PLAIN)
     checks, gaps = [], []
     if company.insured is None:
         checks.append(Check(label="参保人数（年报）", result="未公示（企业可选择不公示）", status=Status.none, source="annual_report"))
@@ -197,13 +204,54 @@ def scale_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
         checks.append(Check(label="分支机构（登记）", result=f"{company.branches} 家",
                             status=Status.warn if few else Status.ok, source="registry"))
     if members is not None:
-        checks.append(Check(label="会员数", result="没有公开来源，无法核验", status=Status.miss, source="flyer"))
+        checks.append(Check(label="会员数", result="没有公开来源，无法核验", status=Status.miss, source="material"))
 
     if gaps:
         return checks, Verdict.misleading, f"宣称 {stores:g} 家门店；{'，'.join(gaps)}。"
     if stores is None:
         return checks, Verdict.unverifiable, "会员数没有公开来源，无法核验。"
     return checks, Verdict.consistent, "登记的规模和宣传大致相符。"
+
+
+def _same_entity(name: str, company: str) -> bool:
+    n, c = normalize(name), normalize(company)
+    return n == c or (len(n) >= 4 and n in c) or c in n
+
+
+def payee_review(claim: RawClaim, company_name: str) -> Review:
+    """收款户名和公司名对不上，或者要求打到个人账户：判与记录不符。所有场景都查。"""
+    checks = []
+    others = [n for n in claim.banks if not _same_entity(n, company_name)]
+    for n in claim.banks:
+        same = n not in others
+        checks.append(Check(label="收款户名", result=f"\"{n}\"，{'和公司名一致' if same else '不是这家公司'}",
+                            status=Status.ok if same else Status.bad, source="material"))
+    if claim.words:
+        checks.append(Check(label="收款账户", result=f"要求打到{'、'.join(claim.words)}", status=Status.bad, source="material"))
+    if not claim.banks and not claim.words:
+        checks.append(Check(label="收款户名", result="材料给了转账信息，但没写户名", status=Status.miss, source="material"))
+        return checks, Verdict.unverifiable, "只给了账号没写户名，先问清楚钱打给谁。"
+    if others or claim.words:
+        who = f"\"{others[0]}\"" if others else "个人账户"
+        return checks, Verdict.mismatch, f"钱要打给{who}，不是{company_name}本身。钱进了别人的账户，出了事很难追回。"
+    return checks, Verdict.consistent, "收款户名就是这家公司。"
+
+
+def refund_review(claim: RawClaim, ext: Extraction) -> Review:
+    """说随时可退：材料里有限制退款的条款就对照条款，没有合同就无法核验。"""
+    said = "、".join(f"\"{w}\"" for w in claim.words)
+    if ext.refund_limits:
+        clause = ext.refund_limits[0]
+        checks = [Check(label="退款条款", result=f"材料里另有：{_short(clause, 40)}", status=Status.bad, source="material")]
+        return checks, Verdict.mismatch, f"嘴上说{said}，但材料里写着\"{_short(clause, 30)}\"。以合同条款为准。"
+    checks = [Check(label="退款条款", result="没有看到合同或退款条款", status=Status.miss, source="material")]
+    return checks, Verdict.unverifiable, f"说{said}，但没有合同条款可以对照。口头承诺出了事很难作数，先要合同。"
+
+
+def upfront_fee_review(claim: RawClaim) -> Review:
+    fees = "、".join(claim.words)
+    checks = [Check(label="入职前收费", result=f"要求交{fees}", status=Status.bad, source="reg_labor9")]
+    return checks, Verdict.redline, f"招人时要求先交{fees}。《劳动合同法》第九条规定，用人单位不得以任何名义向劳动者收取财物。"
 
 
 def missing_items(ext: Extraction) -> list[MissingItem]:
@@ -213,26 +261,37 @@ def missing_items(ext: Extraction) -> list[MissingItem]:
     return []
 
 
+def review(kind: ClaimKind, claim: RawClaim, ext: Extraction, company: CompanyProfile | None, lic: LicenseHit,
+           amac: AmacHit, licenses: LicenseIndex, company_name: str) -> Review:
+    match kind:
+        case ClaimKind.qualification:
+            return qualification_review(ext, company, lic, amac)
+        case ClaimKind.return_promise:
+            return return_review(claim)
+        case ClaimKind.partner:
+            return partner_review(claim, licenses)
+        case ClaimKind.background:
+            return background_review(claim, company)
+        case ClaimKind.capital:
+            return capital_review(claim, company)
+        case ClaimKind.scale:
+            return scale_review(claim, company)
+        case ClaimKind.payee:
+            return payee_review(claim, company_name)
+        case ClaimKind.refund:
+            return refund_review(claim, ext)
+        case ClaimKind.upfront_fee:
+            return upfront_fee_review(claim)
+
+
 def verify(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
-           licenses: LicenseIndex) -> tuple[list[Assertion], list[MissingItem]]:
+           licenses: LicenseIndex, company_name: str = "") -> tuple[list[Assertion], list[MissingItem]]:
     assertions = []
     for kind in ClaimKind:
         claim = ext.claims.get(kind)
         if claim is None:
             continue
-        match kind:
-            case ClaimKind.qualification:
-                checks, verdict, plain = qualification_review(ext, company, lic, amac)
-            case ClaimKind.return_promise:
-                checks, verdict, plain = return_review(claim)
-            case ClaimKind.partner:
-                checks, verdict, plain = partner_review(claim, licenses)
-            case ClaimKind.background:
-                checks, verdict, plain = background_review(claim, company)
-            case ClaimKind.capital:
-                checks, verdict, plain = capital_review(claim, company)
-            case ClaimKind.scale:
-                checks, verdict, plain = scale_review(claim, company)
+        checks, verdict, plain = review(kind, claim, ext, company, lic, amac, licenses, company_name or lic.query)
         aid, kind_label = KIND_META[kind]
         verdict_label, color = VERDICT_META[verdict]
         assertions.append(Assertion(id=aid, kind=kind, kind_label=kind_label, text=" / ".join(claim.quotes),

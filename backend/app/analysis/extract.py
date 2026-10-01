@@ -36,6 +36,7 @@ class Extraction:
     product_codes: list[str]
     benchmark_rates: list[float]
     pressure: list[str]
+    refund_limits: list[str] = field(default_factory=list)  # 材料里限制退款的条款原文
 
 
 class ClaimExtractor(Protocol):
@@ -57,6 +58,20 @@ BANK_WM_DISCLOSURE = re.compile(r"理财非存款")
 ANY_DISCLOSURE = re.compile(r"理财非存款|投资有风险|投资须谨慎|投资需谨慎|市场有风险|产品有风险")
 PRODUCT_CODE = re.compile(r"(?<![A-Za-z0-9])Z\d{10,14}(?!\d)")
 PRESSURE = re.compile(r"名额有限|先到先得|限时|仅剩|最后\d+天|错过再等|今日截止|内部名额")
+# 收款信息：户名在"开户行""账号"或标点前截断
+PAYEE = re.compile(r"(?:户名|收款人|收款方|收款单位|账户名|开户名)\s*[:：为是]?\s*"
+                   r"(?P<name>[一-龥A-Za-z·（）()*＊]{2,40}?)(?=开户|账号|卡号|账户|[\s，,。；;：:、]|\d|$)")
+PERSONAL_ACCOUNT = re.compile(r"个人账户|个人卡|私人账户|个人银行卡|个人微信|个人支付宝|对私账户|转给我|转我个人")
+TRANSFER = re.compile(r"转账|汇款|打款|转入|汇至|打到|转到|收款")
+ACCOUNT_NO = re.compile(r"\d{12,19}")
+# 退款或退出承诺；以及限制退款的条款
+REFUND = re.compile(r"随时(?:都)?(?:可以|可|能)?(?:退|取|赎回|提现|支取|退出)|随存随取|无理由退|保证退款|全额退款|不满意退款")
+NO_REFUND = re.compile(r"不予退还|概不退|不退款|不予退款|不得退|不可退|不能退|恕不退|扣除[^。；]{0,10}[%％]|违约金|"
+                       r"手续费[^。；]{0,8}[%％]|锁定期|封闭期")
+# 招聘时先交钱；只有材料像招聘时才算
+FEE = re.compile(r"培训费|押金|保证金|服装费|工装费|体检费|报名费|资料费|介绍费|入职费|上岗费|中介费")
+FEE_ASK = re.compile(r"交|缴|收取|支付|先付|预付|自付|自费|需付|\d+元")
+JOB = re.compile(r"入职|上岗|招聘|应聘|录用|面试|岗前|offer|试用期|工资|月薪|底薪|岗位", re.I)
 UNIT = {"万": 1e4, "亿": 1e8, None: 1.0}
 
 
@@ -79,6 +94,8 @@ class RuleExtractor:
     def extract(self, text: str) -> Extraction:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         claims: dict[ClaimKind, RawClaim] = {}
+        refund_limits: list[str] = []
+        job_like = bool(JOB.search(text))
 
         def claim(kind: ClaimKind) -> RawClaim:
             return claims.setdefault(kind, RawClaim(kind))
@@ -109,6 +126,16 @@ class RuleExtractor:
                     c.numbers["stores"] = float(stores.group(1))
                 if members:
                     c.numbers["members"] = float(members.group(1)) * UNIT[members.group(2)]
+            names = [m.group("name") for m in PAYEE.finditer(line)]  # 用原行：空格是户名的分隔
+            personal = PERSONAL_ACCOUNT.findall(f)
+            if names or personal or (TRANSFER.search(f) and ACCOUNT_NO.search(f)):
+                claim(ClaimKind.payee).add(line, personal, banks=names)  # banks 字段在这里存户名
+            if words := REFUND.findall(f):
+                claim(ClaimKind.refund).add(line, words)
+            if NO_REFUND.search(f) and line not in refund_limits:
+                refund_limits.append(line)
+            if job_like and (fees := FEE.findall(f)) and FEE_ASK.search(f):
+                claim(ClaimKind.upfront_fee).add(line, fees)
 
         # OCR 常把"年化"和"9%"拆成两行：单行没找到数字时，再看相邻两行
         for i in range(len(lines) - 1):
@@ -133,4 +160,5 @@ class RuleExtractor:
             product_codes=list(dict.fromkeys(PRODUCT_CODE.findall(flat))),
             benchmark_rates=[float(x) for x in BENCHMARK.findall(flat)],
             pressure=list(dict.fromkeys(PRESSURE.findall(flat))),
+            refund_limits=refund_limits,
         )

@@ -1,0 +1,41 @@
+{
+  "_note": "演示案例。A、B 用真实公司，由产品负责人选定并采集证据包（data/evidence_packs/）后，把 ready 改成 true、填上 company_name。C 是虚构公司，全程挂虚构标记。文件路径相对 data/fixtures/。",
+  "cases": [
+    {
+      "id": "A",
+      "label": "储蓄托付（真实案例）",
+      "real": true,
+      "ready": false,
+      "note": "待选定一家已被判决或监管通报认定的非法集资相关公司，并采集证据包；话术用公开报道或判决书里引用的原文",
+      "input": {"company_name": "", "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来"},
+      "material_file": null,
+      "supplements": []
+    },
+    {
+      "id": "B",
+      "label": "求职入职（真实案例，证明通用）",
+      "real": true,
+      "ready": false,
+      "note": "待选定一家正常经营的真实公司并采集证据包；正规公司的说法大部分应判为\"与记录相符\"",
+      "input": {"company_name": "", "need": "我收到这家公司的 offer，想知道它靠不靠谱"},
+      "material_file": null,
+      "supplements": []
+    },
+    {
+      "id": "C",
+      "label": "满盈禾（虚构，备用）",
+      "real": false,
+      "ready": true,
+      "note": "演示数据 · 公司为虚构。用来演示二次分析和断网兜底",
+      "input": {"company_name": "杭州满盈禾康养健康咨询有限公司", "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来"},
+      "material_file": "flyers/manyinghe.txt",
+      "material_title": "满盈禾宣传单（虚构）",
+      "supplements": [
+        {"kind": "reply", "title": "对方业务员的微信回复（虚构）", "file": "flyers/manyinghe_reply.txt"},
+        {"kind": "material", "title": "认购协议节选（虚构）", "file": "flyers/manyinghe_contract.txt"},
+        {"kind": "material", "title": "无关材料：小区停水通知（虚构）", "file": "flyers/unrelated_notice.txt"},
+        {"kind": "need", "text": "我收到这家公司的 offer，让我去做理财顾问"}
+      ]
+    }
+  ]
+}

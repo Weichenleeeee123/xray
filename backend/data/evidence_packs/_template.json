@@ -1,0 +1,83 @@
+{
+  "_说明": "复制本文件，改名为 <公司全称>.json（不要以下划线开头）。没查的段整段删掉，系统会显示\"没查\"；查了没有的，照实填（例如 amac.data.registered=false）。截图放 shots/ 目录。",
+  "company": "（公司全称）",
+  "aliases": ["（简称，可选）"],
+  "collected_by": "（采集人）",
+  "as_of": "2026-10-02",
+  "note": "资料截至 2026-10-02；宣传话术出自（报道或判决书名称、日期）。事后才出现的记录（如吊销）请在对应段的 note 里写明发生日期",
+  "registry": {
+    "source": {
+      "name": "国家企业信用信息公示系统 · 登记信息",
+      "url": "https://www.gsxt.gov.cn",
+      "retrieved_at": "2026-10-02T10:30:00",
+      "screenshot": "shots/（公司简称）-registry.png",
+      "note": "人工查询"
+    },
+    "data": {
+      "name": "（公司全称）",
+      "code": "（统一社会信用代码）",
+      "status": "存续",
+      "founded": "2020-01-01",
+      "reg_capital": 10000000,
+      "capital_due": "2040-12-31",
+      "scope": "（经营范围原文）",
+      "shareholders": [{"name": "（股东名）", "type": "自然人", "pct": 100}],
+      "branches": 0,
+      "penalties": [{"date": "2025-01-01", "org": "（处罚机关）", "reason": "（事由）", "result": "（结果）"}],
+      "pledges": [{"date": "2025-01-01", "pledgor": "（出质人）", "share": "（出质股权）", "pledgee": "（质权人）"}],
+      "mortgages": [],
+      "executions": [],
+      "tax_arrears": [],
+      "abnormal": false,
+      "serious_illegal": false,
+      "dishonest": false
+    }
+  },
+  "annual_report": {
+    "source": {
+      "name": "国家企业信用信息公示系统 · 2024 年度报告",
+      "url": "https://www.gsxt.gov.cn",
+      "retrieved_at": "2026-10-02T10:35:00",
+      "screenshot": "shots/（公司简称）-annual.png",
+      "note": "企业自行填报、未经审计"
+    },
+    "data": {"paid_capital": 0, "insured": 4}
+  },
+  "amac": {
+    "source": {
+      "name": "中国证券投资基金业协会 · 私募基金管理人公示",
+      "url": "https://gs.amac.org.cn",
+      "retrieved_at": "2026-10-02T10:40:00",
+      "screenshot": "shots/（公司简称）-amac.png"
+    },
+    "data": {"registered": false}
+  },
+  "complaints": {
+    "source": {
+      "name": "黑猫投诉（人工摘录）",
+      "url": "https://tousu.sina.com.cn",
+      "retrieved_at": "2026-10-02T11:00:00",
+      "note": "按月计数、按主题归类由人工完成，每类附一条原文"
+    },
+    "data": {
+      "months": ["2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"],
+      "counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "topics": [{"name": "（主题，例如 到期不兑付 / 提现困难）", "n": 0, "quote": "（一条投诉原文）"}]
+    }
+  },
+  "self_description": [
+    {
+      "source": {"url": "（官网或宣传页网址）", "retrieved_at": "2026-10-02T11:30:00", "screenshot": "shots/（公司简称）-site.png"},
+      "title": "官网首页（人工保存）",
+      "text": "（公司自己写的话，一句一行，原文照抄）"
+    }
+  ],
+  "extra": [
+    {
+      "source_id": "court",
+      "source": {"name": "中国裁判文书网", "url": "（网址）", "retrieved_at": "2026-10-02T12:00:00", "as_of": "2023-05-20"},
+      "title": "（判决书名称）摘录",
+      "data": "（与本案有关的原文段落）"
+    }
+  ]
+}

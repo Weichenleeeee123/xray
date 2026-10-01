@@ -1,14 +1,7 @@
-from app.analysis.pipeline import analyze, load_services
-from app.config import FIXTURES_DIR
-from app.models import CaseIn, Status, Verdict
+from app.models import Status, Verdict
+from tests.helpers import DEMO_COMPANY, flyer, make_case, run
 
-svc = load_services()
-DEMO_COMPANY = "杭州满盈禾康养健康咨询有限公司"
-DEMO = (FIXTURES_DIR / "flyers" / "manyinghe.txt").read_text(encoding="utf-8")
-
-
-def run(company: str, text: str):
-    return analyze(CaseIn(company_name=company, flyer_text=text), svc, "test")
+DEMO = flyer("manyinghe.txt")
 
 
 def by_id(out):
@@ -37,11 +30,21 @@ def test_demo_tally_and_missing_disclosure():
     assert [m.id for m in demo.missing] == ["M1"]
 
 
-def test_every_check_cites_a_known_source():
-    cited = [c.source for a in demo.assertions for c in a.checks]
-    cited += [i.source for s in demo.signals for i in s.items]
-    cited += [m.source for m in demo.missing]
-    assert set(cited) <= set(demo.sources)
+def test_every_check_cites_a_known_source_and_raw_record():
+    case = make_case(DEMO_COMPANY, DEMO, need="")
+    v, raw_ids = case.versions[0], {r.id for r in case.raw}
+    cited = [c.source for a in v.assertions for c in a.checks]
+    cited += [i.source for s in v.signals for i in s.items]
+    cited += [m.source for m in v.missing]
+    assert set(cited) <= set(case.sources)
+    refs = [c.ref for a in v.assertions for c in a.checks] + [i.ref for s in v.signals for i in s.items]
+    assert {r for r in refs if r} <= raw_ids
+    # 法规、参数以外的检查都能点进原始数据
+    plain_sources = {sid for sid, s in case.sources.items() if s.kind not in ("regulation", "parameter")}
+    for a in v.assertions:
+        assert a.refs, a.id
+        for c in a.checks:
+            assert c.ref or c.source not in plain_sources, (a.id, c.label)
 
 
 def test_demo_signals():
