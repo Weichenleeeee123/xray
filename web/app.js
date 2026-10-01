@@ -30,7 +30,7 @@ const S = {
   health: null, scenarios: [], sources: [], demos: [], cases: [],
   terms: [], termById: new Map(), termByName: new Map(), termRe: null,
   case: null, viewNo: null, selected: new Set(), busy: false, audience: 'family', opCache: {},
-  tab: 'signals', openRest: new Set(),
+  tab: 'signals', openRest: new Set(), showText: false,
   form: { userScenario: null, showScen: false, dirty: {}, intake: null },
 };
 
@@ -80,16 +80,22 @@ const isDemoCase = () => S.case && S.case.raw.some(r => r.kind === 'demo' && r.c
 const isId = s => /^(R\d+|A\d+|M\d+|Q\d+|[a-z]+\.[a-z0-9_]+)$/.test(s);
 const versionRaws = v => v.raw_ids.map(rawById).filter(Boolean);
 
-// 名词标注：在一段文字里认出词表里的词，点开看解释。seen 让同一块内容里每个词只标第一次，免得满屏虚线
+// 名词标注：在一段文字里认出名词，点开看解释。seen 让同一块内容里每个词只标第一次，免得满屏虚线。
+// 报告页用这一版报告生成时整理好的名词（v.terms，含模型补的"AI 解释"）；旧案卷没有，就用固定词表
 function setGlossary(terms) {
   S.terms = terms || [];
   S.termById = new Map(S.terms.map(t => [t.id, t]));
+  useTerms(S.terms);
+}
+function useTerms(list) {
+  S.vTermById = new Map(list.map(t => [t.id, t]));
   S.termByName = new Map();
-  for (const t of S.terms) for (const n of [t.term, ...t.aliases]) if (!S.termByName.has(n)) S.termByName.set(n, t);
+  for (const t of list) for (const n of [t.term, ...(t.aliases || [])]) if (!S.termByName.has(n)) S.termByName.set(n, t);
   const names = [...S.termByName.keys()].sort((a, b) => b.length - a.length)   // 长的优先："失信被执行人"不会被认成"被执行人"
     .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   S.termRe = names.length ? new RegExp(names.join('|'), 'g') : null;
 }
+const termOf = id => (S.vTermById && S.vTermById.get(id)) || S.termById.get(id);
 function termText(text, seen = new Set()) {
   text = String(text ?? '');
   if (!S.termRe) return esc(text);
@@ -105,15 +111,16 @@ function termText(text, seen = new Set()) {
 }
 const termify = label => termText(label);
 function termPop(el, id) {
-  const t = S.termById.get(id);
+  const t = termOf(id);
   if (!t) return;
   const src = t.basis && srcOf(t.basis);
   const basis = src ? src.name : t.law;
-  popAt(el, `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${basis ? `<p class="pb">依据：${esc(basis)}</p>` : ''}`);
+  const note = t.origin === 'model' ? 'AI 解释：词表里没有这个词，报告生成时由模型补充，没有经过人工核对。' : (basis ? `依据：${basis}` : '');
+  popAt(el, `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}`);
 }
 const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问助手">${S.selected.has(id) ? '已选' : '问'}</button>`;
 const goLink = id => {
-  const t = id.startsWith('term.') && S.termById.get(id.slice(5));
+  const t = id.startsWith('term.') && termOf(id.slice(5));
   return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}">${esc(t ? `名词·${t.term}` : id)}</button>`;
 };
 const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(r)}</button>`).join('');
@@ -157,7 +164,7 @@ function renderTop() {
 // ---------- 首页 ----------
 
 async function renderHome() {
-  S.case = null; renderTop();
+  S.case = null; useTerms(S.terms); renderTop();
   S.form = { userScenario: null, showScen: false, dirty: {}, intake: null };
   const h = S.health;
   const SHORT = { nfra_insurance: '保险', csrc_futures: '期货', pbc_payment: '支付', amac_managers: '私募' };
@@ -294,8 +301,9 @@ async function createCase(body) {
     <h2>${esc(body.company_name)}</h2>
     <p class="small muted">正在查下面这些来源，查完一起出结果：</p>
     <ul>${names.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
+    ${llmOn ? '<p class="small muted">查完后，规则先出结论，再由 AI 把结论缩成一眼能看懂的短句、补上名词解释（程序会逐条核对）。</p>' : ''}
     <div class="bar"></div>
-    <p class="small muted" style="margin:10px 0 0">已用 <span class="mono" id="elapsed">0</span> 秒。联网查证的公司大约要 5–10 秒。</p>
+    <p class="small muted" style="margin:10px 0 0">已用 <span class="mono" id="elapsed">0</span> 秒。联网查证的公司大约要 10 秒。</p>
   </section>`;
   const t0 = Date.now();
   const tick = setInterval(() => { const el = $('#elapsed'); if (el) el.textContent = Math.round((Date.now() - t0) / 1000); }, 500);
@@ -347,6 +355,7 @@ function renderCase() {
   const c = S.case, v = ver();
   if (S.tab === 'changes' && v.no === 1) S.tab = 'signals';
   const assistOpen = $('#assist') && $('#assist').classList.contains('open');
+  useTerms(v.terms && v.terms.length ? v.terms : S.terms);
   renderTop();
   $('#view').innerHTML = `
   <div class="case-layout">
@@ -388,14 +397,94 @@ function caseHead(c, v) {
   </header>`;
 }
 
-// 第一层：一页结论
+// 第一层：一眼看懂（屏幕上）+ 一页结论（文字版，给家人看、打印）
 function conclusionHtml(v) {
   return `<section class="conclusion" id="L1">
-    <div class="cc-bar"><span class="kicker">一页结论</span>
-      <div class="seg" role="group" aria-label="给谁看"><button type="button" data-act="aud" data-aud="family" aria-pressed="${S.audience === 'family'}">给家人</button><button type="button" data-act="aud" data-aud="teller" aria-pressed="${S.audience === 'teller'}">给网点柜员</button></div>
+    <div class="cc-bar"><span class="kicker">一眼看懂</span>
+      <button type="button" class="linkish" data-act="optext">${S.showText ? '收起文字版' : '文字版（给家人看）'}</button>
       <button type="button" class="linkish" data-act="print">打印</button></div>
-    <article class="onepager" id="onepager">${opBody(currentOp(v), v)}</article>
+    <div class="glance">${glanceHtml(v)}</div>
+    <div class="op-wrap"${S.showText ? '' : ' hidden'}>
+      <div class="op-tools"><div class="seg" role="group" aria-label="给谁看"><button type="button" data-act="aud" data-aud="family" aria-pressed="${S.audience === 'family'}">给家人</button><button type="button" data-act="aud" data-aud="teller" aria-pressed="${S.audience === 'teller'}">给网点柜员</button></div></div>
+      <article class="onepager" id="onepager">${opBody(currentOp(v), v)}</article>
+    </div>
   </section>`;
+}
+
+// 一眼看懂：判定、颜色、排序全部来自规则；短句是报告生成时 AI 按规则原句缩写的（v.glance.short），没有就用原句
+const SEV = { bad: 4, warn: 3, miss: 2, none: 1, ok: 0 };
+const MARK = { bad: '✗', warn: '!', miss: '?', none: '–', ok: '✓' };
+const COLOR_ST = { red: 'bad', amber: 'warn', grey: 'miss', green: 'ok' };
+const shortOf = (v, id, fallback) => (v.glance && v.glance.short[id]) || fallback;
+function glanceItems(v) {
+  const m = {};
+  for (const a of v.assertions) m[a.id] = { status: COLOR_ST[a.color] || 'none', text: a.plain };
+  for (const x of v.missing) m[x.id] = { status: 'miss', text: x.plain };
+  for (const s of v.signals) for (const i of s.items) m[`${s.key}.${i.key}`] = { status: i.status, text: `${i.label}：${i.value}` };
+  return m;
+}
+function answerOf(sts) {
+  const worst = sts.reduce((w, s) => (SEV[s] > SEV[w] ? s : w), 'ok');
+  if (worst === 'bad') return ['bad', '有问题'];
+  if (worst === 'warn') return ['warn', '要留意'];
+  if (worst === 'miss') return ['miss', '还缺证据'];
+  const none = sts.filter(s => s === 'none').length;
+  if (none === sts.length) return ['none', '没查到数据'];
+  return none ? ['none', '查过的没问题', `另有 ${none} 项没查`] : ['ok', '查过，没发现问题'];
+}
+function glanceHtml(v) {
+  const items = glanceItems(v), seen = new Set();
+  const sc = S.scenarios.find(s => s.id === v.scenario);
+  const firstIds = ((v.glance && v.glance.first.length) ? v.glance.first : (sc && sc.first_items) || []).filter(id => items[id]);
+  const bySev = (a, b) => SEV[items[b].status] - SEV[items[a].status];
+
+  // 第一问
+  let first = '';
+  if (sc && firstIds.length) {
+    const [st, word, note] = answerOf(firstIds.map(id => items[id].status));
+    // 下面"它说的 ⟷ 记录里的"已经列了说法，这里只列记录本身；没有记录条目才列说法
+    const lines = firstIds.filter(id => !/^[AM]\d+$/.test(id));
+    const show = lines.length ? lines : firstIds;
+    first = `<div class="gl-first s-${st}">
+      <div class="gl-q">第一问：${esc(sc.first_question)}？</div>
+      <div class="gl-a"><span class="mk">${MARK[st]}</span><span>${esc(word)}${note ? `<small>${esc(note)}</small>` : ''}</span></div>
+      <ul>${[...show].sort(bySev).slice(0, 4).map(id => `<li class="s-${items[id].status}" data-act="goto" data-id="${esc(id)}" tabindex="0" role="link"><span class="mk">${MARK[items[id].status]}</span><span>${termText(shortOf(v, id, items[id].text), seen)}</span></li>`).join('')}</ul>
+    </div>`;
+  }
+
+  // 它说的 ⟷ 记录里的
+  const claims = [...v.assertions].sort((a, b) => SEV[COLOR_ST[b.color]] - SEV[COLOR_ST[a.color]]);
+  const rows = [...claims.map(a => ({ id: a.id, said: a.text, rec: shortOf(v, a.id, a.plain), label: a.verdict_label, st: COLOR_ST[a.color] || 'none' })),
+    ...v.missing.map(m => ({ id: m.id, said: `没写：${m.text}`, rec: shortOf(v, m.id, m.plain), label: '该写没写', st: 'miss' }))];
+  const pairs = rows.length
+    ? `${rows.slice(0, 6).map(r => `<div class="pair s-${r.st}" data-act="goto" data-id="${esc(r.id)}" tabindex="0" role="link">
+        <q>${termText(r.said, seen)}</q><span class="mk">${MARK[r.st]}</span><span class="pr">${termText(r.rec, seen)}<small>${esc(r.label)}</small></span></div>`).join('')}
+       ${rows.length > 6 ? `<button type="button" class="linkish more" data-act="tab" data-tab="claims">还有 ${rows.length - 6} 条 →</button>` : ''}`
+    : `<p class="gl-empty">还没有它的说法可以对照。<button type="button" class="linkish" data-act="supplement" data-kind="material">上传宣传材料、合同或聊天记录</button>，就能逐条对照。</p>`;
+
+  // 四个信号
+  const tiles = v.signals.map(s => {
+    const flagged = s.items.filter(i => FLAG.has(i.status)).sort((a, b) => SEV[b.status] - SEV[a.status]);
+    const nOk = s.items.filter(i => i.status === 'ok').length, nNone = s.items.length - flagged.length - nOk;
+    const st = flagged.length ? flagged[0].status : (nOk && !nNone ? 'ok' : 'none');
+    const phrase = flagged.length ? shortOf(v, `${s.key}.${flagged[0].key}`, `${flagged[0].label}：${flagged[0].value}`)
+      : !nOk ? '没查到数据' : nNone ? `查过的没问题，${nNone} 项没查` : '查过的没问题';
+    return `<button type="button" class="tile s-${st}" data-act="sigtile" data-key="${s.key}">
+      <span class="t-h"><b>${esc(s.title)}</b><span class="mk">${MARK[st]}</span></span>
+      <span class="t-p">${esc(phrase)}</span>${flagged.length > 1 ? `<span class="t-n">共 ${flagged.length} 项要看</span>` : ''}</button>`;
+  }).join('');
+
+  const q = v.questions[0];
+  const ai = v.glance && ['model', 'replay'].includes(v.glance.mode);
+  return `${first}
+    <div class="gl-grid">
+      <div><h4 class="gl-h">它说的 <span>⟷</span> 记录里的</h4>${pairs}</div>
+      <div><h4 class="gl-h">四个信号</h4><div class="tiles">${tiles}</div></div>
+    </div>
+    ${q ? `<div class="gl-next"><span class="kicker">下一步，先问对方</span><p>${termText(q.ask, seen)}</p>
+      <span class="small muted">${termText(q.check_where, seen)}</span>
+      ${v.questions.length > 1 ? ` <button type="button" class="linkish small" data-act="tab" data-tab="questions">全部 ${v.questions.length} 个问题 →</button>` : ''}</div>` : ''}
+    ${ai ? '<p class="gl-ai">短句由 AI 按规则结论缩写，程序核对过数字和措辞；点任一行看完整原句和出处。</p>' : ''}`;
 }
 const currentOp = v => (S.audience === 'family' && v.onepager) || S.opCache[`${v.no}:${S.audience}`] || null;
 async function loadOnepager(v) {
@@ -422,9 +511,9 @@ function opBody(op, v) {
       ${col('还不知道什么', op.unknown, 'unknown', '没有列出来的未知项。')}
     </div>
     ${op.next_steps.length ? `<div class="op-next"><h4>在下一步之前，先确认这几件事</h4><ol>${op.next_steps.map(line).join('')}</ol></div>` : ''}`;
-  const used = [...seen].map(id => S.termById.get(id)).filter(Boolean).slice(0, 6);
+  const used = [...seen].map(termOf).filter(Boolean).slice(0, 6);
   return `${body}
-    ${used.length ? `<div class="op-terms"><h4>这页里的几个词</h4><dl>${used.map(t => `<div><dt>${esc(t.term)}</dt><dd>${esc(t.plain)}</dd></div>`).join('')}</dl></div>` : ''}
+    ${used.length ? `<div class="op-terms"><h4>这页里的几个词</h4><dl>${used.map(t => `<div><dt>${esc(t.term)}</dt><dd>${esc(t.plain)}${t.origin === 'model' ? '（AI 解释）' : ''}</dd></div>`).join('')}</dl></div>` : ''}
     <p class="op-foot">${esc(op.footer)}</p>`;
 }
 
@@ -889,6 +978,8 @@ document.addEventListener('click', e => {
     case 'unsel': S.selected.delete(d.id); refreshSel(); break;
     case 'ver': location.hash = `#/case/${S.case.id}/v/${d.no}`; break;
     case 'tab': showTab(d.tab); break;
+    case 'sigtile': S.tab = 'signals'; renderPanel(); { const c = $(`#sig-${d.key}`); if (c) { c.closest('.sig').scrollIntoView({ behavior: 'smooth', block: 'center' }); c.closest('.sig').classList.add('flash'); } } break;
+    case 'optext': S.showText = !S.showText; $('.op-wrap').hidden = !S.showText; el.textContent = S.showText ? '收起文字版' : '文字版（给家人看）'; break;
     case 'rest': if (S.openRest.has(d.key)) S.openRest.delete(d.key); else S.openRest.add(d.key); renderPanel(); break;
     case 'aud': S.audience = d.aud; $$('[data-act="aud"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.aud === d.aud));
       $('#onepager').innerHTML = opBody(currentOp(ver()), ver()); loadOnepager(ver()); break;
@@ -911,6 +1002,7 @@ document.addEventListener('click', e => {
   }
 });
 document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.matches('[role="link"][data-act]')) { e.preventDefault(); e.target.click(); }
   if (e.key === 'Escape') { closePop(); const a = $('#assist'); if (a && a.classList.contains('open') && !$('dialog[open]')) a.classList.remove('open'); }
   if (e.target.matches('#asForm textarea') && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault(); const q = e.target.value; e.target.value = ''; ask(q);

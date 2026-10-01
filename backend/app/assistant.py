@@ -5,7 +5,7 @@
 - 对话不改结论。想让助手"判定安全""忽略规则"的，由程序直接拦下，不交给模型。
 - 回答越界（下定性、推测后果）时，告诉模型哪句越界，让它重写，最多 MAX_REWRITES 次；还越界或网关不通，才退回模板回答。
 - 模板回答：按问题里的关键词找到相关条目，原样念出来。
-- 名词解释来自固定词表（app/glossary.json），出处写作 [term.<id>]；词表不算案卷记录，不能拿来给定性词放行。
+- 名词解释使用所选版本的 terms（含标记为 model 的 AI 解释），旧案卷回退固定词表；出处为 [term.<id>]，不能当公司证据给定性词放行。
 """
 import json
 import re
@@ -402,7 +402,9 @@ def answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
         return ChatMessage(text=GUARD_ANSWER, mode="guard", suggest=suggest_add, **base)
     valid = citable(case, v)
     data = _flat(" ".join(valid.values()))  # Only company records, never glossary definitions.
-    terms = find_terms(" ".join(valid.values()) + " " + q.text)
+    # 报告生成时已经整理好这一版的名词（含模型补的）；旧案卷没有，就现场从词表里找
+    terms = list(v.terms) or find_terms(" ".join(valid.values()))
+    terms += [t for t in find_terms(q.text) if t.id not in {x.id for x in terms}]
     valid.update(glossary_entries(terms))
     blob = json.dumps(context(case, v, terms), ensure_ascii=False)
     if len(blob) + len(q.text) > max_context_chars:

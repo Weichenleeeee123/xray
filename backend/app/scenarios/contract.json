@@ -19,6 +19,7 @@
   ],
   "hand_over": "货款、定金",
   "first_question": "签约方、收款方、干活的是不是同一家，有没有所需资质",
+  "first_items": ["A7", "risk.payee", "A1", "risk.bank_list", "credit.status"],
   "license_checks": [],
   "claim_kinds": [
     "payee",

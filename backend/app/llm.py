@@ -68,6 +68,15 @@ class LLM:
         self.api_key, self.model, self.vision_model = api_key, model, vision_model
         self.mode, self.cache_dir = mode, Path(cache_dir) if cache_dir is not None else None
         self.json_mode, self.timeout, self.client = json_mode, timeout, client
+        self._thinking_setting = os.getenv("TOKENDANCE_ENABLE_THINKING", "0").strip()
+
+    @property
+    def enable_thinking(self) -> bool | None:
+        """Demo defaults to fast answers; an explicit blank defers to the provider."""
+        try:
+            return {"0": False, "1": True, "": None}[self._thinking_setting]
+        except KeyError:
+            raise LLMError("模型思考开关只支持 0、1 或留空", code="config") from None
 
     @property
     def configured(self) -> bool:
@@ -85,6 +94,7 @@ class LLM:
     def _key(self, model: str, messages: list, json_out: bool, *, schema: type[BaseModel] | None = None,
              cache_namespace: str | None = None, temperature: float = 0.2) -> str:
         data = {"format": 2, "endpoint": self.base_url, "model": model, "messages": messages,
+                "enable_thinking": self.enable_thinking,
                 "json": json_out, "temperature": temperature, "namespace": cache_namespace,
                 "schema": schema.model_json_schema() if schema else None}
         return hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True,
@@ -127,6 +137,8 @@ class LLM:
 
     def _call(self, model: str, messages: list, json_out: bool, temperature: float) -> str:
         payload = {"model": model, "messages": messages, "temperature": temperature}
+        if self.enable_thinking is not None:
+            payload["enable_thinking"] = self.enable_thinking
         if json_out and self.json_mode:
             payload["response_format"] = {"type": "json_object"}
         kwargs = dict(json=payload, timeout=self.timeout, follow_redirects=False,
@@ -147,6 +159,7 @@ class LLM:
             raise LLMError("模型模式只支持 live/replay/off", code="config")
         if self.mode == "off":
             raise LLMError("模型调用已关闭（XRAY_LLM_MODE=off）", code="disabled")
+        _ = self.enable_thinking  # Validate before network access or replay lookup.
         try:
             url = urlsplit(self.base_url)
             valid = (not self.base_url or (url.scheme in {"https", "http"} and url.hostname

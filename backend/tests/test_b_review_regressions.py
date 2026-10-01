@@ -6,9 +6,9 @@ import random
 from PIL import Image
 
 from app.assistant import answer
-from app.models import ChatIn
+from app.models import ChatIn, Term
 from app.readers import read_upload
-from tests.helpers import DEMO_COMPANY, flyer, make_case
+from tests.helpers import DEMO_COMPANY, add, flyer, make_case
 from tests.test_llm_assistant import FakeLLM
 
 
@@ -98,3 +98,29 @@ def test_glossary_only_numeric_example_remains_available(tmp_path):
                          "citations": ["term.annualized"]}]}
     result = answer(case, ChatIn(text="年化怎么理解"), FakeLLM([json.dumps(out)], tmp_path))
     assert not result.not_found and result.citations == ["term.annualized"] and "2.25%" in result.text
+
+
+def test_old_version_uses_its_own_generated_terms_not_later_terms(tmp_path):
+    case = make_case(DEMO_COMPANY, flyer("manyinghe.txt"))
+    case.versions[0].terms = [Term(id="gold", term="赎回窗口", plain="允许申请赎回的时间范围。", origin="model")]
+    case = add(case, "reply", flyer("manyinghe_reply.txt"))
+    case.versions[1].terms = [Term(id="gnew", term="清算周期", plain="完成清算所需的时间。", origin="model")]
+    before = case.model_dump_json()
+    out = {"segments": [{"text": "赎回窗口是允许申请赎回的时间范围。", "citations": ["term.gold"]}]}
+    fake = FakeLLM([json.dumps(out)], tmp_path)
+    result = answer(case, ChatIn(text="赎回窗口是什么意思", refs=["v:1:assertion:A2"]), fake)
+    assert result.mode == "model" and result.version == 1 and not result.not_found
+    assert result.citations == ["term.gold"]
+    context_message = fake.calls[0][2]["content"]
+    assert "term.gold" in context_message and "term.gnew" not in context_message and "清算周期" not in context_message
+    assert case.model_dump_json() == before
+
+
+def test_generated_term_example_cannot_supply_a_company_yield_number(tmp_path):
+    case = make_case(DEMO_COMPANY, flyer("manyinghe.txt"))
+    case.versions[0].terms = [Term(id="gexample", term="收益率示例", plain="示例收益率为 1.2345%。", origin="model")]
+    out = {"segments": [{"text": "该公司的年化收益是 1.2345%。", "citations": ["A2", "term.gexample"]}]}
+    fake = FakeLLM([json.dumps(out)], tmp_path)
+    result = answer(case, ChatIn(text="收益率示例如何理解"), fake)
+    assert "term.gexample" in fake.calls[0][2]["content"]
+    assert result.not_found and "该公司的年化收益是" not in result.text

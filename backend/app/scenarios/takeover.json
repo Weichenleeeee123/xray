@@ -17,6 +17,7 @@
   ],
   "hand_over": "资金和经营责任",
   "first_question": "股权干不干净（出质、冻结），有没有对外担保和欠税",
+  "first_items": ["finance.pledges", "finance.executions", "finance.tax_arrears", "finance.mortgages", "credit.dishonest"],
   "license_checks": [],
   "claim_kinds": [
     "capital",
