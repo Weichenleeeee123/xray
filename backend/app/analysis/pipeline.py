@@ -168,8 +168,11 @@ def supplement(case: Case, body: SupplementIn, intake: Intake | None, svc: Servi
     prev = case.versions[-1]
     inp, new_texts = case.case, {}
     if body.kind == "need":
+        # 换了场景，旧需求里的金额和"替谁看"说的是另一件事，不沿用；场景没变才沿用
+        same = intake.scenario == prev.scenario
         inp = inp.model_copy(update={"need": body.text, "scenario": intake.scenario,
-                                     "for_whom": intake.for_whom or inp.for_whom, "amount": intake.amount or inp.amount})
+                                     "for_whom": intake.for_whom or (inp.for_whom if same else None),
+                                     "amount": intake.amount or (inp.amount if same else None)})
     else:
         intake = Intake(scenario=prev.scenario, scenario_label=prev.scenario_label, focus=prev.focus,
                         for_whom=prev.for_whom, amount=prev.amount, method="user")

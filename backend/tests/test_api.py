@@ -95,6 +95,7 @@ def test_demo_case_c_full_flow():
     assert v5["change_summary"].startswith("事实没变")
     assert v5["signals"][0]["key"] == "reputation"
     assert not [c for c in v5["changes"] if c["kind"] in ("worse", "new_concern", "clarified")]
+    assert v5["amount"] is None and v5["for_whom"] != "妈妈"   # 换了场景，存钱的金额和对象不沿用
 
     # 案卷存在文件里，取回来是同一份
     again = client.get(f"/api/cases/{cid}").json()

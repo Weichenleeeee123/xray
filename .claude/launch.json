@@ -12,6 +12,12 @@
       "runtimeExecutable": "D:/company research/backend/.venv/Scripts/python.exe",
       "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--app-dir", "D:/company research/backend", "--port", "8000"],
       "port": 8000
+    },
+    {
+      "name": "xray-web",
+      "runtimeExecutable": "D:/company research/backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--app-dir", "D:/company research/backend", "--port", "8010"],
+      "port": 8010
     }
   ]
 }
