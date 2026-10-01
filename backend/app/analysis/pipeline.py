@@ -8,6 +8,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from app.analysis.charts import build_charts
 from app.analysis.diff import diff
 from app.analysis.extract import ClaimExtractor, RuleExtractor
 from app.analysis.followup import build_questions
@@ -112,6 +113,8 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
                             collected.others, collected.web, web_refs)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
     link_refs(assertions, missing, signals, by_source, texts)
+    charts = build_charts(ext, company, assertions, by_source, collected.web, web_refs, collected.complaints,
+                          collected.as_of)
 
     colors = Counter(a.color for a in assertions)
     tally = {c: colors.get(c, 0) for c in ("red", "amber", "grey", "green")} | {"missing": len(missing)}
@@ -143,7 +146,7 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
                    for_whom=for_whom, amount=amount, scenario=scenario.id, scenario_label=scenario.label,
                    focus=intake.focus, raw_ids=collected_ids + [t.id for t in texts], company=company, license=lic,
                    amac=amac, assertions=assertions, missing=missing, signals=signals, tally=tally, notes=notes,
-                   questions=questions, onepager=page)
+                   questions=questions, onepager=page, charts=charts)
 
 
 def _collect_into(raw: list[RawRecord], name: str, svc: Services) -> tuple[Collected, list[str]]:
