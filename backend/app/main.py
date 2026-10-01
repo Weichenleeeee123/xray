@@ -45,8 +45,12 @@ def _case(case_id: str) -> Case:
 
 @app.get("/api/health")
 def health() -> dict:
+    lists = {rid: {"title": i.title, "count": i.meta.get("count", len(i)), "as_of": i.meta.get("as_of")}
+             for rid, i in svc.registries.items()}
     return {"ok": True, "licensed_count": len(svc.licenses), "licensed_as_of": svc.licenses.meta["as_of"],
-            "registry_as_of": svc.registry.as_of, "evidence_packs": svc.packs.names(), "llm": llm.status()}
+            "registry_as_of": svc.registry.as_of, "official_lists": lists, "evidence_packs": svc.packs.names(),
+            "commercial": svc.commercial.status() if svc.commercial else {"configured": False},
+            "llm": llm.status()}
 
 
 @app.get("/api/sources")

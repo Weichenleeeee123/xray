@@ -1,0 +1,239 @@
+﻿seq,name,name_en,code,type,regulator
+1,中国人民保险集团股份有限公司,The People's Insurance Company (Group) of China Limited,000001,保险集团（控股）公司,金融监管总局
+2,中国人寿保险（集团）公司,China Life Insurance (Group) Company,000004,保险集团（控股）公司,金融监管总局
+3,中国再保险（集团）股份有限公司,China Reinsurance (Group) Corporation,000007,保险集团（控股）公司,金融监管总局
+4,中国太平保险集团有限责任公司,China Taiping Insurance Group Ltd.,000065,保险集团（控股）公司,金融监管总局
+5,中国太平洋保险（集团）股份有限公司,"CHINA PACIFIC INSURANCE(GROUP)CO., LTD.",000013,保险集团（控股）公司,金融监管总局
+6,中华联合保险集团股份有限公司,China United Insurance Group Company Limited,000107,保险集团（控股）公司,金融监管总局
+7,中国平安保险（集团）股份有限公司,"Ping An Insurance (Group) Company of China, Ltd.",000016,保险集团（控股）公司,金融监管总局
+8,阳光保险集团股份有限公司,Sunshine Insurance Group Company Limited,000123,保险集团（控股）公司,金融监管总局
+9,华泰保险集团股份有限公司,"HUATAI INSURANCE GROUP CO., LTD.",000021,保险集团（控股）公司,北京金融监管局
+10,泰康保险集团股份有限公司,TAIKANG INSURANCE GROUP INC.,000020,保险集团（控股）公司,金融监管总局
+11,大家保险集团有限责任公司,"DaJia Insurance Group Co., Ltd.",000241,保险集团（控股）公司,金融监管总局
+12,富德保险控股股份有限公司,"Funde Insurance Holding Co., Ltd.",000197,保险集团（控股）公司,深圳金融监管局
+13,安联（中国）保险控股有限公司,Allianz (China) Insurance Holding Company Limited,000243,保险集团（控股）公司,上海金融监管局
+14,中国出口信用保险公司,China Export & Credit Insurance Corporation,000011,政策性保险公司,金融监管总局
+15,中国人民财产保险股份有限公司,PICC Property and Casualty Company Limited,000002,财险公司,金融监管总局
+16,中国大地财产保险股份有限公司,China Continent Property & Casualty Insurance Company Ltd.,000010,财险公司,金融监管总局
+17,中华联合财产保险股份有限公司,China United Property Insurance Company Limited,000012,财险公司,金融监管总局
+18,中国太平洋财产保险股份有限公司,"China Pacific Property Insurance co., Ltd",000014,财险公司,金融监管总局
+19,中国平安财产保险股份有限公司,"Ping An Property & Casualty Insurance Company of China, Ltd.",000017,财险公司,金融监管总局
+20,史带财产保险股份有限公司,Starr Property & Casualty Insurance (China) Company Limited,000023,财险公司,上海金融监管局
+21,华安财产保险股份有限公司,"Sinosafe General Insurance Co.,Ltd.",000024,财险公司,深圳金融监管局
+22,永安财产保险股份有限公司,YONGAN PROPERTY INSURANCE COMPANY LIMITED,000025,财险公司,陕西金融监管局
+23,太平财产保险有限公司,TAIPING GENERAL INSURANCE COMPANY LIMITED,000026,财险公司,金融监管总局
+24,亚太财产保险有限公司,"Asia-Pacific Property & Casualty Insurance Co.,Ltd.",000038,财险公司,深圳金融监管局
+25,美亚财产保险有限公司,AIG GENERAL INSURANCE CHINA LIMITED,000039,财险公司,上海金融监管局
+26,东京海上日动火灾保险（中国）有限公司,THE TOKIO MARINE AND NICHIDO FIRE INSURANCE COMPANY(CHINA)LIMITED,000040,财险公司,上海金融监管局
+27,瑞再企商保险有限公司,Swiss Re Corporate Solutions Insurance China Ltd,000042,财险公司,上海金融监管局
+28,三井住友海上火灾保险（中国）有限公司,"Mitsui Sumitomo Insurance (China) Company, Limited",000044,财险公司,上海金融监管局
+29,三星财产保险（中国）有限公司,"Samsung Property & Casualty Insurance Company (China), Ltd.",000045,财险公司,上海金融监管局
+30,中银保险有限公司,Bank of China Insurance Company Limited,000046,财险公司,北京金融监管局
+31,京东安联财产保险有限公司,Allianz JingDong General Insurance Company Ltd.,000050,财险公司,广东金融监管局
+32,日本财产保险（中国）有限公司,"Sompo Japan Insurance (China) Co, Ltd.",000053,财险公司,大连金融监管局
+33,利宝保险有限公司,Liberty Insurance Company Limited,000060,财险公司,重庆金融监管局
+34,太平洋安信农业保险股份有限公司,Pacific Anxin Agricultural Insurance Co.， Ltd.,000064,财险公司,金融监管总局
+35,安盟财产保险有限公司,"Groupama SDIG Property Insurance Co.,Ltd.",000067,财险公司,四川金融监管局
+36,永诚财产保险股份有限公司,ALLTRUST INSURANCE COMPANY OF CHINA LIMITED,000068,财险公司,上海金融监管局
+37,安华农业保险股份有限公司,"Anhua Agricultural Insurance Co.,Ltd.",000075,财险公司,金融监管总局
+38,安盛天平财产保险有限公司,"AXA TIAN PING Property & Casualty Insurance Co., Ltd.",000078,财险公司,上海金融监管局
+39,阳光财产保险股份有限公司,Sunshine Property and Casualty Insurance Company Limited,000093,财险公司,金融监管总局
+40,阳光农业相互保险公司,Sunlight Agricultural Mutual Insurance Company,000094,财险公司,黑龙江金融监管局
+41,都邦财产保险股份有限公司,"DUBON PROPERTY & CASUALTY INSURANCE CO.,LTD.",000096,财险公司,吉林金融监管局
+42,渤海财产保险股份有限公司,Bohai Property Insurance Co.ltd,000098,财险公司,天津金融监管局
+43,华农财产保险股份有限公司,China Huanong Property & Casualty Insurance Company Limited,000101,财险公司,广东金融监管局
+44,苏黎世财产保险（中国）有限公司,Zurich General Insurance Company (China) Limited,000104,财险公司,上海金融监管局
+45,中国人寿财产保险股份有限公司,China Life Property & Casualty Insurance Company Limited,000108,财险公司,金融监管总局
+46,安诚财产保险股份有限公司,"Ancheng Property & Casualty Insurance CO.,Ltd",000110,财险公司,重庆金融监管局
+47,现代财产保险（中国）有限公司,Hyundai Insurance(China)Company Limited,000111,财险公司,北京金融监管局
+48,长安责任保险股份有限公司,"Chang An Property & Casualty Insurance co.,Ltd.",000112,财险公司,安徽金融监管局
+49,劳合社保险（中国）有限公司,Lloyd's Insurance Company (China) Limited,000113,财险公司,上海金融监管局
+50,中意财产保险有限公司,Generali China Insurance Company Limited,000117,财险公司,北京金融监管局
+51,爱和谊日生同和财产保险（中国）有限公司,Aioi Nissay Dowa Insurance (China) Company Limited,000118,财险公司,天津金融监管局
+52,国元农业保险股份有限公司,Guo Yuan Agricultural Insurance Company Limited,000126,财险公司,安徽金融监管局
+53,鼎和财产保险股份有限公司,"DINGHE PROPERTY INSURANCE CO.,LTD",000129,财险公司,深圳金融监管局
+54,中煤财产保险股份有限公司,"China Coal Insurance Co.,Ltd",000132,财险公司,山西金融监管局
+55,国泰财产保险有限责任公司,"Cathay Insurance Co., Ltd.",000133,财险公司,上海金融监管局
+56,英大泰和财产保险股份有限公司,"YINGDA TAIHE PROPERTY INSURANCE CO., LTD",000135,财险公司,北京金融监管局
+57,紫金财产保险股份有限公司,Zking Property and Casualty Insurance Company Limited,000137,财险公司,江苏金融监管局
+58,日本兴亚财产保险（中国）有限责任公司,NIPPONKOA Insurance Company (China) Limited,000139,财险公司,深圳金融监管局
+59,浙商财产保险股份有限公司,Zheshang Property and Casualty Insurance Company Limited,000140,财险公司,浙江金融监管局
+60,国任财产保险股份有限公司,"GUOREN PROPERTY AND CASUALTY INSURANCE CO.,LTD.",000142,财险公司,深圳金融监管局
+61,凯本财产保险（中国）有限公司,"KBFG Insurance (China) Co., Ltd.",000143,财险公司,江苏金融监管局
+62,富邦财产保险有限公司,"Fubon Property & Casualty Insurance Co., Ltd.",000146,财险公司,厦门金融监管局
+63,泰山财产保险股份有限公司,"Taishan Property & Casualty Insurance Co., Ltd",000148,财险公司,山东金融监管局
+64,锦泰财产保险股份有限公司,JinTai Property Insurance Company Limited,000149,财险公司,四川金融监管局
+65,众诚汽车保险股份有限公司,URTRUST INSURANCE CO. LTD.,000151,财险公司,广东金融监管局
+66,华泰财产保险有限公司,"Huatai Property & Casualty Insurance Co., Ltd",000154,财险公司,上海金融监管局
+67,长江财产保险股份有限公司,"Changjiang Property & Casualty Insurance Co.,Ltd.",000156,财险公司,湖北金融监管局
+68,诚泰财产保险股份有限公司,Champion Property and Casualty Insurance Company Limited,000158,财险公司,云南金融监管局
+69,富德财产保险股份有限公司,Funde Property＆Casualty Insurance Co.， Ltd.,000163,财险公司,深圳金融监管局
+70,鑫安汽车保险股份有限公司,"SANGUARD AUTOMOBILE INSURANCE CO.,LTD.",000165,财险公司,吉林金融监管局
+71,北部湾财产保险股份有限公司,"BEIBU GULF PROPERTY&CASUALTY INSURANCE CO.,LTD",000173,财险公司,广西金融监管局
+72,众安在线财产保险股份有限公司,"Zhongan Online P & C Insurance Co., Ltd.",000179,财险公司,金融监管总局
+73,中石油专属财产保险股份有限公司,"CNPC CAPTIVE INSURANCE CO., LTD",000180,财险公司,新疆金融监管局
+74,华海财产保险股份有限公司,Huahai Property Insurance Company Limited,000183,财险公司,山东金融监管局
+75,燕赵财产保险股份有限公司,Yanzhao Property and Casualty Insurance Company Limited,000185,财险公司,河北金融监管局
+76,恒邦财产保险股份有限公司,HENGBANG PROPERTY INSURANCE COMPANY LIMITED,000187,财险公司,江西金融监管局
+77,合众财产保险股份有限公司,Union Property And Casually Insurance Co. Ltd,000189,财险公司,北京金融监管局
+78,中路财产保险股份有限公司,"ZhongLu Property and Casualty Insurance CO.,LTD",000192,财险公司,青岛金融监管局
+79,中原农业保险股份有限公司,"Zhongyuan Agricultural Insurance Co., Ltd.",000195,财险公司,河南金融监管局
+80,中国铁路财产保险自保有限公司,"CHINA RAILWAY CAPTIVE INSURANCE CO., LTD",000196,财险公司,北京金融监管局
+81,泰康在线财产保险股份有限公司,"TAIKANG.COM INSURANCE CO.,LTD.",000199,财险公司,金融监管总局
+82,东海航运保险股份有限公司,Donghai Marine Insurance Company Limited,000202,财险公司,宁波金融监管局
+83,安心财产保险有限责任公司,"Answern Property & Casualty Insurance Co., Ltd.",000203,财险公司,江苏金融监管局
+84,阳光信用保证保险股份有限公司,Sunshine Surety Insurance Company Limited,000204,财险公司,重庆金融监管局
+85,深圳比亚迪财产保险有限公司,"Shenzhen BYD Property&Casualty Insurance Co., Ltd",000205,财险公司,深圳金融监管局
+86,久隆财产保险有限公司,"Long Property&Casualty Insurance Co.,Ltd",000206,财险公司,广东金融监管局
+87,新疆前海联合财产保险股份有限公司,"XINJIANG QIANHAI UNITED PROPERTY & CASUALTY INSURANCE CO., LTD.",000208,财险公司,深圳金融监管局
+88,珠峰财产保险股份有限公司,"Qomolangma Property & Casualty Insurance CO.,LTD.",000209,财险公司,西藏金融监管局
+89,海峡金桥财产保险股份有限公司,"Haixia Goldenbridge Insurance Co.,Ltd.",000210,财险公司,福建金融监管局
+90,建信财产保险有限公司,"CCB Property & Casualty Insurance Co., Ltd.",000212,财险公司,宁夏金融监管局
+91,中远海运财产保险自保有限公司,"COSCO SHIPPING Captive Insurance Co.,Ltd.",000219,财险公司,上海金融监管局
+92,众惠财产相互保险社,Public Mutual Insurance Corporation,000221,财险公司,深圳金融监管局
+93,广东能源财产保险自保有限公司,"GEG Property & Casualty Captive Insurance Co., Ltd.",000229,财险公司,广东金融监管局
+94,黄河财产保险股份有限公司,CHINA YELLOW RIVER PROPERTY & CASUALTY INSURANCE CO.，LTD.,000231,财险公司,甘肃金融监管局
+95,太平科技保险股份有限公司,"Taiping Science and Technology Insurance Co., Ltd.",000232,财险公司,浙江金融监管局
+96,融盛财产保险股份有限公司,"RONGSHENG PROPERTY & CASUALTY INSURANCE CO., LTD.",000238,财险公司,辽宁金融监管局
+97,汇友财产相互保险社,Hero Mutual Property Insurance Corporation,000225,财险公司,北京金融监管局
+98,大家财产保险有限责任公司,"Dajia Property & Casualty Insurance Co ., Ltd.",000242,财险公司,金融监管总局
+99,中国融通财产保险有限公司,"China Rong Tong Property & Casualty Insurance Co.,Ltd.",000255,财险公司,金融监管总局
+100,中国渔业互助保险社,China Fishery Mutual Insurance Corporation,000257,财险公司,金融监管总局
+101,申能财产保险股份有限公司,"Shenergy Property & Casualty Insurance Co.,Ltd.",000262,财险公司,上海金融监管局
+102,苏州东吴财产保险股份有限公司,"Soochow Property & Casualty Insurance Co.,Ltd.",000264,财险公司,江苏金融监管局
+103,中国财产再保险有限责任公司,China Property & Casualty Reinsurance Company Ltd.,000008,再保险公司,金融监管总局
+104,中国人寿再保险有限责任公司,China Life Reinsurance Company Ltd.,000009,再保险公司,金融监管总局
+105,安盛环球再保险（上海）有限公司,"AXA International Reinsurance (Shanghai) Co.,Ltd",000147,再保险公司,上海金融监管局
+106,太平再保险（中国）有限公司,Taiping Reinsurance(China)Company Limited,000201,再保险公司,金融监管总局
+107,前海再保险股份有限公司,Qianhai Reinsurance Company Ltd.,000215,再保险公司,深圳金融监管局
+108,人保再保险股份有限公司,PICC Reinsurance Company Limited,000222,再保险公司,金融监管总局
+109,中国农业再保险股份有限公司,China Agriculture Reinsurance Corporation,000248,再保险公司,金融监管总局
+110,中国人寿保险股份有限公司,China Life Insurance Company Limited,000005,寿险公司,金融监管总局
+111,中国太平洋人寿保险股份有限公司,"CHINA PACIFIC LIFE INSURANCE CO.,LTD.",000015,寿险公司,金融监管总局
+112,中国平安人寿保险股份有限公司,"Ping An Life Insurance Company of China, Ltd.",000018,寿险公司,金融监管总局
+113,新华人寿保险股份有限公司,NEW CHINA LIFE INSURANCE COMPANY LTD.,000019,寿险公司,金融监管总局
+114,太平人寿保险有限公司,Taiping Life Insurance Company Limited,000027,寿险公司,金融监管总局
+115,中宏人寿保险有限公司,"Manulife-Sinochem Life Insurance CO.,LTD.",000028,寿险公司,上海金融监管局
+116,建信人寿保险股份有限公司,CCB Life Insurance Company Limited,000029,寿险公司,上海金融监管局
+117,安联人寿保险有限公司,"Allianz China Life Insurance Co., Ltd.",000030,寿险公司,上海金融监管局
+118,工银安盛人寿保险有限公司,ICBC-AXA ASSURANCE CO.LTD.,000031,寿险公司,上海金融监管局
+119,中信保诚人寿保险有限公司,CITIC-Prudential Life Insurance Company Limited,000032,寿险公司,北京金融监管局
+120,交银人寿保险有限公司,BOCOM MSIG Life Insurance Company Limited,000033,寿险公司,上海金融监管局
+121,中意人寿保险有限公司,Generali China Life Insurance Company Limited,000035,寿险公司,北京金融监管局
+122,光大永明人寿保险有限公司,"Sun Life Everbright Life Insurance Co.,Ltd.",000036,寿险公司,天津金融监管局
+123,友邦人寿保险有限公司,AIA Life Insurance Company Limited,000037,寿险公司,金融监管总局
+124,北大方正人寿保险有限公司,"Founder Meiji Yasuda Life Insurance Co., Ltd",000047,寿险公司,上海金融监管局
+125,中荷人寿保险有限公司,"BOB-CARDIF LIFE INSURANCE CO.,LTD",000048,寿险公司,大连金融监管局
+126,中英人寿保险有限公司,"AVIVA-COFCO LIFE INSURANCE CO., LTD.",000049,寿险公司,北京金融监管局
+127,同方全球人寿保险有限公司,"Aegon THTF Life Insurance Co., Ltd.",000051,寿险公司,深圳金融监管局
+128,民生人寿保险股份有限公司,"Minsheng Life Insurance Co., Ltd",000052,寿险公司,北京金融监管局
+129,招商信诺人寿保险有限公司,Cigna & CMB Life Insurance Company Limited,000054,寿险公司,深圳金融监管局
+130,长生人寿保险有限公司,Great Wall Changsheng Life Insurance Co.Ltd.,000055,寿险公司,上海金融监管局
+131,恒安标准人寿保险有限公司,Heng An Standard Life Insurance Company Limited,000056,寿险公司,天津金融监管局
+132,瑞泰人寿保险有限公司,Old Mutual-CHN Energy Life Insurance Company Limited,000057,寿险公司,北京金融监管局
+133,富德生命人寿保险股份有限公司,"Funde Sino Life Insurance Co., Ltd.",000061,寿险公司,深圳金融监管局
+134,小康人寿保险有限责任公司,Livit Life Insurance Company Limited,000071,寿险公司,上海金融监管局
+135,合众人寿保险股份有限公司,"Union Life Insurance Co., Ltd.",000074,寿险公司,湖北金融监管局
+136,华泰人寿保险股份有限公司,"Huatai Life Insurance Co.,Ltd.",000076,寿险公司,北京金融监管局
+137,陆家嘴国泰人寿保险有限责任公司,"Cathay lujiazui Life Insurance Co., Ltd",000077,寿险公司,上海金融监管局
+138,中美联泰大都会人寿保险有限公司,Sino-US United Metlife Insurance Company Limited,000083,寿险公司,上海金融监管局
+139,中银三星人寿保险有限公司,BOC SAMSUNG LIFE INSURANCE COMPANY LIMITED,000087,寿险公司,北京金融监管局
+140,君康人寿保险股份有限公司,J.K．LIFE INSURANCE CORPORATION LIMITED,000090,寿险公司,山东金融监管局
+141,信泰人寿保险股份有限公司,"SINATAY Life Insurance Company,Ltd.",000091,寿险公司,浙江金融监管局
+142,农银人寿保险股份有限公司,"ABC Life Insurance Co., Ltd.",000092,寿险公司,北京金融监管局
+143,长城人寿保险股份有限公司,Great Wall Life Insurance Company Limited,000095,寿险公司,北京金融监管局
+144,中国人民人寿保险股份有限公司,PICC Life Insurance Company Limited,000100,寿险公司,金融监管总局
+145,国华人寿保险股份有限公司,"GUOHUA LIFE INSURANCE CO., LTD.",000102,寿险公司,湖北金融监管局
+146,英大泰和人寿保险股份有限公司,"YINGDA TAIHE LIFE INSURANCE CO.,LTD.",000121,寿险公司,北京金融监管局
+147,幸福人寿保险股份有限公司,"HAPPY LIFE INSURANCE CO.,LTD.",000124,寿险公司,北京金融监管局
+148,阳光人寿保险股份有限公司,Sunshine Life Insurance Corporation Limited,000127,寿险公司,金融监管总局
+149,鼎诚人寿保险有限责任公司,DINGCHENG LIFE INSURANCE COMPANY LIMITED,000130,寿险公司,北京金融监管局
+150,汇丰人寿保险有限公司,HSBC Life Insurance Company Limited,000131,寿险公司,上海金融监管局
+151,君龙人寿保险有限公司,Junlong Life Insurance Company Limited,000136,寿险公司,厦门金融监管局
+152,百年人寿保险股份有限公司,"AEON LIFE INSURANCE COMPANY, LTD.",000138,寿险公司,大连金融监管局
+153,中邮人寿保险股份有限公司,China Post Life Insurance Company Limited,000141,寿险公司,北京金融监管局
+154,中融人寿保险股份有限公司,"ZHONGRONG LIFE INSURANCE CO., LTD.",000144,寿险公司,北京金融监管局
+155,大家人寿保险股份有限公司,"DAJIA LIFE INSURANCE CO., LTD.",000145,寿险公司,金融监管总局
+156,利安人寿保险股份有限公司,Lian Life Insurance Company Limited,000152,寿险公司,江苏金融监管局
+157,华汇人寿保险股份有限公司,SINO-CONFLUX INSURANCE COMPANY,000157,寿险公司,辽宁金融监管局
+158,前海人寿保险股份有限公司,"QIAN HAI LIFE INSURANCE CO., LTD",000160,寿险公司,深圳金融监管局
+159,东吴人寿保险股份有限公司,SooChowLife Insurance Company Limited,000164,寿险公司,江苏金融监管局
+160,弘康人寿保险股份有限公司,Hongkang Life Insurance Company Limited,000166,寿险公司,北京金融监管局
+161,珠江人寿保险股份有限公司,Pearl River Life Insurance Company Limited,000167,寿险公司,广东金融监管局
+162,财信吉祥人寿保险股份有限公司,Chasing Jixiang Life Insurance Company Limited,000168,寿险公司,湖南金融监管局
+163,复星保德信人寿保险有限公司,"Pramerica Fosun Life Insurance Co., Ltd.",000169,寿险公司,上海金融监管局
+164,东方嘉富人寿保险有限公司,"Dongfang Jiafu Life Insurance CO., Ltd.",000171,寿险公司,浙江金融监管局
+165,德华安顾人寿保险有限公司,"ERGO China Life Insurance Co.,Ltd.",000176,寿险公司,山东金融监管局
+166,渤海人寿保险股份有限公司,"Bohai Life Insurance Co.,Ltd",000186,寿险公司,天津金融监管局
+167,国联人寿保险股份有限公司,"GUOLIAN LIFE INSURANCE CO.,LTD",000188,寿险公司,江苏金融监管局
+168,上海人寿保险股份有限公司,"Shanghai Life Insurance Co., Ltd.",000190,寿险公司,上海金融监管局
+169,中华联合人寿保险股份有限公司,China United Life Insurance Company Limited,000200,寿险公司,北京金融监管局
+170,泰康人寿保险有限责任公司,"TAIKANG LIFE INSURANCE Co., Ltd.",000213,寿险公司,金融监管总局
+171,横琴人寿保险有限公司,"Hengqin Life Insurance Co., Ltd.",000216,寿险公司,广东金融监管局
+172,和泰人寿保险股份有限公司,"Hetai Life Insurance Co., Ltd.",000218,寿险公司,山东金融监管局
+173,华贵人寿保险股份有限公司,Hua gui life insurance company limited.,000220,寿险公司,贵州金融监管局
+174,信美人寿相互保险社,Trust Mutual Life Insurance Company,000223,寿险公司,北京金融监管局
+175,爱心人寿保险股份有限公司,"AIXIN LIFE INSURANCE CO., LTD.",000224,寿险公司,北京金融监管局
+176,招商局仁和人寿保险股份有限公司,China Merchants Life Insurance Company Limited,000226,寿险公司,深圳金融监管局
+177,三峡人寿保险股份有限公司,"China Three Gorges Life Insurance Co.,Ltd.",000230,寿险公司,重庆金融监管局
+178,北京人寿保险股份有限公司,"Beijing Life Insurance Co., Ltd.",000233,寿险公司,北京金融监管局
+179,国宝人寿保险股份有限公司,"Guobao Life Insurance Co., LTD.",000234,寿险公司,四川金融监管局
+180,海保人寿保险股份有限公司,"Haibao Life Insurance Co., Ltd.",000236,寿险公司,海南金融监管局
+181,国富人寿保险股份有限公司,"GUOFU LIFE INSURANCE CO., LTD.",000237,寿险公司,广西金融监管局
+182,中汇人寿保险股份有限公司,"ZHONG HUI LIFE INSURANCE CO.,LTD.",000259,寿险公司,北京金融监管局
+183,瑞众人寿保险有限责任公司,"Rui Life Insurance Co.,LTD.",000260,寿险公司,北京金融监管局
+184,海港人寿保险股份有限公司,Harbor Life Insurance Company Limited,000258,寿险公司,深圳金融监管局
+185,平安养老保险股份有限公司,"Ping An Annuity Insurance Company of China ,Ltd.",000072,养老保险公司,金融监管总局
+186,太平养老保险股份有限公司,"TAIPING PENSION CO., LTD.",000082,养老保险公司,金融监管总局
+187,中国人寿养老保险股份有限公司,China Life Pension Company Limited,000109,养老保险公司,金融监管总局
+188,泰康养老保险股份有限公司,"TAIKANG PENSION & INSURANCE CO., LTD.",000122,养老保险公司,金融监管总局
+189,大家养老保险股份有限公司,"DAJIA ANNUITY INSURANCE CO., LTD",000181,养老保险公司,金融监管总局
+190,新华养老保险股份有限公司,"NEW CHINA PENSION CO., LTD.",000211,养老保险公司,深圳金融监管局
+191,中国人民养老保险有限责任公司,PICC Pension Company Limited,000228,养老保险公司,金融监管总局
+192,恒安标准养老保险有限责任公司,Heng An Standard Pension Insurance Company Limited,000249,养老保险公司,天津金融监管局
+193,国民养老保险股份有限公司,GUOMIN PENSION & INSURANCE COMPANY LIMITED,000256,养老保险公司,金融监管总局
+194,平安健康保险股份有限公司,"Ping An Health Insurance Company of China,Ltd.",000084,健康险公司,金融监管总局
+195,中国人民健康保险股份有限公司,PICC Health Insurance Company Limited,000085,健康险公司,金融监管总局
+196,昆仑健康保险股份有限公司,"Kunlun Health Insurance Co.,Ltd.",000097,健康险公司,上海金融监管局
+197,和谐健康保险股份有限公司,"HEXIE Health Insurance Co.,Ltd.",000099,健康险公司,四川金融监管局
+198,太平洋健康保险股份有限公司,"Pacific Health Insurance Co., Ltd.",000184,健康险公司,金融监管总局
+199,复星联合健康保险股份有限公司,FOSUN UNITED HEALTH INSURANCE COMPANY LTD.,000217,健康险公司,广东金融监管局
+200,瑞华健康保险股份有限公司,Ruihua Health Assurance Corporation,000235,健康险公司,上海金融监管局
+201,中国人保资产管理有限公司,PICC Asset Management Company Limited,000003,保险资产管理公司,金融监管总局
+202,中国人寿资产管理有限公司,China Life Asset Management Company limited,000006,保险资产管理公司,金融监管总局
+203,华泰资产管理有限公司,"Huatai Asset Management Co.,Ltd.",000081,保险资产管理公司,上海金融监管局
+204,平安资产管理有限责任公司,"Ping An Asset Management Co.,LTD",000088,保险资产管理公司,金融监管总局
+205,中再资产管理股份有限公司,China Re Asset Management Company Limited,000089,保险资产管理公司,金融监管总局
+206,泰康资产管理有限责任公司,"Taikang Asset Management Co.,Ltd.",000105,保险资产管理公司,金融监管总局
+207,太平洋资产管理有限责任公司,"Pacific Asset Management Co.,Ltd.",000114,保险资产管理公司,金融监管总局
+208,太平资产管理有限公司,"TAIPING ASSET MANAGEMENT CO.,LTD.",000115,保险资产管理公司,金融监管总局
+209,新华资产管理股份有限公司,"New China Asset Management Co.,Ltd.",000119,保险资产管理公司,金融监管总局
+210,长江养老保险股份有限公司,"Changjiang Pension Insurance Company, Limited",000120,养老保险公司（按照保险资产管理公司管理）,金融监管总局
+211,大家资产管理有限责任公司,"DAJIA ASSET MANAGEMENT CO.,LTD.",000150,保险资产管理公司,金融监管总局
+212,生命保险资产管理有限公司,"SINO LIFE ASSET MANAGEMENT CO.,LTD.",000153,保险资产管理公司,深圳金融监管局
+213,光大永明资产管理股份有限公司,Sun Life Everbright Asset Management Company Limited,000161,保险资产管理公司,北京金融监管局
+214,合众资产管理股份有限公司,"Union Asset Mangement Company,Ltd.",000162,保险资产管理公司,北京金融监管局
+215,民生通惠资产管理有限公司,"MINGSHENG TONGHUI ASSET MANAGEMENT CO.,LTD.",000170,保险资产管理公司,上海金融监管局
+216,阳光资产管理股份有限公司,Sunshine Asset Management Corporation Limited,000172,保险资产管理公司,金融监管总局
+217,中英益利资产管理股份有限公司,AC Asset Management Co.Ltd,000174,保险资产管理公司,北京金融监管局
+218,中意资产管理有限责任公司,Generali China Asset Management Company Limited,000175,保险资产管理公司,北京金融监管局
+219,华安财保资产管理有限责任公司,"SINOSAFE ASSET MANAGEMENT CO.,LTD.",000178,保险资产管理公司,天津金融监管局
+220,长城财富保险资产管理股份有限公司,"GREATWALL WEALTH INSURANCE ASSET MANAGEMENT CO.,LTD.",000191,保险资产管理公司,北京金融监管局
+221,英大保险资产管理有限公司,"YINGDA INSURANCE ASSET MANAGEMENT CO.,LTD.",000193,保险资产管理公司,北京金融监管局
+222,华夏久盈资产管理有限责任公司,"Hua Everwin Asset Management Co.,Ltd",000194,保险资产管理公司,深圳金融监管局
+223,建信保险资产管理有限公司,CCB Life Insurance Asset Management Company Limited.,000207,保险资产管理公司,深圳金融监管局
+224,百年保险资产管理有限责任公司,"AEON Insurance Asset Management Co., Ltd.",000214,保险资产管理公司,大连金融监管局
+225,永诚保险资产管理有限公司,"ALLTRUST INSURANCE ASSET MANAGEMENT CO.,LTD.",000227,保险资产管理公司,宁波金融监管局
+226,工银安盛资产管理有限公司,ICBC-AXA Asset Management Company Limited,000239,保险资产管理公司,上海金融监管局
+227,交银保险资产管理有限公司,"Bocommlife Asset Management Co.,LTD",000240,保险资产管理公司,上海金融监管局
+228,中信保诚资产管理有限责任公司,CITIC-Prudential Asset Management Company Ltd.,000246,保险资产管理公司,北京金融监管局
+229,招商信诺资产管理有限公司,Cigna&CMB Asset Management Company Limited,000247,保险资产管理公司,北京金融监管局
+230,国寿投资保险资产管理有限公司,China Life Investment Management Company Limited,000250,保险资产管理公司,金融监管总局
+231,国华兴益保险资产管理有限公司,"GH SHINING ASSET MANAGEMENT CO.,LTD.",000251,保险资产管理公司,上海金融监管局
+232,安联保险资产管理有限公司,Allianz Insurance Asset Management Company Limited,000252,保险资产管理公司,北京金融监管局
+233,人保资本保险资产管理有限公司,"PICC Capital Insurance Asset Management Co.,Ltd.",000253,保险资产管理公司,金融监管总局
+234,太平资本保险资产管理有限公司,Taiping Capital Asset Management Company Limited,000254,保险资产管理公司,金融监管总局
+235,中邮保险资产管理有限公司,China Post Insurance Asset Management Company Limited,000261,保险资产管理公司,北京金融监管局
+236,慈溪市龙山镇伏龙农村保险互助社,无,000155,其他,宁波金融监管局
+237,慈溪市龙山农村保险互助联社,无,000177,其他,宁波金融监管局
+238,瑞安市兴民农村保险互助社,Rui An Shi Xing Min Nong Cun Bao Xian Hu Zhu She,000198,其他,浙江金融监管局

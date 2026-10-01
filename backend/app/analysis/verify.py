@@ -9,7 +9,7 @@ from app.analysis.extract import Extraction, RawClaim
 from app.analysis.fmt import money, wan
 from app.config import HIGH_RETURN_RATIO, LOW_PAID_RATIO, REF_DEPOSIT_RATE
 from app.models import (AmacHit, Assertion, Check, ClaimKind, CompanyProfile, Coverage, LicenseHit,
-                        MissingItem, Status, Verdict)
+                        MissingItem, RegistryHit, Status, Verdict)
 from app.sources.licenses import LicenseIndex, normalize
 
 KIND_META = {
@@ -53,21 +53,61 @@ def _short(s: str, n: int = 26) -> str:
     return s if len(s) <= n else s[:n] + "……"
 
 
-def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit) -> Review:
-    checks = []
-    if lic.found:
-        checks.append(Check(label="银行业金融机构法人名单", result=f"已收录：{lic.record.type}（机构编码 {lic.record.code}）",
-                            status=Status.ok, source=lic.source))
-    else:
-        hint = f"；名称相近的有：{lic.suggestions[0].name}" if lic.suggestions else ""
-        checks.append(Check(label="银行业金融机构法人名单", result=f"未收录{hint}", status=Status.bad, source=lic.source))
+LICENSE_SHORT = {"nfra_insurance": "保险", "csrc_futures": "期货", "pbc_payment": "支付"}
+# 名字像证券公司、公募基金：这两份名录还没接入，查不到也不能下结论
+MAYBE_SECURITIES = re.compile(r"证券|基金管理|期货")
 
+
+def _license_check(lic: LicenseHit, others: list[RegistryHit]) -> tuple[Check, RegistryHit | None]:
+    """几份持牌名单合成一条检查：命中哪份写哪份；都没有就写查了几份、共多少家。"""
+    if lic.found:
+        return Check(label="持牌机构名单", result=f"银行业金融机构法人名单已收录：{lic.record.type}（机构编码 {lic.record.code}）",
+                     status=Status.ok, source=lic.source), None
+    for h in others:
+        if not h.found:
+            continue
+        r = h.record or {}
+        if h.registry == "pbc_payment":
+            return Check(label="持牌机构名单", status=Status.warn, source=h.registry,
+                         result=f"{h.title}已收录：许可证 {r.get('license_no', '')}，业务 {_short(r.get('business', ''), 30)}。"
+                                f"支付牌照只能做收付款，不能卖理财"), h
+        kind = r.get("type") or LICENSE_SHORT.get(h.registry, "")
+        return Check(label="持牌机构名单", result=f"{h.title}已收录：{kind}", status=Status.ok, source=h.registry), h
+    counts = [f"银行业 {lic.count:,} 家" if lic.count else "银行业"]
+    counts += [f"{LICENSE_SHORT.get(h.registry, h.title)} {h.count:,} 家" for h in others]
+    near = lic.suggestions[0].name if lic.suggestions else next((h.suggestions[0] for h in others if h.suggestions), None)
+    hint = f"；名称相近的有：{near}" if near else ""
+    return Check(label="持牌机构名单", result=f"查了 {len(counts)} 份持牌名单（{'、'.join(counts)}），都没有它{hint}",
+                 status=Status.bad, source=lic.source), None
+
+
+def _amac_check(amac: AmacHit) -> Check:
     if amac.coverage is Coverage.not_covered:
-        checks.append(Check(label="私募基金管理人登记", result="没查：中基协实时查询还没接入，也没有人工查询记录",
-                            status=Status.none, source=amac.source))
-    else:
-        checks.append(Check(label="私募基金管理人登记", result="已登记" if amac.registered else "未登记",
-                            status=Status.ok if amac.registered else Status.bad, source=amac.source))
+        return Check(label="私募基金管理人登记", result="没查：中基协名单还没下载，也没有人工查询记录",
+                     status=Status.none, source=amac.source)
+    if amac.registered:
+        r = amac.record or {}
+        credit, special = str(r.get("credit_tips")) == "1", str(r.get("special_tips")) == "1"
+        detail = f"：{r['register_no']}，{r.get('invest_type', '')}，在管基金 {r.get('fund_count', 0)} 只" if r else ""
+        tail = ("；协会公示了它的诚信信息（可能是处罚或纪律处分），要点开详情看" if credit else
+                "；协会对它有特别提示（这类提示很常见，多是信息报送问题）" if special else "")
+        return Check(label="私募基金管理人登记", result=f"已登记{detail}{tail}",
+                     status=Status.warn if credit else Status.ok, source=amac.source)
+    scope = f"（截至 {amac.as_of} 登记的 {amac.count:,} 家私募管理人里没有它）" if amac.count else ""
+    return Check(label="私募基金管理人登记", result=f"未登记{scope}", status=Status.bad, source=amac.source)
+
+
+def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
+                         others: list[RegistryHit] = ()) -> Review:
+    others = list(others)
+    license_check, other_hit = _license_check(lic, others)
+    amac_check = _amac_check(amac)
+    if license_check.status is Status.ok and amac_check.status is Status.bad:
+        # 持牌机构本来就不靠私募登记卖产品，没登记不算问题
+        amac_check = amac_check.model_copy(update={"status": Status.ok, "result": "未登记（它是持牌机构，不需要私募登记）"})
+    if amac.registered and license_check.status is Status.bad:
+        license_check = license_check.model_copy(update={"status": Status.warn})  # 私募本来就没有这几类牌照
+    checks = [license_check, amac_check]
 
     if ext.product_codes:
         checks.append(Check(label="理财产品登记编码", result=f"材料上写了 {'、'.join(ext.product_codes)}，待到中国理财网核验",
@@ -89,11 +129,18 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
 
     if lic.found:
         return checks, Verdict.consistent, f"它在银行业金融机构名单里（{lic.record.type}），是持牌机构。"
+    if other_hit and other_hit.registry == "pbc_payment":
+        return checks, Verdict.attention, "它有支付牌照，但支付牌照只能做收付款，不能卖理财、不能吸收存款。"
+    if other_hit:
+        return checks, Verdict.consistent, f"它在{other_hit.title}里，是持牌机构。"
     if amac.registered:
-        return checks, Verdict.attention, "它登记了私募基金管理人；但私募只能非公开卖给合格投资者，不能对大众公开宣传。"
-    if amac.coverage is Coverage.not_found and company is not None:
-        return checks, Verdict.mismatch, "查不到它有卖理财的资格。"
-    return checks, Verdict.unverifiable, "不在银行业金融机构名单里；证券、保险等名单还没接入，私募登记也没查到记录，暂时下不了结论。"
+        tips = "协会公示了它的诚信信息，" if checks[1].status is Status.warn else ""
+        return checks, Verdict.attention, f"它登记了私募基金管理人；{tips}私募只能非公开卖给合格投资者，不能对大众公开宣传。"
+    if MAYBE_SECURITIES.search(lic.query):
+        return checks, Verdict.unverifiable, "名字像证券或基金公司，证券公司、公募基金名录还没接入，暂时下不了结论。"
+    if amac.coverage is Coverage.not_found and (company is not None or others):
+        return checks, Verdict.mismatch, f"{1 + len(others)} 份持牌名单和私募登记里都查不到它：查不到它有卖理财的资格。"
+    return checks, Verdict.unverifiable, "不在银行业金融机构名单里；其他名单还没接入，私募登记也没查到记录，暂时下不了结论。"
 
 
 def return_review(claim: RawClaim) -> Review:
@@ -262,10 +309,10 @@ def missing_items(ext: Extraction) -> list[MissingItem]:
 
 
 def review(kind: ClaimKind, claim: RawClaim, ext: Extraction, company: CompanyProfile | None, lic: LicenseHit,
-           amac: AmacHit, licenses: LicenseIndex, company_name: str) -> Review:
+           amac: AmacHit, licenses: LicenseIndex, company_name: str, others: list[RegistryHit] = ()) -> Review:
     match kind:
         case ClaimKind.qualification:
-            return qualification_review(ext, company, lic, amac)
+            return qualification_review(ext, company, lic, amac, others)
         case ClaimKind.return_promise:
             return return_review(claim)
         case ClaimKind.partner:
@@ -285,13 +332,15 @@ def review(kind: ClaimKind, claim: RawClaim, ext: Extraction, company: CompanyPr
 
 
 def verify(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
-           licenses: LicenseIndex, company_name: str = "") -> tuple[list[Assertion], list[MissingItem]]:
+           licenses: LicenseIndex, company_name: str = "",
+           others: list[RegistryHit] = ()) -> tuple[list[Assertion], list[MissingItem]]:
     assertions = []
     for kind in ClaimKind:
         claim = ext.claims.get(kind)
         if claim is None:
             continue
-        checks, verdict, plain = review(kind, claim, ext, company, lic, amac, licenses, company_name or lic.query)
+        checks, verdict, plain = review(kind, claim, ext, company, lic, amac, licenses, company_name or lic.query,
+                                        others)
         aid, kind_label = KIND_META[kind]
         verdict_label, color = VERDICT_META[verdict]
         assertions.append(Assertion(id=aid, kind=kind, kind_label=kind_label, text=" / ".join(claim.quotes),

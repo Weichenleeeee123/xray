@@ -56,16 +56,27 @@ cd backend
 | 数据 | 真实 / 演示 | 位置 |
 |---|---|---|
 | 持牌机构名单 | **真实**：金融监管总局《银行业金融机构法人名单》，截至 2025-06-30，共 4070 家 | `data/licensed_institutions.csv` |
+| 保险机构名单 | **真实**：金融监管总局《保险机构法人名单》，截至 2025-06-30，共 238 家 | `data/registries/nfra_insurance.csv` |
+| 期货公司名录 | **真实**：证监会，2026 年 8 月，共 150 家 | `data/registries/csrc_futures.csv` |
+| 支付机构名单 | **真实**：人民银行《已获许可机构（支付机构）》，含许可证号、业务类型、有效期 | `data/registries/pbc_payment.csv` |
+| 私募基金管理人 | **真实**：中基协公示全量，共 18,396 家，含登记编号、在管基金数、特别提示/诚信信息标记 | `data/registries/amac_managers.csv` |
+| 企业工商信息（商业） | 企查查或天眼查开放平台，配置了才用，来源标"商业数据" | 缓存在 `data/cache/commercial/` |
 | 人工采集的真实记录（公示系统、中基协、投诉、公司自述） | **真实**，来源类型 `collected` | `data/evidence_packs/<公司全称>.json`，怎么填见该目录 README |
 | 企业登记、年报、私募登记、投诉 | 演示，3 家公司全部虚构 | `data/fixtures/` |
 | 演示用材料（宣传单、对方回复、协议节选） | 演示，虚构 | `data/fixtures/flyers/` |
 
-查一家公司时先找证据包，再找演示数据，都没有就记"没查"。持牌名单只覆盖银行业金融机构，不含证券、基金、保险、私募，所以"没查到"不等于"没有牌照"。
+每家公司都查五份官方名单（银行、保险、期货、支付、私募），每份各记一条原始数据。企业登记按顺序找：证据包 → 商业接口 → 演示数据，都没有就记"没查"。证券公司、公募基金名录还没接，名字像证券或基金公司的，资格一条判"无法核验"，不硬下结论。
 
-更新持牌名单（金融监管总局发布新版 PDF 后）：
+商业接口只取基本工商信息，处罚、出质、被执行等字段它不给，报告里这些项显示"没查"，不显示"无"（`CompanyProfile.checked` 控制）。查回来的公司名和输入对不上时不采用。
+
+更新名单：
 
 ```
-.venv\Scripts\python tools\build_license_index.py data\raw\<名单>.pdf <截至日期> <原文链接>
+.venv\Scripts\python tools\build_license_index.py data\raw\<银行业名单>.pdf <截至日期> <原文链接>
+.venv\Scripts\python tools\build_license_index.py data\raw\<保险名单>.pdf <截至日期> <原文链接> registries/nfra_insurance 保险机构法人名单
+.venv\Scripts\python tools\fetch_amac.py
+.venv\Scripts\python tools\fetch_official_lists.py futures
+.venv\Scripts\python tools\fetch_official_lists.py payment
 ```
 
 ## 约定

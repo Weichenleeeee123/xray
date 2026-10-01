@@ -45,7 +45,8 @@ class Verdict(StrEnum):
     consistent = "consistent"
 
 
-SourceKind = Literal["official", "collected", "regulation", "demo", "user_material", "web", "parameter"]
+# official 官方记录（程序直接取）；collected 人工采集的官方记录；commercial 商业数据（企查查等，第三方加工）
+SourceKind = Literal["official", "collected", "commercial", "regulation", "demo", "user_material", "web", "parameter"]
 
 
 class Source(BaseModel):
@@ -99,6 +100,12 @@ class CompanyProfile(BaseModel):
     abnormal: bool = False
     serious_illegal: bool = False
     dishonest: bool = False
+    # 实际查过的字段。None 表示全部查过（演示数据）；商业接口、证据包只给了部分字段时，
+    # 没列出的字段显示"没查"，不能因为默认是空列表就说成"无"
+    checked: list[str] | None = None
+
+    def known(self, field: str) -> bool:
+        return self.checked is None or field in self.checked
 
 
 class LicenseRecord(BaseModel):
@@ -115,12 +122,28 @@ class LicenseHit(BaseModel):
     record: LicenseRecord | None = None
     suggestions: list[LicenseRecord] = Field(default_factory=list)
     source: str = "nfra_bank_list"
+    count: int | None = None              # 名单总条数
 
 
 class AmacHit(BaseModel):
     coverage: Coverage
     registered: bool | None = None
     source: str = "amac"
+    record: dict | None = None            # 真实名单命中时：登记编号、在管基金数、是否有特别提示/诚信信息……
+    as_of: str | None = None
+    count: int | None = None              # 名单总条数
+
+
+class RegistryHit(BaseModel):
+    """在一份官方名单里查一个名字的结果（保险机构、期货公司、支付机构……）。"""
+    registry: str                         # 名单 id，也是 Source id
+    title: str
+    query: str
+    found: bool
+    record: dict | None = None
+    suggestions: list[str] = Field(default_factory=list)
+    as_of: str | None = None
+    count: int = 0
 
 
 # ---------- 原始数据 ----------
@@ -130,7 +153,7 @@ class RawRecord(BaseModel):
     id: str                              # R1、R2……同一案卷内唯一
     source_id: str                       # 指回 Source
     title: str
-    kind: Literal["official", "collected", "user_material", "web", "demo"]
+    kind: Literal["official", "collected", "commercial", "user_material", "web", "demo"]
     coverage: Coverage = Coverage.found
     retrieved_at: str
     as_of: str | None = None             # 数据本身的截止日期

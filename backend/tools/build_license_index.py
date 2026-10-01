@@ -1,9 +1,10 @@
-"""从金融监管总局公布的《银行业金融机构法人名单》PDF 生成本地索引。
+"""从金融监管总局公布的机构法人名单 PDF 生成本地索引（银行业、保险业两份名单格式相同）。
 
 用法：
     python tools/build_license_index.py <名单.pdf> <截至日期 YYYY-MM-DD> <原文链接>
+    python tools/build_license_index.py <名单.pdf> <截至日期> <原文链接> registries/nfra_insurance 保险机构法人名单
 
-输出：
+输出（默认是银行业名单）：
     data/licensed_institutions.csv        序号、中文全称、英文全称、机构编码、机构类型、监管责任单位
     data/licensed_institutions.meta.json  来源链接、截至日期、条数、生成时间
 """
@@ -52,9 +53,10 @@ def extract_rows(pdf_path: Path) -> list[dict]:
 
 
 def main() -> None:
-    if len(sys.argv) != 4:
+    if len(sys.argv) not in (4, 6):
         sys.exit(__doc__)
     pdf_path, as_of, url = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+    out, title = (sys.argv[4], sys.argv[5]) if len(sys.argv) == 6 else ("licensed_institutions", "银行业金融机构法人名单")
     rows = extract_rows(pdf_path)
 
     seqs = [r["seq"] for r in rows]
@@ -62,13 +64,13 @@ def main() -> None:
         gaps = sorted(set(range(1, max(seqs) + 1)) - set(seqs))[:10]
         sys.exit(f"序号不连续，解析可能有误：缺 {gaps}")
 
-    DATA_DIR.mkdir(exist_ok=True)
-    with open(DATA_DIR / "licensed_institutions.csv", "w", encoding="utf-8-sig", newline="") as f:
+    (DATA_DIR / out).parent.mkdir(parents=True, exist_ok=True)
+    with open(DATA_DIR / f"{out}.csv", "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(rows)
     meta = {
-        "title": "银行业金融机构法人名单",
+        "title": title,
         "publisher": "国家金融监督管理总局",
         "as_of": as_of,
         "url": url,
@@ -76,7 +78,7 @@ def main() -> None:
         "source_file": pdf_path.name,
         "built_at": datetime.now().isoformat(timespec="seconds"),
     }
-    (DATA_DIR / "licensed_institutions.meta.json").write_text(
+    (DATA_DIR / f"{out}.meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     types: dict[str, int] = {}

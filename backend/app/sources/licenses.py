@@ -44,4 +44,5 @@ class LicenseIndex:
             # 输入了分支机构（"杭州银行股份有限公司西湖支行"）：给出它所属的法人
             if not suggestions:
                 suggestions = [r for k, r in self._by_name.items() if len(k) >= 6 and k in q][:limit]
-        return LicenseHit(query=query, found=record is not None, record=record, suggestions=suggestions)
+        return LicenseHit(query=query, found=record is not None, record=record, suggestions=suggestions,
+                          count=len(self))

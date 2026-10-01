@@ -6,3 +6,4 @@ _tmp = tempfile.mkdtemp(prefix="xray-test-")
 os.environ["XRAY_CASES_DIR"] = os.path.join(_tmp, "cases")
 os.environ["XRAY_CACHE_DIR"] = os.path.join(_tmp, "cache")
 os.environ["XRAY_LLM_MODE"] = "off"
+os.environ["XRAY_COMMERCIAL"] = ""  # 商业接口按次计费，测试绝不调用

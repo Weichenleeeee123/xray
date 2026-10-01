@@ -6,8 +6,8 @@ from app.analysis.extract import Extraction
 from app.analysis.fmt import money, months_between
 from app.analysis.verify import qualification_review, return_review
 from app.config import LOW_PAID_RATIO, YOUNG_COMPANY_MONTHS
-from app.models import (AmacHit, Assertion, ClaimKind, CompanyProfile, LicenseHit, Scenario, Signal, SignalItem,
-                        Status, Verdict)
+from app.models import (AmacHit, Assertion, ClaimKind, CompanyProfile, LicenseHit, RegistryHit, Scenario, Signal,
+                        SignalItem, Status, Verdict)
 
 # 和钱的去向有关的说法，结论同时放进风险信号
 MONEY_KINDS = (ClaimKind.payee, ClaimKind.refund, ClaimKind.upfront_fee)
@@ -28,10 +28,10 @@ def _not_covered(key: str) -> list[SignalItem]:
 
 
 def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
-                scenario: Scenario, assertions: list[Assertion]) -> Signal:
+                scenario: Scenario, assertions: list[Assertion], others: list[RegistryHit] = ()) -> Signal:
     items: list[SignalItem] = []
-    if scenario.license_checks or ext.is_financial or lic.found:
-        checks, _, _ = qualification_review(ext, company, lic, amac)
+    if scenario.license_checks or ext.is_financial or lic.found or any(h.found for h in others):
+        checks, _, _ = qualification_review(ext, company, lic, amac, others)
         items += [SignalItem(key=k, label=c.label, value=c.result, status=c.status, source=c.source)
                   for k, c in zip(QUAL_KEYS, checks)]
     else:
@@ -76,7 +76,10 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None)
     else:
         items.append(SignalItem(key="paid_capital", label="实缴资本", value=money(paid), detail=f"认缴 {money(reg)}{due}",
                                 status=Status.bad if paid < reg * LOW_PAID_RATIO else Status.ok, source="annual_report"))
-    if company.pledges:
+    if not company.known("pledges"):
+        items.append(SignalItem(key="pledges", label="股权出质", value="没查", detail="这次的数据来源不含这一项",
+                                status=Status.none, source="registry"))
+    elif company.pledges:
         detail = "；".join(f"{p.date}，{p.pledgor}把 {p.share}押给「{p.pledgee}」" for p in company.pledges)
         items.append(SignalItem(key="pledges", label="股权出质", value=f"{len(company.pledges)} 笔", detail=detail,
                                 status=Status.bad, source="registry"))
@@ -93,6 +96,10 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None)
     for key, label, rows, bad in [("mortgages", "动产抵押", company.mortgages, Status.warn),
                                   ("executions", "被执行", company.executions, Status.bad),
                                   ("tax_arrears", "欠税公告", company.tax_arrears, Status.bad)]:
+        if not company.known(key):
+            items.append(SignalItem(key=key, label=label, value="没查", detail="这次的数据来源不含这一项",
+                                    status=Status.none, source="registry"))
+            continue
         items.append(SignalItem(key=key, label=label, value=f"{len(rows)} 条" if rows else "无",
                                 status=bad if rows else Status.ok, source="registry"))
     return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items)
@@ -107,7 +114,10 @@ def credit_signal(company: CompanyProfile | None, as_of: date) -> Signal:
               else Status.warn if months < YOUNG_COMPANY_MONTHS else Status.ok)
     items = [SignalItem(key="status", label="登记状态", value=company.status,
                         detail=f"成立于 {company.founded}，{months // 12} 年 {months % 12} 个月", status=status, source="registry")]
-    if company.penalties:
+    if not company.known("penalties"):
+        items.append(SignalItem(key="penalties", label="行政处罚", value="没查", detail="这次的数据来源不含这一项",
+                                status=Status.none, source="registry"))
+    elif company.penalties:
         detail = "；".join(f"{p.date} {p.org}：{p.reason}，{p.result}" for p in company.penalties)
         items.append(SignalItem(key="penalties", label="行政处罚", value=f"{len(company.penalties)} 条", detail=detail,
                                 status=Status.bad, source="registry"))
@@ -116,6 +126,10 @@ def credit_signal(company: CompanyProfile | None, as_of: date) -> Signal:
     for key, label, hit, yes, no in [("abnormal", "经营异常名录", company.abnormal, "已列入", "未列入"),
                                      ("serious_illegal", "严重违法失信名单", company.serious_illegal, "已列入", "未列入"),
                                      ("dishonest", "失信被执行人", company.dishonest, "有", "无")]:
+        if not company.known(key):
+            items.append(SignalItem(key=key, label=label, value="没查", detail="这次的数据来源不含这一项",
+                                    status=Status.none, source="registry"))
+            continue
         items.append(SignalItem(key=key, label=label, value=yes if hit else no,
                                 status=Status.bad if hit else Status.ok, source="registry"))
     items.append(SignalItem(key="litigation", label="司法诉讼", value="没查", detail="司法诉讼数据还没接入",
@@ -154,11 +168,11 @@ def reputation_signal(data: dict | None) -> Signal:
 
 def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
                   complaints: dict | None, as_of: date, scenario: Scenario,
-                  assertions: list[Assertion] = ()) -> list[Signal]:
+                  assertions: list[Assertion] = (), others: list[RegistryHit] = ()) -> list[Signal]:
     """四个信号的内容不随场景变；场景只改排序和开头那句话。"""
     scale = ext.claims.get(ClaimKind.scale)
     stores = scale.numbers.get("stores") if scale else None
-    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions)),
+    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions), list(others)),
                                   finance_signal(company, stores), credit_signal(company, as_of),
                                   reputation_signal(complaints)]}
     for key, lede in scenario.signal_ledes.items():

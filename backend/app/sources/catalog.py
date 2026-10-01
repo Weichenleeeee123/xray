@@ -7,6 +7,17 @@ from app.config import REF_DEPOSIT_RATE
 from app.models import Source
 
 
+def registry_sources(registries: dict) -> dict[str, Source]:
+    """下载到本地的官方名单。中基协名单在时，"amac" 换成真实来源。"""
+    out = {}
+    for rid, index in registries.items():
+        m = index.meta
+        sid = "amac" if rid == "amac_managers" else rid
+        out[sid] = Source(id=sid, name=m["title"], kind="official", as_of=m.get("as_of"), url=m.get("url"),
+                          note=f"{m.get('publisher', '')}公布，共 {m.get('count', len(index)):,} 家；整份下载到本地查询")
+    return out
+
+
 def build_sources(license_meta: dict, registry_as_of: str, amac_as_of: str, complaints_as_of: str) -> dict[str, Source]:
     sources = [
         Source(id="nfra_bank_list", name="银行业金融机构法人名单", kind="official",

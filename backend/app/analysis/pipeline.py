@@ -5,7 +5,7 @@
 """
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import uuid4
 
 from app.analysis.diff import diff
@@ -17,11 +17,13 @@ from app.analysis.verify import verify
 from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, MissingItem, RawRecord, Signal, Source,
                         SupplementIn, Version)
 from app.scenarios import claim_rank, get_scenario
-from app.sources.catalog import build_sources
+from app.sources.catalog import build_sources, registry_sources
 from app.sources.collect import Collected, collect, now
+from app.sources.commercial import CommercialClient
 from app.sources.fixtures import FixtureAmac, FixtureComplaints, FixtureRegistry
 from app.sources.licenses import LicenseIndex
 from app.sources.packs import EvidencePacks
+from app.sources.registries import RegistryIndex, load_registries
 
 TEXT_SOURCES = ("self_description", "material")  # 这两类原始数据里的文字是"宣称"
 DODGE = re.compile(r"放心|绝对|保证|没问题|大家都|别担心|不用担心|相信我们|正规的|很多人")
@@ -37,13 +39,18 @@ class Services:
     packs: EvidencePacks
     extractor: ClaimExtractor
     sources: dict[str, Source]
+    registries: dict[str, RegistryIndex] = field(default_factory=dict)  # 保险、期货、支付、私募等官方名单
+    commercial: CommercialClient | None = None                         # 企查查/天眼查，配置了才用
 
 
 def load_services() -> Services:
     licenses, registry = LicenseIndex.load(), FixtureRegistry.load()
     amac, complaints = FixtureAmac.load(), FixtureComplaints.load()
-    sources = build_sources(licenses.meta, registry.as_of, amac.as_of, complaints.as_of)
-    return Services(licenses, registry, amac, complaints, EvidencePacks.load(), RuleExtractor(), sources)
+    registries = load_registries()
+    sources = build_sources(licenses.meta, registry.as_of, amac.as_of, complaints.as_of) | registry_sources(registries)
+    commercial = CommercialClient()
+    return Services(licenses, registry, amac, complaints, EvidencePacks.load(), RuleExtractor(), sources, registries,
+                    commercial if commercial.configured else None)
 
 
 # ---------- 原始数据 ----------
@@ -94,10 +101,11 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     ext = svc.extractor.extract(text)
     company, lic, amac = collected.company, collected.license, collected.amac
 
-    assertions, missing = verify(ext, company, lic, amac, svc.licenses, inp.company_name)
+    assertions, missing = verify(ext, company, lic, amac, svc.licenses, inp.company_name, collected.others)
     rank = claim_rank(scenario)
     assertions.sort(key=lambda a: rank(a.kind))
-    signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions)
+    signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
+                            collected.others)
     raw_by_id = {r.id: r for r in raw}
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
     link_refs(assertions, missing, signals, by_source, texts)
@@ -108,6 +116,8 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     notes = []
     if collected.note:
         notes.append(collected.note)
+    if collected.sources["registry"].kind == "commercial":
+        notes.append("登记信息来自商业数据接口（第三方加工），有出入时以国家企业信用信息公示系统为准。")
     if company and collected.sources["registry"].kind == "demo":
         notes.append("演示数据 · 公司为虚构：登记、年报、投诉都是编出来的，只用来演示。")
     if company is None:
