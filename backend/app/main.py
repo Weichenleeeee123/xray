@@ -15,10 +15,11 @@ from app import config
 from app.analysis.pipeline import load_services, new_case, supplement
 from app.analysis.report import onepager
 from app.assistant import answer
+from app.glossary import load_glossary
 from app.intake import run_intake
 from app.llm import LLM
 from app.models import (Case, CaseIn, CaseSummary, ChatIn, ChatMessage, Intake, IntakeIn, LicenseHit, OnePager,
-                        ReadResult, Scenario, Source, SupplementIn)
+                        ReadResult, Scenario, Source, SupplementIn, Term)
 from app.readers import read_upload
 from app.scenarios import get_scenario, load_scenarios
 from app.sources.collect import collect
@@ -61,6 +62,11 @@ def sources() -> list[Source]:
 @app.get("/api/scenarios")
 def scenarios() -> list[Scenario]:
     return list(load_scenarios().values())
+
+
+@app.get("/api/glossary")
+def glossary() -> list[Term]:
+    return list(load_glossary())
 
 
 @app.post("/api/intake")

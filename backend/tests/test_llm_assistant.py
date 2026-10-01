@@ -108,6 +108,8 @@ def test_overreach_rules():
     data = "风险提示：近期该公司涉嫌非法集资。严重违法失信名单：否。经营范围不含金融业务"
     assert overreach("急用时很可能拿不回来，属于超范围经营", data) == ["很可能", "超范围经营"]
     assert overreach("它是安全的，风险很低", data) == ["是安全", "风险很低"]
+    assert overreach("说明公司账上可能没钱，连赔钱的家底都没有", data) == ["账上可能没钱", "家底"]   # 推断偿付能力
+    assert overreach("真出问题可能没钱赔", data) == ["可能没钱"]
     assert overreach("政府网站的风险提示说它涉嫌非法集资 [R7]", data) == []   # 记录原文写了，可以转述
     assert overreach("它不在严重违法失信名单上 [credit.dishonest]", data) == []
     assert overreach("它违法经营，不受法律保护", data) == ["违法", "不受法律保护"]  # "违法"两个字太短，要连上下文对得上

@@ -27,6 +27,7 @@ cd backend
 |---|---|---|
 | GET | `/api/health` | 名单条数和日期、已有证据包、模型状态（不含 Key） |
 | GET | `/api/scenarios` | 6 个场景模板 |
+| GET | `/api/glossary` | 名词解释词表（`app/glossary.json`），前端标注和助手共用 |
 | POST | `/api/intake` | `{need}` → 场景、关注点、替谁看、金额（输入页预览用，用户可改） |
 | POST | `/api/read` | 上传文件（txt / pdf / docx / 图片）→ 文字；读不出来返回 `failed` 和提示 |
 | POST | `/api/cases` | 建案卷，生成第 1 版报告。`company_name`、`need`，可选 `scenario`、`for_whom`、`amount`、`material_text` |
@@ -103,3 +104,4 @@ cd backend
 - 助手的回答由程序校验：出处 id 必须在案卷里，引文必须在原文里逐字找得到，否则丢掉并计入 `dropped`。让助手"判定安全""忽略规则"的提问由程序直接拦下。
 - 没数据写"没查"（`status: none`），不把没数据说成没问题，也不说成有问题。不打安全分，不下"诈骗"之类的定性。
 - 场景只改排序和措辞，不改事实：加场景就是在 `app/scenarios/` 加一个 JSON。
+- 名词解释是人工写好的固定词表 `app/glossary.json`，不让模型现编：每条写明是什么、对你意味着什么、依据（数据来源 id 或法规名）。助手解释名词时引用它，出处写作 `[term.<id>]`。词表不算案卷记录，不能拿来给"非法集资"这类定性词放行；"非法集资是指……"这种解释词义的句子可以。

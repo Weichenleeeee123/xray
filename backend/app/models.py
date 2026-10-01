@@ -214,6 +214,17 @@ class Signal(BaseModel):
     extra: dict | None = None
 
 
+class Term(BaseModel):
+    """名词解释。人工写好的固定词表（app/glossary.json），报告标注和助手回答共用，不让模型现编。"""
+    id: str                              # 助手引用时写作 term.<id>
+    term: str
+    aliases: list[str] = Field(default_factory=list)  # 报告里也按这些写法认出它
+    plain: str                           # 它是什么
+    why: str | None = None               # 对你意味着什么
+    basis: str | None = None             # 依据：Source id
+    law: str | None = None               # 依据：不在数据来源目录里的法规
+
+
 class Question(BaseModel):
     id: str
     ask: str                             # 该问对方的话
