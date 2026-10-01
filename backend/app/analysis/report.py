@@ -13,8 +13,8 @@ DUP_OF_CLAIM = {"risk.bank_list": "A1", "risk.amac": "A1", "risk.product_code": 
                 "risk.promise": "A2", "risk.payee": "A7", "risk.refund": "A8", "risk.upfront_fee": "A9",
                 "risk.disclosure": "M1"}
 # "查到了什么"优先展示的事实
-FACT_KEYS = ["risk.bank_list", "credit.status", "finance.paid_capital", "reputation.total", "credit.penalties",
-             "finance.insured"]
+FACT_KEYS = ["risk.bank_list", "credit.official_web", "credit.status", "finance.paid_capital", "reputation.total",
+             "reputation.web_total", "credit.penalties", "finance.insured"]
 FOOTER = "结论来自公开记录和规则，AI 只负责读材料和说人话。这不是安全评分，也不是对这家公司的定性；没查到不等于没有问题。"
 
 

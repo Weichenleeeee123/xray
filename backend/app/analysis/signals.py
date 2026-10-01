@@ -8,6 +8,9 @@ from app.analysis.verify import qualification_review, return_review
 from app.config import LOW_PAID_RATIO, YOUNG_COMPANY_MONTHS
 from app.models import (AmacHit, Assertion, ClaimKind, CompanyProfile, LicenseHit, RegistryHit, Scenario, Signal,
                         SignalItem, Status, Verdict)
+from app.sources.web import WebFindings, WebHit
+
+NO_WEB = "联网搜索没开（没配模型网关，或处于离线模式）"
 
 # 和钱的去向有关的说法，结论同时放进风险信号
 MONEY_KINDS = (ClaimKind.payee, ClaimKind.refund, ClaimKind.upfront_fee)
@@ -27,9 +30,46 @@ def _not_covered(key: str) -> list[SignalItem]:
                        status=Status.none, source="registry")]
 
 
+def _hit_item(key: str, label: str, value: str, hit: WebHit, status: Status, refs: dict[str, str],
+              source: str) -> SignalItem:
+    date = f"{hit.date} " if hit.date else ""
+    return SignalItem(key=key, label=label, value=value, detail=f"{date}{hit.site}：{hit.title}", status=status,
+                      source=source, ref=refs.get(hit.url))
+
+
+def official_web_item(web: WebFindings | None, refs: dict[str, str]) -> SignalItem:
+    label = "政府网站点名"
+    if web is None:
+        return SignalItem(key="official_web", label=label, value="没查", detail=NO_WEB, status=Status.none,
+                          source="web_official")
+    if not web.official and any("官方" in e for e in web.errors):
+        return SignalItem(key="official_web", label=label, value="查询失败", detail="；".join(web.errors),
+                          status=Status.none, source="web_official")
+    bad = [h for h in web.official if h.category in ("penalty", "warning")]
+    judicial = [h for h in web.official if h.category == "judicial"]
+    if bad:
+        kinds = "、".join(dict.fromkeys(h.category_label for h in bad))
+        return _hit_item("official_web", label, f"{len(bad)} 份文件点名了它（{kinds}）", bad[0], Status.bad, refs,
+                         "web_official")
+    if judicial:
+        return _hit_item("official_web", label, f"{len(judicial)} 份法院相关文件提到它", judicial[0], Status.warn, refs,
+                         "web_official")
+    if web.official:
+        return _hit_item("official_web", label, f"{len(web.official)} 份文件提到它，没有处罚或警示", web.official[0],
+                         Status.ok, refs, "web_official")
+    return SignalItem(key="official_web", label=label, value="没搜到",
+                      detail="搜了监管、法院和政府网站，没找到点名它的处罚或警示；搜索覆盖有限，没搜到不等于没有",
+                      status=Status.ok, source="web_official")
+
+
 def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
-                scenario: Scenario, assertions: list[Assertion], others: list[RegistryHit] = ()) -> Signal:
+                scenario: Scenario, assertions: list[Assertion], others: list[RegistryHit] = (),
+                web: WebFindings | None = None, refs: dict[str, str] | None = None) -> Signal:
     items: list[SignalItem] = []
+    warnings = [h for h in (web.official if web else []) if h.category == "warning"]
+    if warnings:
+        items.append(_hit_item("regulator_warning", "监管风险提示", f"{len(warnings)} 份风险提示或非法金融通报点名了它",
+                               warnings[0], Status.bad, refs or {}, "web_official"))
     if scenario.license_checks or ext.is_financial or lic.found or any(h.found for h in others):
         checks, _, _ = qualification_review(ext, company, lic, amac, others)
         items += [SignalItem(key=k, label=c.label, value=c.result, status=c.status, source=c.source)
@@ -105,10 +145,13 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None)
     return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items)
 
 
-def credit_signal(company: CompanyProfile | None, as_of: date) -> Signal:
+def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings | None = None,
+                  refs: dict[str, str] | None = None) -> Signal:
     lede = "\"没有不良记录\"只说明查过的地方没有，不等于可靠。"
+    web_item = official_web_item(web, refs or {})
     if company is None:
-        return Signal(key="credit", title="信用", lede=lede, flags=0, items=_not_covered("registry"))
+        items = _not_covered("registry") + [web_item]
+        return Signal(key="credit", title="信用", lede=lede, flags=_flags(items), items=items)
     months = months_between(company.founded, as_of)
     status = (Status.bad if DEAD_STATUS.search(company.status)
               else Status.warn if months < YOUNG_COMPANY_MONTHS else Status.ok)
@@ -132,13 +175,39 @@ def credit_signal(company: CompanyProfile | None, as_of: date) -> Signal:
             continue
         items.append(SignalItem(key=key, label=label, value=yes if hit else no,
                                 status=Status.bad if hit else Status.ok, source="registry"))
-    items.append(SignalItem(key="litigation", label="司法诉讼", value="没查", detail="司法诉讼数据还没接入",
-                            status=Status.none, source="registry"))
+    items.append(web_item)
     return Signal(key="credit", title="信用", lede=lede, flags=_flags(items), items=items)
 
 
-def reputation_signal(data: dict | None) -> Signal:
+def web_reputation(web: WebFindings, refs: dict[str, str], lede: str) -> Signal:
+    if not web.news and any("报道" in e for e in web.errors):
+        items = [SignalItem(key="web_total", label="公开报道和投诉", value="查询失败", detail="；".join(web.errors),
+                            status=Status.none, source="web_news")]
+        return Signal(key="reputation", title="口碑", lede=lede, flags=0, items=items)
+    cash = [h for h in web.news if h.category == "cash"]
+    complaint = [h for h in web.news if h.category == "complaint"]
+    items = [SignalItem(key="web_total", label="网上提到它的报道和投诉", value=f"{len(web.news)} 条",
+                        detail="全网搜\"公司简称 + 投诉、维权、兑付\"，只算摘要里出现全称或简称的",
+                        status=Status.ok,
+                        source="web_news")]
+    if cash:
+        items.append(_hit_item("web_cash", "说到兑付、提现、跑路", f"{len(cash)} 条", cash[0],
+                               Status.bad if len(cash) >= 2 else Status.warn, refs, "web_news"))
+    if complaint:
+        items.append(_hit_item("web_complaint", "投诉、维权", f"{len(complaint)} 条", complaint[0], Status.warn, refs,
+                               "web_news"))
+    if not cash and not complaint:
+        items.append(SignalItem(key="web_negative", label="负面报道", value="没搜到集中的负面",
+                                detail="搜索覆盖有限，没搜到不等于没有", status=Status.ok, source="web_news"))
+    extra = {"web": [{"category": h.category_label, "title": h.title, "url": h.url, "site": h.site, "date": h.date,
+                      "excerpt": h.excerpt, "ref": refs.get(h.url)} for h in web.news]}
+    return Signal(key="reputation", title="口碑", lede=lede, flags=_flags(items), items=items, extra=extra)
+
+
+def reputation_signal(data: dict | None, web: WebFindings | None = None, refs: dict[str, str] | None = None) -> Signal:
     lede = "单条投诉不能证明什么，可能有误会或夸大。我们看的是趋势和集中的主题。"
+    if data is None and web is not None:
+        return web_reputation(web, refs or {}, lede)
     if data is None:
         return Signal(key="reputation", title="口碑", lede=lede, flags=0,
                       items=[SignalItem(key="complaints", label="投诉", value="没查", detail="还没有这家公司的投诉数据",
@@ -168,13 +237,15 @@ def reputation_signal(data: dict | None) -> Signal:
 
 def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
                   complaints: dict | None, as_of: date, scenario: Scenario,
-                  assertions: list[Assertion] = (), others: list[RegistryHit] = ()) -> list[Signal]:
+                  assertions: list[Assertion] = (), others: list[RegistryHit] = (),
+                  web: WebFindings | None = None, web_refs: dict[str, str] | None = None) -> list[Signal]:
     """四个信号的内容不随场景变；场景只改排序和开头那句话。"""
     scale = ext.claims.get(ClaimKind.scale)
     stores = scale.numbers.get("stores") if scale else None
-    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions), list(others)),
-                                  finance_signal(company, stores), credit_signal(company, as_of),
-                                  reputation_signal(complaints)]}
+    refs = web_refs or {}
+    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions), list(others), web, refs),
+                                  finance_signal(company, stores), credit_signal(company, as_of, web, refs),
+                                  reputation_signal(complaints, web, refs)]}
     for key, lede in scenario.signal_ledes.items():
         if key in signals:
             signals[key].lede = lede

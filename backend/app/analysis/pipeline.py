@@ -24,6 +24,7 @@ from app.sources.fixtures import FixtureAmac, FixtureComplaints, FixtureRegistry
 from app.sources.licenses import LicenseIndex
 from app.sources.packs import EvidencePacks
 from app.sources.registries import RegistryIndex, load_registries
+from app.sources.web import WebClient
 
 TEXT_SOURCES = ("self_description", "material")  # 这两类原始数据里的文字是"宣称"
 DODGE = re.compile(r"放心|绝对|保证|没问题|大家都|别担心|不用担心|相信我们|正规的|很多人")
@@ -41,6 +42,7 @@ class Services:
     sources: dict[str, Source]
     registries: dict[str, RegistryIndex] = field(default_factory=dict)  # 保险、期货、支付、私募等官方名单
     commercial: CommercialClient | None = None                         # 企查查/天眼查，配置了才用
+    web: WebClient | None = None                                       # 联网查证，网关配置了才用
 
 
 def load_services() -> Services:
@@ -48,9 +50,9 @@ def load_services() -> Services:
     amac, complaints = FixtureAmac.load(), FixtureComplaints.load()
     registries = load_registries()
     sources = build_sources(licenses.meta, registry.as_of, amac.as_of, complaints.as_of) | registry_sources(registries)
-    commercial = CommercialClient()
+    commercial, web = CommercialClient(), WebClient()
     return Services(licenses, registry, amac, complaints, EvidencePacks.load(), RuleExtractor(), sources, registries,
-                    commercial if commercial.configured else None)
+                    commercial if commercial.configured else None, web if web.configured else None)
 
 
 # ---------- 原始数据 ----------
@@ -83,12 +85,12 @@ def link_refs(assertions: list[Assertion], missing: list[MissingItem], signals: 
     for a in assertions:
         a.refs = [t.id for t in texts if any(_flat(q) in _flat(t.content) for q in a.quotes)]
         for c in a.checks:
-            c.ref = by_source.get(c.source) or ((a.refs or [latest_text])[0] if c.source == "material" else None)
+            c.ref = c.ref or by_source.get(c.source) or ((a.refs or [latest_text])[0] if c.source == "material" else None)
     for m in missing:
         m.refs = [t.id for t in texts]
     for s in signals:
         for i in s.items:
-            i.ref = by_source.get(i.source) or (latest_text if i.source == "material" else None)
+            i.ref = i.ref or by_source.get(i.source) or (latest_text if i.source == "material" else None)
 
 
 # ---------- 生成一版报告 ----------
@@ -104,9 +106,10 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     assertions, missing = verify(ext, company, lic, amac, svc.licenses, inp.company_name, collected.others)
     rank = claim_rank(scenario)
     assertions.sort(key=lambda a: rank(a.kind))
-    signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
-                            collected.others)
     raw_by_id = {r.id: r for r in raw}
+    web_refs = {raw_by_id[rid].url: rid for rid in collected_ids if raw_by_id[rid].source_id.startswith("web_")}
+    signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
+                            collected.others, collected.web, web_refs)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
     link_refs(assertions, missing, signals, by_source, texts)
 
@@ -122,6 +125,9 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
         notes.append("演示数据 · 公司为虚构：登记、年报、投诉都是编出来的，只用来演示。")
     if company is None:
         notes.append("还没有这家公司的登记数据：股东、资本、处罚等核验显示为\"没查\"。持牌名单是真实数据，照常核验。")
+    if collected.web:
+        notes.append("联网查证只能找到公开报道和政府网站上的文件，搜不到不等于没有" +
+                     ("；本次用的是离线回放的搜索结果。" if collected.web.replay else "。"))
     if not texts:
         notes.append("还没有这家公司的说法：上传宣传材料、合同或聊天记录，就能逐条对照。")
     elif not ext.claims:

@@ -9,6 +9,7 @@ from datetime import date, datetime
 from app.models import AmacHit, CompanyProfile, Coverage, LicenseHit, RawRecord, RegistryHit, Source
 from app.sources.packs import SECTIONS, Pack
 from app.sources.registries import AMAC_ID, LICENSE_LISTS
+from app.sources.web import WebFindings
 
 ANNUAL_FIELDS = ("paid_capital", "insured")
 
@@ -28,6 +29,7 @@ class Collected:
     records: list[RawRecord] = field(default_factory=list)  # id 留空，由案卷分配
     others: list[RegistryHit] = field(default_factory=list)  # 银行业以外的持牌名单
     note: str | None = None              # 证据包的说明：资料截止日期、话术出处
+    web: WebFindings | None = None       # 联网查证；没开或是虚构公司时为 None
 
 
 def _raw(source_id: str, title: str, kind: str, coverage: Coverage, content=None, *, retrieved_at: str | None = None,
@@ -80,6 +82,24 @@ def _real_amac(name: str, svc) -> tuple[AmacHit, RawRecord] | None:
     return amac, record
 
 
+def _web_records(web: WebFindings) -> list[RawRecord]:
+    records = []
+    for hits, sid, label, tag in ((web.official, "web_official", "监管、法院、政府网站", "官方"),
+                                  (web.news, "web_news", "公开报道和投诉", "报道")):
+        for h in hits:
+            records.append(_raw(sid, h.title or h.site, "official" if h.official else "web", Coverage.found,
+                                {"类别": h.category_label, "网站": h.site, "命中原文": h.excerpt}, as_of=h.date,
+                                url=h.url, note=("联网搜索找到，摘要里只有简称，可能是同名的别家，要点开原文确认"
+                                                 if h.by_short_name else "联网搜索找到，已核对摘要里有这家公司的全称") +
+                                                ("；离线回放的搜索结果" if web.replay else "")))
+        if not hits:
+            failed = any(tag in e for e in web.errors)
+            records.append(_raw(sid, f"{label}（联网搜索）", "web", Coverage.failed if failed else Coverage.not_found,
+                                {"搜索词": web.queries}, note="搜索失败" if failed else
+                                "搜了，没找到点名这家公司的页面；搜索覆盖有限，没搜到不等于没有"))
+    return records
+
+
 def collect(name: str, svc) -> Collected:
     sources = dict(svc.sources)
     lic = svc.licenses.lookup(name)
@@ -89,7 +109,7 @@ def collect(name: str, svc) -> Collected:
 
     pack: Pack | None = svc.packs.get(name)
     if pack:
-        return _from_pack(pack, lic, others, real_amac, sources, records)
+        return _from_pack(pack, lic, others, real_amac, sources, records, svc)
 
     company, as_of, note = None, svc.registry.as_of, None
     commercial = svc.commercial.fetch(name) if svc.commercial else None
@@ -132,15 +152,23 @@ def collect(name: str, svc) -> Collected:
     records.append(amac_record)
 
     complaints = svc.complaints.get(name)
-    records.append(_raw("complaints", "投诉平台", "demo", Coverage.found if complaints else Coverage.not_covered,
-                        complaints, as_of=svc.complaints.as_of,
-                        note="演示数据" if complaints else "没查：还没有这家公司的投诉数据"))
+    if complaints:
+        records.append(_raw("complaints", "投诉平台", "demo", Coverage.found, complaints, as_of=svc.complaints.as_of,
+                            note="演示数据"))
+    web = None
+    is_demo = company is not None and sources["registry"].kind == "demo"
+    if svc.web and not is_demo:  # 虚构公司不联网搜，搜了也是空的
+        web = svc.web.findings(name)
+        records += _web_records(web)
+    elif not complaints:
+        records.append(_raw("complaints", "投诉平台", "demo", Coverage.not_covered,
+                            note="没查：还没有这家公司的投诉数据，联网搜索也没开"))
     return Collected(company=company, license=lic, amac=amac, complaints=complaints, as_of=date.fromisoformat(as_of),
-                     sources=sources, records=records, others=others, note=note)
+                     sources=sources, records=records, others=others, note=note, web=web)
 
 
 def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], real_amac, sources: dict[str, Source],
-               records: list[RawRecord]) -> Collected:
+               records: list[RawRecord], svc) -> Collected:
     sec = pack.sections
     for sid, s in sec.items():
         sources[sid] = s.source
@@ -183,5 +211,8 @@ def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], real_amac
                             retrieved_at=s.retrieved_at, as_of=s.source.as_of, url=s.source.url,
                             screenshot=s.screenshot, note=s.source.note))
     as_of = date.fromisoformat((pack.as_of or now())[:10])
+    web = svc.web.findings(pack.company) if svc.web else None
+    if web:
+        records += _web_records(web)
     return Collected(company=company, license=lic, amac=amac, complaints=complaints, as_of=as_of,
-                     sources=sources, records=records, others=others, note=pack.note)
+                     sources=sources, records=records, others=others, note=pack.note, web=web)

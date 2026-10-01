@@ -59,6 +59,11 @@ def build_questions(assertions: list[Assertion], missing: list[MissingItem], sig
     for s in signals:
         for item in s.items:
             key = f"{s.key}.{item.key}"
+            if key in ("credit.official_web", "risk.regulator_warning") and item.status is Status.bad:
+                candidates.append((1, "official_web", Question(
+                    id="", ask=f"政府网站上有一份点名你们的文件（{item.detail}），这件事现在处理完了吗",
+                    why=f"{item.label}：{item.value}", check_where="点开原始数据里的原文链接，看处罚或通报的内容和日期",
+                    linked=[key])))
             if key in GAP_QUESTIONS and item.status is Status.none:
                 about, ask, where = GAP_QUESTIONS[key]
                 candidates.append((3, about, Question(id="", ask=ask, why=f"{item.label}还没查：{item.detail or item.value}",
