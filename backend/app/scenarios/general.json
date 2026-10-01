@@ -4,6 +4,7 @@
   "keywords": [],
   "hand_over": "钱或信任",
   "first_question": "它是不是它说的那家公司，记录和说法对不对得上",
+  "first_items": ["credit.status", "A1", "A4", "A5", "credit.penalties"],
   "license_checks": [],
   "claim_kinds": [],
   "signal_order": [

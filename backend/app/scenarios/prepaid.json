@@ -22,6 +22,7 @@
   ],
   "hand_over": "预付款",
   "first_question": "收钱的是不是跟你签约、给你服务的那家公司",
+  "first_items": ["A7", "risk.payee", "A8", "risk.refund", "credit.status"],
   "license_checks": [],
   "claim_kinds": [
     "payee",

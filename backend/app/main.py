@@ -18,6 +18,7 @@ from app.assistant import answer
 from app.glossary import load_glossary
 from app.intake import run_intake
 from app.llm import LLM
+from app.plain import finish_version
 from app.models import (Case, CaseIn, CaseSummary, ChatIn, ChatMessage, Intake, IntakeIn, LicenseHit, OnePager,
                         ReadResult, Scenario, Source, SupplementIn, Term)
 from app.readers import read_upload
@@ -97,7 +98,7 @@ def company_profile(name: str = Query(min_length=2)) -> dict:
 @app.post("/api/cases")
 def create_case(body: CaseIn) -> Case:
     info = run_intake(body.need, llm, scenario=body.scenario, company=body.company_name)
-    return store.save(new_case(body, info, svc))
+    return store.save(finish_version(new_case(body, info, svc), llm))
 
 
 @app.get("/api/cases")
@@ -114,7 +115,7 @@ def get_case(case_id: str) -> Case:
 def add_supplement(case_id: str, body: SupplementIn) -> Case:
     case = _case(case_id)
     info = run_intake(body.text, llm, scenario=body.scenario, company=case.case.company_name) if body.kind == "need" else None
-    return store.save(supplement(case, body, info, svc))
+    return store.save(finish_version(supplement(case, body, info, svc), llm))
 
 
 @app.post("/api/cases/{case_id}/chat")

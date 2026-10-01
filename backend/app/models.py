@@ -223,6 +223,15 @@ class Term(BaseModel):
     why: str | None = None               # 对你意味着什么
     basis: str | None = None             # 依据：Source id
     law: str | None = None               # 依据：不在数据来源目录里的法规
+    origin: Literal["glossary", "model"] = "glossary"  # model：报告生成时模型补的，词表里没有，标"AI 解释"
+
+
+class Glance(BaseModel):
+    """一眼看懂：报告生成时一并写好的短句。判定、颜色、排序全部来自规则，模型只把规则写的长句缩短。"""
+    first: list[str] = Field(default_factory=list)        # 回答"第一问"的条目 id（这一版里有的）
+    short: dict[str, str] = Field(default_factory=dict)   # 条目 id → 短句；没有的，前端用规则原句
+    mode: Literal["model", "replay", "template"] = "template"
+    dropped: int = 0                                      # 没通过程序校验、被丢掉的短句和名词
 
 
 class Question(BaseModel):
@@ -300,6 +309,7 @@ class Scenario(BaseModel):
     keywords: list[str]
     hand_over: str
     first_question: str
+    first_items: list[str] = Field(default_factory=list)  # 回答"第一问"的条目 id（说法或信号条目），报告首屏用
     license_checks: list[str]
     claim_kinds: list[ClaimKind]
     signal_order: list[Literal["risk", "finance", "credit", "reputation"]]
@@ -335,6 +345,8 @@ class Version(BaseModel):
     changes: list[Change] = Field(default_factory=list)
     change_summary: str | None = None
     onepager: OnePager | None = None
+    glance: Glance | None = None          # 报告首屏的短句（app/plain.py）
+    terms: list[Term] = Field(default_factory=list)  # 这一版报告里出现的名词及解释，随报告一起生成
 
 
 class Quote(BaseModel):

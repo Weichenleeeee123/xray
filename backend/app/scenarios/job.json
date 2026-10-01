@@ -20,6 +20,7 @@
   ],
   "hand_over": "时间和信任，有时还有押金、培训费",
   "first_question": "发 offer 的和交社保的是不是同一家；有没有让你先交钱",
+  "first_items": ["A9", "risk.upfront_fee", "finance.insured", "credit.status"],
   "license_checks": [],
   "claim_kinds": [
     "upfront_fee",

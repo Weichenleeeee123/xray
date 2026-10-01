@@ -268,7 +268,9 @@ def answer(case: Case, q: ChatIn, llm: LLM) -> ChatMessage:
 
     valid = citable(case, v)
     data = _flat(" ".join(valid.values()))   # 定性词只认案卷记录，名词解释不算
-    terms = find_terms(" ".join(valid.values()) + " " + q.text)
+    # 报告生成时已经整理好这一版的名词（含模型补的）；旧案卷没有，就现场从词表里找
+    terms = list(v.terms) or find_terms(" ".join(valid.values()))
+    terms += [t for t in find_terms(q.text) if t.id not in {x.id for x in terms}]
     valid.update(glossary_entries(terms))
     messages = [{"role": "system", "content": SYSTEM},
                 {"role": "user", "content": "<案卷>\n" + json.dumps(context(case, v, terms), ensure_ascii=False) + "\n</案卷>"}]
