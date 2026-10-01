@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# 本地临时文件
+.tmp/
+*.log
+
+# 运行时数据（案卷、模型响应缓存）
+backend/data/cases/
+backend/data/cache/
+
+# 秘密配置
+.env
+.env.*
+!.env.example
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+node_modules/

@@ -1,0 +1,60 @@
+{
+  "_note": "演示数据：以下公司、人物均为虚构，仅用于演示与测试。字段结构按企业信用信息公示系统的登记、年报、行政处罚、股权出质等栏目组织。",
+  "as_of": "2026-10-01",
+  "companies": [
+    {
+      "name": "杭州满盈禾康养健康咨询有限公司",
+      "code": "91330106MA2H******",
+      "status": "存续",
+      "founded": "2025-02-18",
+      "reg_capital": 50000000,
+      "paid_capital": 0,
+      "capital_due": "2030-01-31",
+      "scope": "健康管理咨询（不含诊疗服务）；养老服务；日用百货销售；会议及展览服务",
+      "shareholders": [
+        {"name": "张某明", "type": "自然人", "pct": 70},
+        {"name": "李某华", "type": "自然人", "pct": 30}
+      ],
+      "insured": 4,
+      "branches": 0,
+      "penalties": [
+        {"date": "2026-05-12", "org": "某区市场监督管理局", "reason": "发布虚假广告", "result": "罚款 3 万元"}
+      ],
+      "pledges": [
+        {"date": "2026-07-15", "pledgor": "张某明", "share": "70% 股权", "pledgee": "宁波某投资合伙企业（有限合伙）"}
+      ]
+    },
+    {
+      "name": "深圳前海满盈禾资产管理有限公司",
+      "code": "91440300MA5G******",
+      "status": "存续",
+      "founded": "2024-11-06",
+      "reg_capital": 10000000,
+      "paid_capital": 0,
+      "capital_due": "2029-11-05",
+      "scope": "资产管理（未经金融监管部门批准，不得从事吸收存款、融资担保、代客理财、向社会公众集（融）资等金融业务）；投资咨询；企业管理咨询",
+      "shareholders": [
+        {"name": "张某明", "type": "自然人", "pct": 40},
+        {"name": "王某", "type": "自然人", "pct": 60}
+      ],
+      "insured": 2,
+      "branches": 0
+    },
+    {
+      "name": "杭州明澄家政服务有限公司",
+      "code": "91330105MA28******",
+      "status": "存续",
+      "founded": "2016-04-12",
+      "reg_capital": 1000000,
+      "paid_capital": 1000000,
+      "capital_due": null,
+      "scope": "家政服务；养老服务；保洁服务；家用电器维修",
+      "shareholders": [
+        {"name": "陈某", "type": "自然人", "pct": 60},
+        {"name": "周某", "type": "自然人", "pct": 40}
+      ],
+      "insured": 38,
+      "branches": 3
+    }
+  ]
+}

@@ -1,0 +1,1399 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X-Ray 透视·真相</title>
+<meta name="description" content="替家人看清一家公司：把宣传上的说法，逐条对照官方记录。">
+<style>
+:root{
+  --paper:#f2eee5; --paper-hi:#faf8f3; --paper-lo:#e8e2d5;
+  --ink:#1b1916; --ink-2:#46423b; --ink-3:#7a7468; --rule:#d7cfbe; --rule-2:#bdb39e;
+  --film:#0a1520; --bone:#c4f0ff; --bone-2:#86d6f2; --bone-dim:#4a7f98;
+  --red:#b3261e; --red-bg:#f5e1dc; --red-film:#ff7d6e;
+  --amber:#9a6200; --amber-bg:#f4e8cf; --amber-film:#ffc965;
+  --green:#2b6a4a; --green-bg:#dfebe3;
+  --grey:#62666c; --grey-bg:#e6e4df;
+  --serif:"Noto Serif SC","Source Han Serif SC","Songti SC","STZhongsong","STSong","SimSun",serif;
+  --sans:"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --hei:"Source Han Sans SC","Noto Sans SC","PingFang SC","Microsoft YaHei","SimHei",sans-serif;
+  --mono:"JetBrains Mono","Cascadia Mono","SF Mono","Consolas",monospace;
+  --kai:"Kaiti SC","STKaiti","KaiTi","楷体",serif;
+  --top-h:62px;
+  --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.08  0 0 0 0 0.05  0 0 0 .07 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--top-h) + 12px)}
+body{margin:0;background:var(--paper) var(--grain);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.65}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- 框架 ---------- */
+.app{display:grid;grid-template-columns:236px minmax(0,1fr);grid-template-areas:"top top" "nav main";min-height:100vh}
+.topbar{grid-area:top;position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:22px;padding:11px 28px;background:color-mix(in srgb,var(--paper) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:3px double var(--ink)}
+.brand{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.logo{width:32px;height:32px}
+.brand-text b{font-family:var(--mono);font-size:17px;letter-spacing:.02em;margin-right:6px}
+.brand-text span{font-family:var(--serif);font-weight:900;font-size:16px}
+.case-strip{display:flex;flex-wrap:wrap;gap:4px 0;font-family:var(--mono);font-size:12px;color:var(--ink-2);min-width:0}
+.case-strip span{padding:0 12px;border-left:1px solid var(--rule-2);white-space:nowrap}
+.case-strip span:first-child{border-left:0;padding-left:0}
+.case-strip .co{font-family:var(--sans);overflow:hidden;text-overflow:ellipsis;max-width:22em}
+.ver{display:inline-block;padding:0 6px;background:var(--ink);color:var(--paper-hi);border-radius:2px;font-weight:700}
+.ver.bump{animation:bump .9s ease}
+@keyframes bump{0%{background:var(--red);transform:scale(1.35)}100%{background:var(--ink);transform:none}}
+.demo-badge{margin-left:auto;flex:0 0 auto;font-size:12px;color:var(--red);border:1px dashed var(--red);padding:2px 10px;border-radius:2px;white-space:nowrap}
+
+.stepper{grid-area:nav;position:sticky;top:var(--top-h);align-self:start;height:calc(100vh - var(--top-h));padding:30px 0 30px 26px;display:flex;flex-direction:column;gap:2px}
+.step-btn{display:grid;grid-template-columns:30px 1fr;gap:0 8px;text-align:left;background:none;border:0;border-left:2px solid var(--rule);padding:10px 12px}
+.step-btn .no{grid-row:span 2;font-family:var(--mono);font-size:12px;color:var(--ink-3);padding-top:4px}
+.step-btn .t{font-family:var(--serif);font-weight:700;font-size:15.5px;line-height:1.4}
+.step-btn .s{font-size:12px;color:var(--ink-3)}
+.step-btn:hover{background:color-mix(in srgb,var(--paper-hi) 60%,transparent)}
+.step-btn[aria-current="step"]{border-left-color:var(--ink);background:var(--paper-hi)}
+.step-btn[aria-current="step"] .no{color:var(--ink)}
+.step-btn.done .no::after{content:"✓";display:block;color:var(--green)}
+.kbd-hint{margin-top:auto;padding:0 12px;font-size:11.5px;color:var(--ink-3);font-family:var(--mono)}
+.kbd-hint kbd{border:1px solid var(--rule-2);border-bottom-width:2px;border-radius:3px;padding:0 5px;background:var(--paper-hi)}
+
+main{grid-area:main;padding:34px 48px 110px;max-width:1200px;min-width:0}
+.step{animation:enter .45s ease both}
+@keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.sec-head{margin-bottom:26px;padding-bottom:18px;border-bottom:1px solid var(--rule)}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--ink-3)}
+.sec-title{font-family:var(--serif);font-weight:900;font-size:clamp(25px,3.1vw,36px);line-height:1.25;margin:6px 0 10px;letter-spacing:.01em}
+.lede{margin:0;color:var(--ink-2);max-width:64ch}
+.card{background:var(--paper-hi);border:1px solid var(--rule);border-radius:4px;padding:18px 20px}
+.card-title{font-family:var(--serif);font-weight:900;font-size:17px;margin:0 0 10px}
+.muted{color:var(--ink-3)}
+.small{font-size:13px}
+.mono{font-family:var(--mono)}
+.actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:28px}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:var(--paper-hi);border:1px solid var(--ink);padding:11px 22px;border-radius:3px;font-weight:600;letter-spacing:.02em}
+.btn:hover{background:#000}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.ghost:hover{background:var(--paper-hi)}
+.btn.sm{padding:6px 14px;font-size:13.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.linkish{background:none;border:0;padding:0;color:var(--ink);text-decoration:underline;text-underline-offset:3px;font-size:13.5px}
+
+/* 徽章与状态 */
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:2px 10px 2px 3px;border-radius:999px;white-space:nowrap;font-family:var(--sans)}
+.badge i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;color:#fff;font-weight:700}
+.red{--c:var(--red);--bg:var(--red-bg)} .amber{--c:var(--amber);--bg:var(--amber-bg)} .green{--c:var(--green);--bg:var(--green-bg)} .grey{--c:var(--grey);--bg:var(--grey-bg)}
+.badge{background:var(--bg);color:var(--c)} .badge i{background:var(--c)}
+.st{display:inline-block;font-size:12px;line-height:1.5;padding:1px 8px;border-radius:2px;white-space:nowrap;background:var(--bg);color:var(--c);font-weight:600}
+.st.none{background:transparent;border:1px dashed var(--grey);color:var(--grey);font-weight:400}
+
+/* 术语 */
+.term{background:none;border:0;padding:0;border-bottom:1px dotted currentColor;color:inherit;font:inherit;cursor:help;line-height:inherit}
+.term::after{content:"?";font-size:.62em;vertical-align:super;margin-left:1px;opacity:.6;font-family:var(--mono)}
+.term:hover{background:color-mix(in srgb,var(--amber-bg) 70%,transparent)}
+
+/* ---------- 01 建案卷 ---------- */
+.case-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;align-items:start}
+.field{display:grid;grid-template-columns:7.5em minmax(0,1fr);gap:8px 14px;align-items:center;padding:12px 0;border-top:1px dashed var(--rule)}
+.field:first-of-type{border-top:0;padding-top:2px}
+.field>label,.field>.lab{font-size:13.5px;color:var(--ink-3)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--rule-2);background:transparent;padding:4px 14px;border-radius:999px;font-size:14px}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--paper-hi);border-color:var(--ink)}
+.chip.dim{color:var(--ink-3);border-style:dashed}
+.inp{width:100%;background:transparent;border:0;border-bottom:1.5px solid var(--ink);padding:4px 2px;font-size:16px;outline:none;border-radius:0}
+.inp:focus{border-bottom-color:var(--red)}
+.inp[readonly]{border-bottom-style:dotted;color:var(--ink-2)}
+.amt-row{display:flex;align-items:baseline;gap:10px}
+.amt-row .inp{max-width:12em;font-family:var(--mono)}
+.attach{display:flex;gap:14px;align-items:center}
+.mini-flyer{width:54px;height:72px;border-radius:2px;background:linear-gradient(170deg,#e0262a,#7d0a12);color:#ffe08a;font-family:var(--hei);font-weight:900;font-size:10px;display:grid;place-items:center;text-align:center;line-height:1.2;box-shadow:0 4px 10px -4px rgba(0,0,0,.4);transform:rotate(-3deg)}
+.premise-list{list-style:none;margin:0;padding:0;counter-reset:p}
+.premise-list li{display:grid;grid-template-columns:34px minmax(0,1fr);gap:2px 10px;padding:12px 0;border-top:1px dashed var(--rule)}
+.premise-list li:first-child{border-top:0}
+.pid{font-family:var(--mono);font-size:12px;color:var(--ink-3);padding-top:3px}
+.ptext{font-weight:600}
+.psub{grid-column:2;font-size:12.5px;color:var(--ink-3)}
+.note{font-size:12.5px;color:var(--ink-3);border-top:1px solid var(--rule);margin-top:10px;padding-top:10px}
+
+/* ---------- 02 透视 ---------- */
+.xray-wrap{display:grid;grid-template-columns:minmax(300px,430px) minmax(0,1fr);gap:34px;align-items:start}
+.frame-col{position:sticky;top:calc(var(--top-h) + 18px)}
+.frame{position:relative;aspect-ratio:3/4;container-type:inline-size;border-radius:5px;overflow:hidden;box-shadow:0 1px 0 var(--rule),0 22px 44px -20px rgba(25,15,5,.55);--y:0%}
+.layer{position:absolute;inset:0}
+.film{clip-path:inset(0 0 calc(100% - var(--y)) 0)}
+.zone{position:absolute;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;transition:outline-color .2s,box-shadow .2s}
+/* 皮肤：宣传单 */
+.skin{background:
+  radial-gradient(55% 35% at 86% 20%,rgba(255,214,102,.38),transparent 70%),
+  repeating-conic-gradient(from 0deg at 50% 26%,rgba(255,255,255,.055) 0 5deg,transparent 5deg 10deg),
+  linear-gradient(172deg,#e3292c 0%,#b6131b 52%,#78090f 100%);
+  color:#fff;font-family:var(--hei)}
+.sk-head{width:100%;height:100%;display:flex;justify-content:space-between;align-items:center;padding:0 5cqw;background:rgba(0,0,0,.2);border-bottom:.7cqw solid #ffd34d}
+.sk-logo{text-align:left}
+.sk-logo b{display:block;font-size:6.6cqw;letter-spacing:.12em;color:#ffe08a;line-height:1.1}
+.sk-logo span{font-size:2.5cqw;letter-spacing:.32em;opacity:.85}
+.sk-slogan{font-size:3.1cqw;text-align:right;line-height:1.35;font-family:var(--serif);font-weight:900;color:#fff3c8}
+.sk-big{font-size:15.5cqw;font-weight:900;line-height:1.05;color:#ffe08a;letter-spacing:.05em;text-shadow:0 .8cqw 0 #6d0710,0 0 5cqw rgba(255,200,80,.45);align-self:flex-start;margin-left:2cqw}
+.sk-burst{position:absolute;right:0;top:-1cqw;width:25cqw;height:25cqw;display:grid;place-items:center;align-content:center;background:#ffd34d;color:#a90f17;clip-path:polygon(50% 0,61% 13%,77% 6%,79% 23%,95% 25%,88% 40%,100% 50%,88% 60%,95% 75%,79% 77%,77% 94%,61% 87%,50% 100%,39% 87%,23% 94%,21% 77%,5% 75%,12% 60%,0 50%,12% 40%,5% 25%,21% 23%,23% 6%,39% 13%);transform:rotate(-10deg)}
+.sk-burst small{font-size:3.4cqw;font-weight:700;line-height:1}
+.sk-burst b{font-size:9.4cqw;line-height:1;font-weight:900}
+.sk-sub{font-size:3.5cqw;margin-top:2.4cqw;letter-spacing:.22em;color:#fff3c8;align-self:flex-start;margin-left:2.5cqw}
+.sk-ribbon{width:100%;height:100%;display:grid;place-items:center;background:linear-gradient(90deg,transparent,#ffd34d 7%,#ffd34d 93%,transparent);color:#9a0c14;font-size:5.6cqw;font-weight:900;letter-spacing:.18em}
+.sk-seal{width:19cqw;height:19cqw;border-radius:50%;border:1cqw double #ffd34d;display:grid;place-items:center;font-size:4.8cqw;font-weight:900;color:#ffe08a;line-height:1.15;transform:rotate(-8deg);box-shadow:0 0 0 .6cqw rgba(255,211,77,.25)}
+.sk-bank{display:flex;align-items:center;gap:2.2cqw;font-size:3.5cqw;line-height:1.35;text-align:left}
+.sk-bank b{font-size:5.2cqw;color:#ffe08a}
+.sk-bank svg{width:10cqw;height:10cqw;flex:0 0 auto}
+.sk-line{width:100%;height:100%;display:grid;place-items:center;font-size:4.5cqw;font-weight:700;letter-spacing:.05em;border-top:.3cqw solid rgba(255,211,77,.55);border-bottom:.3cqw solid rgba(255,211,77,.55)}
+.sk-line b{color:#ffe08a;font-size:6.4cqw;margin:0 .5cqw}
+.sk-foot{width:100%;height:100%;background:#5c0610;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1.2cqw;font-size:2.7cqw;color:#ffd9d9}
+.sk-urgent{font-size:4.4cqw;font-weight:900;color:#ffd34d;letter-spacing:.3em}
+.skin .zone.hl{outline:.6cqw dashed #fff;outline-offset:-.4cqw}
+/* 骨骼：记录 */
+.film{background:radial-gradient(120% 80% at 50% 42%,#183852 0%,#0c1c2c 55%,#050b12 100%);color:var(--bone);font-family:var(--mono)}
+.film::before{content:"";position:absolute;inset:0;pointer-events:none;background:
+  repeating-linear-gradient(0deg,rgba(196,240,255,.035) 0 1px,transparent 1px 3px),
+  linear-gradient(rgba(196,240,255,.05) 1px,transparent 1px) 0 0/10cqw 10cqw,
+  linear-gradient(90deg,rgba(196,240,255,.05) 1px,transparent 1px) 0 0/10cqw 10cqw}
+.film .zone{border:1px dashed rgba(160,230,255,.38);border-radius:.8cqw;align-items:flex-start;text-align:left;padding:1cqw 3cqw;background:rgba(12,34,54,.38)}
+.film .zone.hl{border-color:var(--bone);box-shadow:0 0 0 .8cqw rgba(134,214,242,.18),inset 0 0 4cqw rgba(134,214,242,.18)}
+.fz-id{font-size:2.5cqw;letter-spacing:.14em;color:var(--bone-dim)}
+.fz-main{font-size:4.1cqw;line-height:1.35;color:var(--bone);text-shadow:0 0 1.8cqw rgba(134,214,242,.45)}
+.fz-sub{font-size:2.9cqw;color:var(--bone-2);opacity:.85}
+.film mark{background:none;color:inherit;font-weight:700}
+.film mark.r{color:var(--red-film);text-shadow:0 0 1.8cqw rgba(255,125,110,.6)}
+.film mark.a{color:var(--amber-film)}
+.film mark.g{color:#b7c3cb}
+.fz-head{width:100%;display:flex;justify-content:space-between;gap:2cqw;font-size:2.6cqw;color:var(--bone-2)}
+.fz-foot{font-size:2.8cqw;line-height:1.5}
+.scanline{position:absolute;left:0;right:0;top:var(--y);height:0;z-index:5;pointer-events:none}
+.scanline::before{content:"";position:absolute;left:0;right:0;top:-1px;height:2px;background:var(--bone);box-shadow:0 0 12px 3px rgba(134,214,242,.75),0 0 46px 10px rgba(134,214,242,.22)}
+.handle{position:absolute;right:10px;top:0;transform:translateY(-50%);pointer-events:auto;touch-action:none;cursor:ns-resize;width:34px;height:34px;border-radius:50%;background:var(--film);border:1.5px solid var(--bone);color:var(--bone);display:grid;place-items:center;font-size:15px;line-height:1;padding:0}
+.frame[data-y="0"] .handle{transform:translateY(0)}
+.frame[data-y="100"] .handle{transform:translateY(-100%)}
+.frame-ctl{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12.5px;color:var(--ink-3)}
+
+.tally{display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline;padding:14px 18px;background:var(--ink);color:var(--paper-hi);border-radius:3px;margin-bottom:14px}
+.tally b{font-family:var(--mono);font-size:22px;margin-right:4px}
+.tally .tr{color:#ff9f93} .tally .ta{color:#ffd27a} .tally .tg{color:#c9ccd0}
+.tally .tt{font-family:var(--serif);font-weight:900;font-size:15px;margin-right:6px}
+.claims{display:flex;flex-direction:column;gap:10px}
+.claim{display:grid;grid-template-columns:30px minmax(0,1fr);gap:2px 12px;padding:14px 16px;background:var(--paper-hi);border:1px solid var(--rule);border-radius:4px;opacity:.18;transform:translateY(4px);transition:opacity .4s,transform .4s,border-color .2s,box-shadow .2s}
+.claim.in{opacity:1;transform:none}
+.claim.hl{border-color:var(--ink);box-shadow:0 6px 18px -12px rgba(0,0,0,.5)}
+.claim .cid{font-family:var(--mono);font-size:12px;color:var(--ink-3);padding-top:4px}
+.ctext{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.ctext q{font-family:var(--hei);font-weight:700;font-size:15.5px;quotes:"“" "”"}
+.ckind{font-size:11.5px;color:var(--ink-3);border:1px solid var(--rule-2);border-radius:2px;padding:0 5px}
+.plain{grid-column:2;margin:4px 0 0;color:var(--ink)}
+.claim details{grid-column:2;margin-top:6px}
+.claim summary{cursor:pointer;font-size:12.5px;color:var(--ink-3);list-style:none;display:inline-flex;gap:6px;align-items:center}
+.claim summary::-webkit-details-marker{display:none}
+.claim summary::before{content:"▸";transition:transform .2s}
+.claim details[open] summary::before{transform:rotate(90deg)}
+.checks{list-style:none;margin:8px 0 0;padding:0;font-size:13px}
+.checks li{display:grid;grid-template-columns:18px minmax(8em,13em) minmax(0,1fr);gap:8px;padding:6px 0;border-top:1px dotted var(--rule);align-items:baseline}
+.ck{font-weight:700;font-family:var(--mono);color:var(--c)}
+.ck-src{color:var(--ink-3)}
+.claim-foot{grid-column:2;display:flex;gap:14px;margin-top:8px}
+.verdict-quote{font-family:var(--serif);font-weight:700;font-size:18px;line-height:1.6;border-left:4px solid var(--red);padding:4px 0 4px 16px;margin:22px 0 0;color:var(--ink)}
+.verdict-quote small{display:block;font-family:var(--sans);font-weight:400;font-size:12.5px;color:var(--ink-3);margin-top:4px}
+
+/* ---------- 03 信号 ---------- */
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;font-size:12.5px;color:var(--ink-3);margin:-8px 0 18px}
+.signals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.sig{padding:18px 20px 12px}
+.sig-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
+.sig-head h3{margin:0;font-family:var(--serif);font-weight:900;font-size:21px;letter-spacing:.04em}
+.sig-head h3 span{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--ink-3);margin-left:8px;font-weight:400}
+.sig-lede{margin:2px 0 8px;font-size:13px;color:var(--ink-2)}
+.row{display:grid;grid-template-columns:minmax(6.5em,9.5em) minmax(0,1fr) auto;gap:4px 12px;padding:9px 0;border-top:1px dashed var(--rule);align-items:baseline;font-size:14px}
+.row .k{color:var(--ink-3);font-size:13px}
+.row .v small{display:block;color:var(--ink-3);font-size:12px;line-height:1.5}
+.qcheck{margin-top:12px;padding:12px;background:var(--paper);border:1px solid var(--rule);border-radius:3px}
+.qcheck-row{display:flex;gap:8px}
+.qcheck-row .inp{font-size:14px}
+.qtry{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:12px;color:var(--ink-3);align-items:center}
+.qtry .chip{font-size:12px;padding:1px 10px}
+.qres{margin-top:10px;font-size:13.5px;min-height:1.6em}
+.chart{width:100%;height:auto;display:block;margin:6px 0 4px}
+.chart .cv{font-family:var(--mono);font-size:10px;fill:var(--ink-2)}
+.chart .cm{font-family:var(--mono);font-size:9.5px;fill:var(--ink-3)}
+.stat-line{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:13px;margin:4px 0 6px}
+.stat-line b{font-family:var(--mono);font-size:18px;color:var(--red)}
+.topics{list-style:none;margin:0;padding:0}
+.topics li{padding:8px 0;border-top:1px dashed var(--rule);font-size:13.5px}
+.topic-bar{display:grid;grid-template-columns:minmax(0,1fr) 7em;gap:10px;align-items:center}
+.topic-bar .bar{height:8px;background:var(--paper-lo);border-radius:2px;overflow:hidden}
+.topic-bar .bar i{display:block;height:100%;background:var(--ink-2)}
+.topics q{display:block;font-size:12.5px;color:var(--ink-3);margin-top:2px;font-family:var(--kai);font-size:14px}
+.caveat{font-size:12px;color:var(--ink-3);margin:8px 0 6px}
+
+/* ---------- 04 新材料 ---------- */
+.materials{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:22px;align-items:start;margin-bottom:24px}
+.mat-label{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;color:var(--ink-3);margin-bottom:8px}
+.doc{background:#fffdf7;border:1px solid var(--rule);padding:20px 22px 22px;font-family:var(--serif);font-size:12.5px;line-height:1.8;color:#2e2a24;box-shadow:0 14px 30px -18px rgba(30,20,10,.5);transform:rotate(-.8deg);position:relative}
+.doc h4{text-align:center;font-size:15px;margin:0 0 10px;letter-spacing:.15em}
+.doc p{margin:0 0 4px}
+.doc .ln{display:block;height:7px;margin:7px 0;background:repeating-linear-gradient(90deg,#d9d2c3 0 70%,transparent 70% 100%);background-size:100% 1px;background-repeat:no-repeat;background-position:0 50%}
+.doc .seal{position:absolute;right:26px;bottom:18px;width:84px;height:84px;border:2.5px solid rgba(190,30,30,.75);border-radius:50%;display:grid;place-items:center;color:rgba(190,30,30,.8);font-size:10px;text-align:center;line-height:1.3;transform:rotate(-14deg)}
+.hlx{transition:background .6s}
+.compared .hlx{background:linear-gradient(transparent 52%,rgba(255,196,60,.6) 52%)}
+.phone{background:#f6f6f4;border:1px solid var(--rule);border-radius:18px;padding:16px 16px 20px;max-width:290px;box-shadow:0 14px 30px -18px rgba(30,20,10,.5);transform:rotate(1.2deg);font-size:13px}
+.phone-bar{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:#888;margin-bottom:14px}
+.phone h5{margin:0 0 12px;text-align:center;font-size:14px}
+.phone .amt{text-align:center;font-family:var(--mono);font-size:24px;font-weight:700;margin:6px 0 14px}
+.phone dl{margin:0;display:grid;grid-template-columns:5em 1fr;gap:6px 8px}
+.phone dt{color:#888} .phone dd{margin:0}
+.obs-wrap{margin:6px 0 26px}
+.obs{width:100%;border-collapse:collapse;font-size:13.5px}
+.obs th{text-align:left;font-weight:400;font-size:12px;color:var(--ink-3);border-bottom:1px solid var(--ink);padding:6px 8px}
+.obs td{padding:8px;border-bottom:1px dashed var(--rule);vertical-align:top}
+.obs tr{opacity:0;transform:translateX(-6px);transition:opacity .35s,transform .35s}
+.obs tr.in,.obs thead tr{opacity:1;transform:none}
+.obs .src{font-family:var(--mono);font-size:12px;color:var(--ink-3);white-space:nowrap}
+.ledger-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:8px 0 12px}
+.ledger-head h3{margin:0;font-family:var(--serif);font-weight:900;font-size:20px}
+.ledger{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.premise{position:relative;padding:16px 16px 14px;background:var(--paper-hi);border:1px solid var(--rule);border-radius:3px;min-height:220px;display:flex;flex-direction:column;overflow:hidden}
+.premise .pid{margin-bottom:4px}
+.premise h4{margin:0 0 4px;font-size:15.5px;line-height:1.45;padding-right:64px}
+.premise .was{font-size:12.5px;color:var(--ink-3)}
+.premise .now{margin-top:auto;padding-top:12px;border-top:1px dashed var(--rule);font-size:13.5px;opacity:0;transition:opacity .4s .25s}
+.premise.broken .now,.premise.partial .now{opacity:1}
+.premise.broken h4{text-decoration:line-through;text-decoration-color:rgba(179,38,30,.6);text-decoration-thickness:2px}
+.premise .ev{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.ev span{font-family:var(--mono);font-size:11px;color:var(--ink-2);background:var(--paper-lo);padding:0 6px;border-radius:2px}
+.state-ok{display:inline-block;margin-top:6px;font-size:12px;color:var(--green);border:1px solid var(--green);padding:0 6px;border-radius:2px}
+.stamp{position:absolute;top:14px;right:10px;font-family:var(--serif);font-weight:900;font-size:15px;letter-spacing:.08em;color:var(--sc,var(--red));border:3px double var(--sc,var(--red));padding:2px 9px;border-radius:3px;transform:rotate(-9deg);opacity:0;pointer-events:none;background:rgba(250,248,243,.6)}
+.stamp.on{animation:stamp .55s cubic-bezier(.2,1.5,.45,1) forwards}
+.stamp.amberc{--sc:var(--amber)}
+@keyframes stamp{0%{opacity:0;transform:rotate(-9deg) scale(2.1)}60%{opacity:.95}100%{opacity:.92;transform:rotate(-9deg) scale(1)}}
+.after{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;margin-top:18px}
+.hyp h4{margin:0 0 8px;font-family:var(--serif);font-size:16px}
+.hyp-row{display:grid;grid-template-columns:30px minmax(0,1fr);gap:2px 10px;padding:8px 0;border-top:1px dashed var(--rule);font-size:13.5px}
+.hyp-row .hid{font-family:var(--mono);font-weight:700}
+.hyp-row .weak{opacity:.55}
+.best-q{margin-top:10px;padding:12px 14px;background:var(--ink);color:var(--paper-hi);border-radius:3px;font-size:14px}
+.best-q .kicker{color:#bfb7a8}
+.best-q p{margin:4px 0 0;font-family:var(--serif);font-weight:700;font-size:15.5px}
+.best-q small{display:block;margin-top:6px;color:#cfc7b8;font-size:12.5px}
+.diff{display:grid;gap:10px;font-size:14px}
+.diff .v{padding:10px 12px;border-radius:3px}
+.diff .v1{background:var(--paper-lo);color:var(--ink-3)}
+.diff .v2{background:var(--red-bg);color:var(--ink)}
+.diff .vt{font-family:var(--mono);font-size:11.5px;font-weight:700;letter-spacing:.08em;display:block;margin-bottom:2px}
+.unchanged{font-size:13px;color:var(--ink-2)}
+.unchanged li{margin:2px 0}
+
+/* ---------- 05 追问 ---------- */
+.asks{display:flex;flex-direction:column;gap:18px}
+.ask-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;padding:0;overflow:hidden}
+.chat{padding:18px 20px;background:var(--paper);border-right:1px solid var(--rule);display:flex;flex-direction:column;gap:10px}
+.bubble{max-width:88%;padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.6;position:relative}
+.bubble.me{align-self:flex-end;background:var(--ink);color:var(--paper-hi);border-bottom-right-radius:3px}
+.bubble.them{align-self:flex-start;background:#fff;border:1px solid var(--rule);border-bottom-left-radius:3px}
+.who{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
+.who.r{align-self:flex-end}
+.dist{font-size:12px;color:var(--ink-3);align-self:flex-end}
+.typing{align-self:flex-start;display:flex;gap:4px;padding:12px 14px;background:#fff;border:1px solid var(--rule);border-radius:12px}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--ink-3);animation:dot 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s} .typing i:nth-child(3){animation-delay:.3s}
+@keyframes dot{0%,60%,100%{opacity:.25}30%{opacity:1}}
+.judge{position:relative;padding:18px 20px}
+.judge .stamp{top:16px;right:16px}
+.judge h4{margin:0 0 10px;font-family:var(--serif);font-size:15px;color:var(--ink-3);font-weight:700}
+.jrow{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;padding:6px 0;border-top:1px dashed var(--rule);font-size:13.5px}
+.jrow .k{color:var(--ink-3)}
+.jnext{margin-top:10px;font-weight:600;font-size:14px}
+.jnext::before{content:"下一步 → ";color:var(--red)}
+.judge .pending{color:var(--ink-3);font-size:13.5px;display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+.tryit{margin-top:22px}
+.tryit textarea{width:100%;min-height:84px;resize:vertical;background:#fff;border:1px solid var(--rule-2);border-radius:3px;padding:10px 12px;font-size:14px;line-height:1.6}
+.tryit textarea:focus{outline:2px solid var(--ink);outline-offset:0}
+.try-res{margin-top:12px;font-size:14px}
+.try-res .box{padding:12px 14px;border-radius:3px;background:var(--bg);border-left:4px solid var(--c)}
+
+/* ---------- 06 给家人 ---------- */
+.tabs{display:inline-flex;border:1px solid var(--ink);border-radius:3px;overflow:hidden;margin-bottom:18px}
+.tab{background:transparent;border:0;padding:7px 18px;font-size:14px}
+.tab[aria-selected="true"]{background:var(--ink);color:var(--paper-hi)}
+.letter-wrap{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:24px;align-items:start}
+.letter{--lf:24px;--lh:calc(var(--lf) * 1.8);font-family:var(--kai);font-size:var(--lf);line-height:var(--lh);color:#221d17;background-color:#fffcf3;background-image:repeating-linear-gradient(transparent 0 calc(var(--lh) - 1px),rgba(179,38,30,.16) calc(var(--lh) - 1px) var(--lh));background-position:0 34px;padding:34px 44px 40px;border:1px solid var(--rule);box-shadow:0 22px 44px -26px rgba(25,15,5,.55)}
+.letter h3{font-size:1.18em;margin:0;line-height:var(--lh);font-weight:700}
+.letter p{margin:0}
+.letter ol{margin:0;padding-left:1.4em}
+.letter li strong{font-weight:700}
+.letter .sub{display:block;color:#5b5246;font-size:.86em}
+.letter .sign{text-align:right;margin-top:0}
+.letter-side{display:flex;flex-direction:column;gap:10px;position:sticky;top:calc(var(--top-h) + 18px)}
+.letter-side .btn{justify-content:center}
+.fs{display:flex;gap:8px}
+.fs .btn{flex:1}
+.slip{background:#fff;border:1px solid var(--ink);padding:22px 24px;max-width:620px;font-size:14px;position:relative}
+.slip-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:6px}
+.slip-head b{font-family:var(--serif);font-size:18px;font-weight:900}
+.slip-row{display:grid;grid-template-columns:7em minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px dashed var(--rule)}
+.slip-row .k{color:var(--ink-3);font-size:13px}
+.script{margin-top:14px;padding:12px 14px;border:1.5px solid var(--ink);font-family:var(--kai);font-size:18px;line-height:1.7}
+.script small{display:block;font-family:var(--sans);font-size:12px;color:var(--ink-3)}
+.slip-note{margin-top:12px;font-size:12px;color:var(--ink-3);border-top:1px dashed var(--ink-3);padding-top:8px}
+
+/* ---------- 浮层 ---------- */
+.pop{position:fixed;z-index:80;max-width:340px;background:var(--ink);color:var(--paper-hi);padding:14px 16px 12px;border-radius:5px;font-size:13.5px;line-height:1.6;box-shadow:0 18px 40px -16px rgba(0,0,0,.6)}
+.pop h5{margin:0 0 6px;font-family:var(--serif);font-size:16px}
+.pop dl{margin:0;display:grid;gap:6px}
+.pop dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;color:#b9b1a2}
+.pop dd{margin:0}
+.pop .x{position:absolute;top:6px;right:8px;background:none;border:0;color:#b9b1a2;font-size:18px;line-height:1;padding:4px}
+.scrim{position:fixed;inset:0;background:rgba(20,16,10,.28);z-index:58;opacity:0;pointer-events:none;transition:opacity .25s}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);background:var(--paper-hi);border-left:3px double var(--ink);z-index:60;transform:translateX(101%);transition:transform .3s ease;display:flex;flex-direction:column}
+.drawer.open{transform:none}
+.dr-head{padding:16px 20px 12px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.dr-head h3{margin:2px 0 0;font-family:var(--serif);font-weight:900;font-size:19px}
+.dr-ctx{font-size:12.5px;color:var(--ink-3);margin-top:4px}
+.dr-ctx code{font-family:var(--mono);background:var(--paper-lo);padding:0 5px;border-radius:2px;color:var(--ink-2)}
+.dr-body{flex:1;overflow:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.dr-q{align-self:flex-end;background:var(--ink);color:var(--paper-hi);padding:7px 12px;border-radius:10px 10px 3px 10px;font-size:14px;max-width:85%}
+.dr-a{background:var(--paper);border:1px solid var(--rule);padding:12px 14px;border-radius:3px;font-size:14px;white-space:pre-line}
+.cites{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;white-space:normal}
+.cites span{font-family:var(--mono);font-size:11px;background:var(--paper-lo);border:1px solid var(--rule);padding:0 6px;border-radius:2px;color:var(--ink-2)}
+.cites span::before{content:"⌖ "}
+.dr-sugs{display:flex;flex-wrap:wrap;gap:6px;padding:10px 20px;border-top:1px solid var(--rule)}
+.dr-sugs .chip{font-size:12.5px;padding:3px 11px}
+.dr-input{display:flex;gap:8px;padding:12px 20px 18px}
+.dr-input .inp{font-size:14px}
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--ink);color:var(--paper-hi);padding:10px 18px;border-radius:3px;font-size:14px;z-index:90;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;max-width:calc(100vw - 32px)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.foot{margin-top:56px;padding-top:14px;border-top:3px double var(--ink);font-size:12px;color:var(--ink-3);line-height:1.7}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:1180px){
+  .xray-wrap{grid-template-columns:minmax(0,1fr)}
+  .frame-col{position:static;max-width:430px;width:100%;margin:0 auto}
+  .ledger{grid-template-columns:minmax(0,1fr)}
+  .premise{min-height:0}
+  .after{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr);grid-template-areas:"top" "nav" "main"}
+  .topbar{padding:10px 16px;gap:12px}
+  .case-strip{display:none}
+  .stepper{position:sticky;top:var(--top-h);z-index:30;height:auto;flex-direction:row;overflow-x:auto;padding:6px 10px;background:var(--paper);border-bottom:1px solid var(--rule);scrollbar-width:none}
+  .stepper::-webkit-scrollbar{display:none}
+  .step-btn{border-left:0;border-bottom:2px solid transparent;flex:0 0 auto;grid-template-columns:auto auto;padding:6px 10px;align-items:baseline}
+  .step-btn .no{grid-row:auto;padding:0}
+  .step-btn.done .no::after{display:inline;margin-left:2px}
+  .step-btn .s,.kbd-hint{display:none}
+  .step-btn[aria-current="step"]{border-bottom-color:var(--ink);background:transparent}
+  main{padding:22px 16px 90px}
+  .case-grid,.signals,.materials,.letter-wrap{grid-template-columns:minmax(0,1fr)}
+  .ask-card{grid-template-columns:minmax(0,1fr)}
+  .chat{border-right:0;border-bottom:1px solid var(--rule)}
+  .letter-side{position:static;flex-direction:row;flex-wrap:wrap}
+  .letter-side .btn{flex:1 1 auto}
+  .letter{padding:24px 20px 28px}
+  .doc,.phone{transform:none}
+}
+@media (max-width:560px){
+  .field{grid-template-columns:minmax(0,1fr);gap:6px}
+  .row{grid-template-columns:minmax(0,1fr) auto}
+  .row .k{grid-column:1 / -1}
+  .checks li{grid-template-columns:18px minmax(0,1fr)}
+  .checks li .ck-res{grid-column:2}
+  .jrow{grid-template-columns:minmax(0,1fr)}
+  .slip-row{grid-template-columns:minmax(0,1fr);gap:2px}
+  .obs thead{display:none}
+  .obs,.obs tbody,.obs tr,.obs td{display:block;width:100%}
+  .obs tr{padding:8px 0;border-bottom:1px dashed var(--rule)}
+  .obs td{border:0;padding:1px 0}
+  .demo-badge{font-size:11px;padding:1px 6px}
+  .brand-text span{display:none}
+  .pop{left:12px!important;right:12px;top:auto!important;bottom:12px;max-width:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+@media print{
+  body{background:#fff}
+  .topbar,.stepper,.letter-side,.tabs,.sec-head,.foot,.actions,.toast,.drawer,.scrim{display:none!important}
+  .app{display:block}
+  main{padding:0}
+  .letter{box-shadow:none;border:0}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topbar" id="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1" y="1" width="30" height="30" rx="3" fill="#0a1520"/>
+        <path d="M16 5.5v21M10.5 10c2.8 1.5 8.2 1.5 11 0M9 14.6c3.3 1.7 10.7 1.7 14 0M10 19.2c3 1.5 9 1.5 12 0" stroke="#c4f0ff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <path d="M3 24h26" stroke="#ff7d6e" stroke-width="1.2" opacity=".9"/>
+      </svg>
+      <div class="brand-text"><b>X-Ray</b><span>透视·真相</span></div>
+    </div>
+    <div class="case-strip" id="caseStrip" aria-label="当前案卷"></div>
+    <span class="demo-badge" title="本页所有公司、人物、投诉均为虚构，仅用于演示">演示数据 · 虚构主体</span>
+  </header>
+
+  <nav class="stepper" id="stepper" aria-label="演示步骤"></nav>
+
+  <main id="main">
+    <!-- 01 建案卷 -->
+    <section class="step" data-step="0" aria-labelledby="h0">
+      <div class="sec-head">
+        <div class="kicker">01 · 建案卷</div>
+        <h1 class="sec-title" id="h0">你不是在查一家公司，<br>你是在替家人把关一笔钱。</h1>
+        <p class="lede">只问会改变分析的问题。不画用户画像，不保存推断。</p>
+      </div>
+      <div class="case-grid">
+        <div class="card">
+          <div class="field">
+            <span class="lab">我在帮</span>
+            <div class="chips" id="whoChips" role="group" aria-label="在帮谁看"></div>
+          </div>
+          <div class="field">
+            <span class="lab"><span class="pron">她</span>打算</span>
+            <div class="chips" id="actChips" role="group" aria-label="打算做什么">
+              <button type="button" class="chip" aria-pressed="true">把钱交给一家公司（理财 / 投资）</button>
+              <button type="button" class="chip dim" data-soon aria-pressed="false">预付消费</button>
+              <button type="button" class="chip dim" data-soon aria-pressed="false">借钱给公司</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="fCo">哪家公司</label>
+            <input class="inp" id="fCo" readonly>
+          </div>
+          <div class="field">
+            <label for="fAmt">金额（元）</label>
+            <div class="amt-row"><input class="inp" id="fAmt" type="number" min="1000" step="10000" inputmode="numeric"><span class="muted small" id="fAmtWan"></span></div>
+          </div>
+          <div class="field">
+            <label for="fConcern"><span class="pron">她</span>最在意</label>
+            <input class="inp" id="fConcern">
+          </div>
+          <div class="field">
+            <span class="lab">手上的材料</span>
+            <div class="attach">
+              <div class="mini-flyer" aria-hidden="true">保本<br>保息</div>
+              <div><div>宣传单 1 张</div><div class="small muted">示例材料 · 已附加</div></div>
+            </div>
+          </div>
+        </div>
+        <aside class="card">
+          <h2 class="card-title">这次判断，建立在三个前提上</h2>
+          <ul class="premise-list" id="premiseIntro"></ul>
+          <p class="note">新材料来了，X-Ray 会逐条检查这些前提还成不成立——不重写报告，只说哪里变了。</p>
+        </aside>
+      </div>
+      <div class="actions"><button class="btn" data-go="1">开始透视 →</button></div>
+    </section>
+
+    <!-- 02 透视 -->
+    <section class="step" data-step="1" aria-labelledby="h1" hidden>
+      <div class="sec-head">
+        <div class="kicker">02 · 透视宣传单</div>
+        <h1 class="sec-title" id="h1">宣传是皮肤，记录是骨骼。</h1>
+        <p class="lede">把宣传单上的每一句话，拿去和官方记录逐条对照。拖动扫描线，可以来回对比两层。</p>
+      </div>
+      <div class="xray-wrap">
+        <div class="frame-col">
+          <div class="frame" id="frame" data-y="0">
+            <div class="layer skin" id="skin" aria-hidden="true"></div>
+            <div class="layer film" id="film" aria-hidden="true"></div>
+            <div class="scanline"><button type="button" class="handle" id="handle" role="slider" aria-label="扫描线位置" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">⇕</button></div>
+          </div>
+          <div class="frame-ctl"><span>扫描线以上是<b style="color:var(--ink)">记录</b>，以下是<b style="color:var(--red)">宣传</b>。拖动 ⇕ 对比</span><button type="button" class="linkish" id="rescan">重新扫描</button></div>
+        </div>
+        <div>
+          <div class="tally" id="tally" hidden></div>
+          <div class="claims" id="claims"></div>
+          <blockquote class="verdict-quote" id="vquote" hidden>我们不说它是非法集资——那要由司法机关认定。<br>我们只说：它在做的事，需要一张它没有的许可证。<small>X-Ray 只陈述可查的记录与材料之间的差异。</small></blockquote>
+        </div>
+      </div>
+      <div class="actions"><button class="btn" data-go="2">看四个信号 →</button><button class="btn ghost" data-go="0">← 返回</button></div>
+    </section>
+
+    <!-- 03 信号 -->
+    <section class="step" data-step="2" aria-labelledby="h2" hidden>
+      <div class="sec-head">
+        <div class="kicker">03 · 四个信号</div>
+        <h1 class="sec-title" id="h2">财务 · 信用 · 风险 · 口碑</h1>
+        <p class="lede">把散在各处的线索归进四个信号。每一条都标来源；没查的地方，也明说没查。</p>
+      </div>
+      <div class="legend">
+        <span><span class="st red">✕ 有问题</span></span>
+        <span><span class="st amber">! 要留意</span></span>
+        <span><span class="st green">✓ 查过 · 没有</span></span>
+        <span><span class="st none">没查 · 不代表没有</span></span>
+        <span class="mono">数据快照 2026-10-01（演示）</span>
+      </div>
+      <div class="signals" id="signals"></div>
+      <div class="actions"><button class="btn" data-go="3">妈妈又发来两张照片 →</button><button class="btn ghost" data-go="1">← 返回</button></div>
+    </section>
+
+    <!-- 04 新材料 -->
+    <section class="step" data-step="3" aria-labelledby="h3" hidden>
+      <div class="sec-head">
+        <div class="kicker">04 · 新材料</div>
+        <h1 class="sec-title" id="h3">公司没变，<br>但你要签的、要付的，变了。</h1>
+        <p class="lede"><span class="who-name">妈妈</span>又发来一份合同和一张转账截图。X-Ray 不重写报告，只回答一件事：新材料让哪些判断不再成立。</p>
+      </div>
+      <div id="update"></div>
+      <div class="actions"><button class="btn" data-go="4">替你追问 →</button><button class="btn ghost" data-go="2">← 返回</button></div>
+    </section>
+
+    <!-- 05 追问 -->
+    <section class="step" data-step="4" aria-labelledby="h4" hidden>
+      <div class="sec-head">
+        <div class="kicker">05 · 替你追问</div>
+        <h1 class="sec-title" id="h4">问一个能查的问题，<br>再看对方有没有正面回答。</h1>
+        <p class="lede">每个问题都对准一个疑点，能把"正常"和"有问题"两种情况分开。对方答非所问，本身就是信号。</p>
+      </div>
+      <div class="actions" style="margin:-6px 0 18px"><button class="btn sm" id="playAll">播放全部回复</button></div>
+      <div class="asks" id="asks"></div>
+      <div class="card tryit">
+        <h2 class="card-title">试试你自己收到的回复</h2>
+        <p class="small muted" style="margin:-4px 0 10px">针对第 1 个问题（要编号）。演示版用规则判断；正式版由大模型判断"回答是否切题"，规则兜底。</p>
+        <label class="sr" for="tryText">对方的回复</label>
+        <textarea id="tryText" placeholder="把对方的回复粘贴到这里，比如：我们是国企合作单位，政府都支持的，您放心……"></textarea>
+        <div class="actions" style="margin-top:10px"><button class="btn sm" id="tryBtn">X-Ray 判一判</button><button class="linkish" id="tryFill">换一个示例</button></div>
+        <div class="try-res" id="tryRes" aria-live="polite"></div>
+      </div>
+      <div class="actions"><button class="btn" data-go="5">生成给家人的一页 →</button><button class="btn ghost" data-go="3">← 返回</button></div>
+    </section>
+
+    <!-- 06 给家人 -->
+    <section class="step" data-step="5" aria-labelledby="h5" hidden>
+      <div class="sec-head">
+        <div class="kicker" id="k5">06 · 给妈妈的一页</div>
+        <h1 class="sec-title" id="h5">看得懂的，才算看清。</h1>
+        <p class="lede">同一份核验结果，换成长辈听得进去的话：不用术语，不说"诈骗"，只说要先弄清的事和下一步怎么做。也有给银行柜员的版本。</p>
+      </div>
+      <div class="tabs" role="tablist" aria-label="版本">
+        <button class="tab" role="tab" id="tabFamily" aria-selected="true" aria-controls="paneFamily">给家人 · 家庭群</button>
+        <button class="tab" role="tab" id="tabTeller" aria-selected="false" aria-controls="paneTeller">给银行柜员 · 网点版</button>
+      </div>
+      <div id="paneFamily" role="tabpanel" aria-labelledby="tabFamily">
+        <div class="letter-wrap">
+          <article class="letter" id="letter"></article>
+          <div class="letter-side">
+            <button class="btn" id="copyLetter">复制，发到家庭群</button>
+            <button class="btn ghost" id="speak">▶ 读给妈听</button>
+            <div class="fs"><button class="btn ghost sm" id="fsDown" aria-label="字号减小">A−</button><button class="btn ghost sm" id="fsUp" aria-label="字号增大">A+</button></div>
+            <button class="btn ghost sm" id="printLetter">打印</button>
+            <p class="small muted" style="margin:4px 0 0">每句话都来自前面的核验结果，没有一句是额外生成的结论。</p>
+          </div>
+        </div>
+      </div>
+      <div id="paneTeller" role="tabpanel" aria-labelledby="tabTeller" hidden>
+        <div class="slip" id="slip"></div>
+        <p class="small muted" style="max-width:620px">银行网点本来就要对大额转出做风险提示。柜员只有几十秒，这张单子把核验结果压缩成一页，可以直接打印给客户带回家。</p>
+      </div>
+      <div class="actions"><button class="btn ghost" data-go="0">↺ 从头演示</button><button class="btn ghost" data-go="4">← 返回</button></div>
+    </section>
+
+    <footer class="foot">
+      X-Ray 只陈述可查的记录、以及材料之间的差异；不认定违法，不提供投资建议。<br>
+      演示数据中的公司、人物、投诉、合同均为虚构；名单与记录为演示快照，正式版接入监管与公示系统公布的数据并标注获取时间。
+    </footer>
+  </main>
+</div>
+
+<div class="pop" id="pop" role="dialog" aria-modal="false" hidden></div>
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="问 X-Ray" aria-hidden="true">
+  <div class="dr-head">
+    <div><div class="kicker">问 X-Ray</div><h3 id="drTitle"></h3><div class="dr-ctx" id="drCtx"></div></div>
+    <button class="linkish" id="drClose" aria-label="关闭">关闭 ✕</button>
+  </div>
+  <div class="dr-body" id="drBody" aria-live="polite"></div>
+  <div class="dr-sugs" id="drSugs"></div>
+  <form class="dr-input" id="drForm"><label class="sr" for="drInput">提问</label><input class="inp" id="drInput" placeholder="问点别的……"><button class="btn sm">问</button></form>
+</aside>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ============================================================
+   演示数据。结构按 6 个对象组织：Case / Document / Observation /
+   Assertion / Finding / Question。接后端时替换这一段即可。
+   ============================================================ */
+const SNAP = '2026-10-01';
+const REF_RATE = 0.011; // 演示参数：一年期定期存款参考利率
+const PENALTY = 0.20;   // 合同第七条：未满 12 个月退出扣本金比例
+const PROMISED = 0.09;
+
+const WHO = {
+  '妈妈': {call:'妈', pron:'她', name:'妈妈', sign:'你的孩子'},
+  '爸爸': {call:'爸', pron:'他', name:'爸爸', sign:'你的孩子'},
+  '朋友': {call:'', pron:'TA', name:'朋友', sign:'你的朋友'},
+  '自己': {call:'', pron:'你', name:'自己', sign:'', self:true},
+};
+
+const state = {
+  step: 0, maxStep: 0,
+  forWhom: '妈妈', amount: 200000, concern: '急用的时候，能不能随时拿回来',
+  scanned: false, compared: false, clarified: false, version: 'v1',
+  replies: [false, false, false], lf: 24,
+};
+
+const CO = {
+  hz: {
+    name: '杭州满盈禾康养健康咨询有限公司', short: '满盈禾', code: '91330106MA2H******',
+    status: '存续', founded: '2025-02-18', regCap: 50000000, paid: 0, due: '2030-01-31',
+    scope: '健康管理咨询（不含诊疗服务）；养老服务；日用百货销售；会议及展览服务',
+    holders: [['张某明', '自然人', 70], ['李某华', '自然人', 30]], insured: 4, branches: 0,
+  },
+  sz: {
+    name: '深圳前海满盈禾资产管理有限公司', status: '存续', founded: '2024-11-06',
+    holders: [['张某明', '自然人', 40], ['王某', '自然人', 60]],
+  },
+};
+
+// 演示快照：仅收录部分持牌机构，正式版接入监管公布的完整名单
+const LICENSED = ['杭州银行股份有限公司','中国工商银行股份有限公司','中国农业银行股份有限公司','中国银行股份有限公司','中国建设银行股份有限公司','交通银行股份有限公司','中国邮政储蓄银行股份有限公司','招商银行股份有限公司','浙商银行股份有限公司','宁波银行股份有限公司'];
+
+const VERDICT = {
+  mismatch:     {label:'与记录不符', cls:'red',   icon:'✕'},
+  redline:      {label:'不合规承诺', cls:'red',   icon:'!'},
+  misleading:   {label:'说法有误导', cls:'amber', icon:'≈'},
+  unverifiable: {label:'无法核验',   cls:'grey',  icon:'?'},
+  missing:      {label:'该有的没有', cls:'amber', icon:'∅'},
+};
+const CK = {bad:{cls:'red',icon:'✕'}, warn:{cls:'amber',icon:'!'}, ok:{cls:'green',icon:'✓'}, miss:{cls:'grey',icon:'∅'}};
+
+const ratio = () => (PROMISED / REF_RATE).toFixed(1);
+const pct = n => (n * 100).toFixed(1).replace(/\.0$/, '') + '%';
+const yuan = n => '¥' + Math.round(n).toLocaleString('zh-CN');
+const yuanCN = n => Math.round(n).toLocaleString('zh-CN') + ' 元';
+const wan = n => { const v = n / 10000; return (Number.isInteger(v) ? v : v.toFixed(1).replace(/\.0$/, '')) + ' 万'; };
+const T = (term, label) => `<button type="button" class="term" data-term="${term}">${label || term}</button>`;
+
+// Assertion：公司或销售的宣称，以及逐条核验
+const ASSERTIONS = [
+  {id:'A1', text:'正规理财 · 安全稳健', kind:'资格', verdict:'mismatch',
+   plain:()=>`查不到它有卖理财的资格。`,
+   checks:()=>[
+     ['银行业金融机构法人名单', '未收录', 'bad'],
+     [`中基协 · ${T('私募基金管理人登记')}`, '未登记', 'bad'],
+     [T('理财产品登记编码'), '宣传单上没有', 'miss'],
+     [`${T('经营范围')}（公示系统）`, '健康管理咨询；养老服务；日用百货销售……不含任何金融业务', 'bad'],
+   ],
+   qa:[
+     {q:'为什么这是问题？', a:'向大众卖理财、收了钱再给回报，属于金融业务，需要金融监管部门的许可或备案。\n我们查了三处——银行业金融机构名单、中基协私募登记、理财登记编码——都没有它；它的经营范围里也没有金融业务。\n所以我们的意思不是"它一定会出事"，而是：它在做一件需要执照的事，却拿不出执照。', cites:['银行业金融机构法人名单 · 快照','中基协私募管理人公示 · 快照','公示系统 · 经营范围']},
+     {q:'会不会是你们的数据没更新？', a:'有可能。演示数据是 2026-10-01 的快照，我们也会出错。\n所以我们给你的不是结论，而是一个问题：请对方直接报出许可证编号或产品登记编码。有编号就能查——查到了，说明我们错了。', cites:['数据快照 2026-10-01']},
+   ]},
+  {id:'A2', text:'保本保息 · 年化 9%', kind:'收益承诺', verdict:'redline',
+   plain:()=>`正规理财不允许承诺${T('保本')}；9% 约为定存的 ${ratio()} 倍。`,
+   checks:()=>[
+     ['承诺"保本保息"', '资管新规后，资产管理产品不得承诺保本保收益', 'bad'],
+     ['收益对比（演示参数）', `9% ÷ 一年期定存 ${pct(REF_RATE)} ≈ ${ratio()} 倍`, 'warn'],
+   ],
+   qa:[
+     {q:'年化 9% 到底高不高？', a:()=>`按演示参数，一年期定期存款约 ${pct(REF_RATE)}，9% 是它的约 ${ratio()} 倍。\n${wan(state.amount)}存一年定期，利息约 ${yuanCN(state.amount*REF_RATE)}；按 9% 算是 ${yuanCN(state.amount*PROMISED)}。多出来的钱从哪来，是第一个要问的问题。`, cites:['宣传单 · 标题区','演示参数 · 定存利率']},
+     {q:'高收益就一定有问题吗？', a:'不一定。高收益本身不违法，风险高的投资，收益本来就可能高。\n问题在于它同时说"保本"。高收益和保本放在一起，正规机构不会这样承诺。', cites:['宣传单 · 标题区']},
+   ]},
+  {id:'A3', text:'某大型银行 · 资金存管', kind:'合作机构', verdict:'unverifiable',
+   plain:()=>`没写是哪家银行、没给协议，无法核验；而且${T('资金存管')}不等于担保。`,
+   checks:()=>[
+     ['存管银行名称', '宣传单未写明', 'miss'],
+     ['存管协议', '未提供', 'miss'],
+   ],
+   qa:[
+     {q:'有银行存管，不就安全了吗？', a:'存管的意思是：银行帮它"保管"资金账户，按指令划钱。银行不审核项目好不好，也不保证你的钱能拿回来。\n而且它连是哪家银行都没写，我们没法核验。可以直接问：存管银行是哪家？能给存管协议吗？', cites:['宣传单 · 右中区']},
+   ]},
+  {id:'A4', text:'国资背景', kind:'背景', verdict:'mismatch',
+   plain:()=>`两个股东都是自然人，没有任何国有持股。`,
+   checks:()=>[
+     ['股东（公示系统）', '张某明 70%、李某华 30%，均为自然人', 'bad'],
+     ['股权穿透', '无国有企业或政府机构持股', 'bad'],
+   ],
+   qa:[
+     {q:'"国资背景"怎么查？', a:'看股东是谁。这家公司只有两个股东：张某明（70%）和李某华（30%），都是个人，没有任何国有企业或政府机构持股。\n宣传里的"国资背景"，在记录里找不到依据。', cites:['公示系统 · 股东信息']},
+   ]},
+  {id:'A5', text:'注册资本 5000 万 · 实力雄厚', kind:'规模', verdict:'misleading',
+   plain:()=>`5000 万是"承诺"，${T('实缴资本','实际交了')} 0 元。`,
+   checks:()=>[
+     [`${T('注册资本')}（${T('认缴')}）`, '¥5,000 万，认缴期限 2030-01-31', 'ok'],
+     [`${T('实缴资本')}（2025 年报）`, '¥0（企业自行填报，未经审计）', 'bad'],
+   ],
+   qa:[
+     {q:'注册资本 5000 万不算有实力吗？', a:'注册资本是股东"承诺"要投的钱，实缴才是已经投进去的真金白银。它实缴 0 元，承诺 2030 年前缴足。\n按现行公司法，这本身不违法——但"实力雄厚"无从谈起。', cites:['公示系统 · 登记信息','2025 年度报告']},
+   ]},
+  {id:'A6', text:'全国 30 家门店 · 10 万会员', kind:'规模', verdict:'misleading',
+   plain:()=>`年报里只有 4 人${T('参保人数','参保')}，登记的分支机构 0 家。`,
+   checks:()=>[
+     [`${T('参保人数')}（2025 年报）`, '4 人', 'warn'],
+     ['分支机构（公示系统）', '0 家', 'warn'],
+     ['会员数', '无公开来源，无法核验', 'miss'],
+   ],
+   qa:[
+     {q:'参保 4 人能说明什么？', a:'30 家门店，通常意味着几十上百个员工。年报里交社保的只有 4 人，登记的分支机构 0 家，和宣传的规模对不上。\n注意：从业人数是企业可以选择不公示的。这家公司选择了公示，所以我们才看得到。', cites:['2025 年度报告 · 社保信息','公示系统 · 分支机构']},
+   ]},
+];
+const MISSING = {id:'M1', text:'理财非存款、产品有风险、投资须谨慎', verdict:'missing',
+  plain:'正规银行理财的销售材料，按规定都要印这句话。这张宣传单上没有——当然，它本来也不是银行理财。'};
+
+// 宣传单与透视片的区域坐标（%）
+const ZONES = [
+  {id:'H', top:0, left:0, w:100, h:12,
+   skin:`<div class="sk-head"><div class="sk-logo"><b>满盈禾</b><span>康养 · 财富</span></div><div class="sk-slogan">颐养天年<br>财富无忧</div></div>`,
+   film:()=>`<div class="fz-head"><span>XR-0001 · 快照 ${SNAP}</span><span>${CO.hz.code}</span></div><div class="fz-main" style="font-size:3.4cqw">${CO.hz.name}</div>`},
+  {id:'A2', top:13, left:4, w:92, h:24,
+   skin:`<div class="sk-big">保本保息</div><div class="sk-burst"><small>年化</small><b>9%</b></div><div class="sk-sub">到期还本付息 · 稳稳的幸福</div>`,
+   film:()=>`<div class="fz-id">A2 · 收益承诺</div><div class="fz-main" style="font-size:5cqw"><mark class="r">保本保息</mark> → 不合规承诺</div><div class="fz-sub">资管新规：不得承诺保本保收益</div><div class="fz-main">9% ≈ 定存 ×<mark class="a">${ratio()}</mark></div>`},
+  {id:'A1', top:38, left:4, w:92, h:8,
+   skin:`<div class="sk-ribbon">正规理财 · 安全稳健</div>`,
+   film:()=>`<div class="fz-id">A1 · 资格</div><div class="fz-main">金融许可 <mark class="r">✕</mark>　私募登记 <mark class="r">✕</mark>　登记编码 <mark class="a">∅</mark></div>`},
+  {id:'A4', top:48, left:4, w:44, h:16,
+   skin:`<div class="sk-seal"><span>国资<br>背景</span></div>`,
+   film:()=>`<div class="fz-id">A4 · 背景</div><div class="fz-main">股东 2 人<br><mark class="r">均为自然人</mark></div><div class="fz-sub">国有持股 0%</div>`},
+  {id:'A3', top:48, left:52, w:44, h:16,
+   skin:`<div class="sk-bank"><svg viewBox="0 0 24 24" fill="none" stroke="#ffe08a" stroke-width="1.6"><path d="M12 2.5l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10v-6l8-3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg><div>某大型银行<br><b>资金存管</b></div></div>`,
+   film:()=>`<div class="fz-id">A3 · 合作机构</div><div class="fz-main">存管协议<br><mark class="g">未提供</mark></div><div class="fz-sub">存管 ≠ 担保</div>`},
+  {id:'A5', top:66, left:4, w:92, h:9,
+   skin:`<div class="sk-line"><span>注册资本<b>5000</b>万 · 实力雄厚</span></div>`,
+   film:()=>`<div class="fz-id">A5 · 规模</div><div class="fz-main">实缴 <mark class="a">¥0</mark> ／ 认缴 ¥5000万</div>`},
+  {id:'A6', top:76, left:4, w:92, h:9,
+   skin:`<div class="sk-line"><span>全国<b>30</b>家门店 · <b>10</b>万会员的信赖</span></div>`,
+   film:()=>`<div class="fz-id">A6 · 规模</div><div class="fz-main">参保 <mark class="a">4</mark> 人 · 分支机构 <mark class="a">0</mark></div>`},
+  {id:'M1', top:87, left:0, w:100, h:13,
+   skin:`<div class="sk-foot"><span class="sk-urgent">名额有限 · 先到先得</span><span>咨询热线 400-***-****　地址：杭州市某区某路 88 号</span></div>`,
+   film:()=>`<div class="fz-id">M1 · 该有的没有</div><div class="fz-foot">风险提示语「理财非存款、产品有风险、投资须谨慎」 <mark class="a">∅ 未出现</mark></div>`},
+];
+
+const COMPLAINTS = {
+  months:['25-10','25-11','25-12','26-01','26-02','26-03','26-04','26-05','26-06','26-07','26-08','26-09'],
+  counts:[0,1,0,1,1,1,2,1,3,4,6,7],
+  topics:[
+    {name:'到期不兑付 / 提现困难', n:15, quote:'到期三个月了，一直说钱在走流程。'},
+    {name:'联系不上业务员', n:6, quote:'业务员换了三个，现在电话都打不通。'},
+    {name:'宣传和合同不一致', n:4, quote:'说好的保本，合同里根本没写。'},
+    {name:'其他', n:2, quote:'送的体检卡，去了说不能用。'},
+  ],
+};
+
+// Observation：从新材料里读出来的值（读取 ≠ 核验）
+const OBS = () => [
+  {src:'合同 · 第1页', field:'甲方（管理人）', value:CO.sz.name, st:['已核验：确有此公司，与杭州公司无持股关系','amber'], flag:'≠ 你查的杭州公司'},
+  {src:'合同 · 第1页', field:'产品名称', value:'满盈禾·颐养收益权转让计划', st:['已读取','grey']},
+  {src:'合同 · 第3条', field:'收益条款', value:'预期年化收益率 9%（全文无保本条款）', st:['已读取','grey'], flag:'宣传写的是"保本"'},
+  {src:'合同 · 第7条', field:'提前退出', value:`持有未满 12 个月退出，扣除本金 20% 作为${T('违约金')}`, st:['已读取','grey'], flag:`= ${yuan(state.amount*PENALTY)}`},
+  {src:'合同 · 末页', field:'签章', value:`${CO.sz.name} 合同专用章`, st:['已读取 · 未验真伪','grey']},
+  {src:'转账截图', field:'收款户名', value:'张*明（个人账户，尾号 3381）', st:['已读取 · 截图真伪未验','grey'], flag:'个人'},
+  {src:'转账截图', field:'金额', value:yuan(state.amount)+'.00', st:['已读取','grey']},
+];
+
+// Finding 的前提账本
+const PREMISES = () => {
+  const w = WHO[state.forWhom];
+  return [
+    {id:'P1', text:'钱交给你查过的那家公司', was:`来自：宣传单 · ${CO.hz.name}`,
+     stamp:'主体变了', body:`合同甲方是「${CO.sz.name}」——名字很像，但是另一家公司。之前对杭州公司的核验，不能直接套用到这份合同上。`, ev:['合同 · 第1页 · 甲方','合同 · 末页 · 签章']},
+    {id:'P2', text:'钱进入公司的对公账户', was:'来自：宣传单「银行存管」',
+     stamp:'收款是个人', body:'转账截图上的收款户名是「张*明」，个人账户，尾号 3381。', ev:['转账截图 · 收款户名'],
+     clarified:{stamp:'部分澄清', body:'对方补交了一份加盖公章的收款授权书（真伪未核验）。"钱被个人截留"的可能性下降；但钱仍然进个人卡，出了事仍难追责。建议仍坚持对公转账。', ev:['授权书 · 新上传','转账截图 · 收款户名']}},
+    {id:'P3', text:'急用的时候，可以随时拿回来', was:`来自：${w.self ? '你' : w.pron}最在意的事（第 1 步）`,
+     stamp:'取钱要扣钱', body:`合同第七条：持有未满 12 个月退出，扣除本金 20% 作违约金——按 ${wan(state.amount)}算，是 ${yuan(state.amount*PENALTY)}。`, ev:['合同 · 第7条']},
+  ];
+};
+
+// Question：替你追问
+const ASKS = [
+  {q:'请提供贵公司的金融许可证编号，或这个产品在中国理财网的登记编码。', dist:'能区分：有资格 ／ 没资格',
+   reply:'阿姨您放心，我们和某大银行是战略合作伙伴，资金都在银行存管，很多老客户都投了好几年了。',
+   stamp:'答非所问', cls:'red',
+   rows:[['你问的是','一个可以拿去查的编号'],['对方回答的是','合作关系、资金存管、别的客户'],['问题在哪','这些都不是编号，也没法核验。而且"银行存管"不等于银行担保。']],
+   next:'再问一次，只要编号。正规机构可以直接给出。'},
+  {q:'合同上的甲方，为什么是深圳的另一家公司？两家是什么关系？', dist:'能区分：同一集团 ／ 换了主体',
+   reply:'深圳那个是我们集团总部，都是一家的，您放心。',
+   stamp:'与记录不符', cls:'red',
+   rows:[['对方说','"集团总部，都是一家的"'],['记录显示','两家公司之间没有持股关系，只是都有一位叫张某明的股东'],['问题在哪','"一家的"在记录里找不到支撑。出了事，到底谁来还钱？']],
+   next:'请对方写明由哪家公司承担还款责任，并写进合同。'},
+  {q:'钱能不能直接转到合同上那家公司的对公账户？', dist:'能区分：正规收款 ／ 个人截留',
+   reply:'转公司账户要走财务流程，慢一点。转张总个人卡，当天就能确认份额，都是一样的。',
+   stamp:'回避', cls:'amber',
+   rows:[['你问的是','能不能转对公账户（能 ／ 不能）'],['对方回答的是','"慢一点""都是一样的"'],['问题在哪','没说能还是不能。钱进对公账户，合同里的公司才认这笔钱；进个人卡，就不一样了。']],
+   next:'坚持对公转账。对方拒绝，本身就是答案。'},
+];
+const TRY_SAMPLES = [
+  '我们是国企合作单位，政府都支持的，您放心，好多退休老师都在投。',
+  '编号是 Z7003026000123，您可以在中国理财网上查。',
+  '这个您不用担心，我们公司做了十几年了，口碑很好。',
+];
+
+const GLOSS = {
+  '注册资本':{what:'公司登记时，股东承诺要投入的钱。是"承诺"，不是"已经有的钱"。', you:'宣传说"注册资本 5000 万"，不代表公司账上有 5000 万。要看实缴。', src:'国家企业信用信息公示系统 · 登记信息'},
+  '实缴资本':{what:'股东实际已经掏出来的钱。', you:'这家公司实缴是 0 元。', src:'企业年度报告（企业自行填报，未经审计）'},
+  '认缴':{what:'股东承诺在某个日期前把注册资本交齐。按 2024 年施行的新公司法，有限公司一般要在成立后 5 年内缴足。', you:'这家公司承诺 2030 年前缴足，在那之前实缴为 0 并不违法——但"实力雄厚"无从谈起。', src:'公示系统 · 股东及出资信息'},
+  '股权出质':{what:'股东把自己的股份押给别人，用来借钱或做担保。', you:'大股东押出了 70% 的股份。这本身不违法，常见原因是需要钱——说明资金可能紧张。', src:'公示系统 · 股权出质登记'},
+  '经营范围':{what:'公司登记时写明可以做哪些生意。卖理财、吸收资金属于金融业务，需要金融监管部门的许可，不是写进经营范围就行。', you:'这家公司的经营范围里，连金融业务都没有。', src:'公示系统 · 登记信息'},
+  '资金存管':{what:'银行替平台"保管"资金账户，按指令划转。', you:'存管不等于担保：银行不审核项目好坏，也不保证你的钱能拿回来。', src:'常识解释'},
+  '保本':{what:'承诺本金不会亏。', you:'2018 年资管新规之后，正规资产管理产品不允许承诺保本保收益。谁说"保本"，反而要多问一句。', src:'《关于规范金融机构资产管理业务的指导意见》'},
+  '金融许可证':{what:'金融监管部门发给银行等金融机构的经营许可。', you:'可以在国家金融监督管理总局网站查询。查不到，说明它不是持牌金融机构。', src:'国家金融监督管理总局'},
+  '私募基金管理人登记':{what:'发行私募基金的机构，要在中国证券投资基金业协会登记，产品要备案。', you:'就算登记了，私募也只能卖给"合格投资者"，不能对大众公开宣传。', src:'中国证券投资基金业协会'},
+  '理财产品登记编码':{what:'银行理财产品都有全国统一的登记编码，可以在中国理财网查询。', you:'宣传单上没有编码。正规产品通常会印在产品说明书上。', src:'中国理财网'},
+  '经营异常名录':{what:'公司没按时年报、登记地址联系不上等，会被列入。', you:'未列入，只说明这些手续问题没出现，不代表经营良好。', src:'公示系统'},
+  '失信被执行人':{what:'法院判决后，有能力履行却拒不履行的，会被列入（俗称"老赖"）。', you:'未列入是好事，但只代表"目前没有"。', src:'中国执行信息公开网'},
+  '参保人数':{what:'企业年报里填报的缴纳社保的人数。企业可以选择不公示。', you:'宣称 30 家门店，参保只有 4 人，规模对不上。', src:'企业年度报告 · 社保信息'},
+  '违约金':{what:'合同里约定的、违反约定一方要付的钱。', you:()=>`这里指提前取钱要被扣的钱：${wan(state.amount)}的 20%，是 ${yuan(state.amount*PENALTY)}。`, src:'合同 · 第7条'},
+  '对公账户':{what:'以公司名义开的银行账户。', you:'正规公司收款走对公账户——钱进了公司，出了问题找公司。转进个人卡，就很难说是谁收的钱。', src:'常识解释'},
+  '行政处罚':{what:'政府部门对违法行为作出的处罚决定，会向社会公示。', you:'这家公司 2026 年 5 月因"发布虚假广告"被罚过款。', src:'公示系统 · 行政处罚信息'},
+};
+
+/* ============================================================
+   工具
+   ============================================================ */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sleep = ms => new Promise(r => setTimeout(r, reduceMotion ? 0 : ms));
+const val = v => typeof v === 'function' ? v() : v;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), 2600); }
+function badge(v){ const m = VERDICT[v]; return `<span class="badge ${m.cls}"><i aria-hidden="true">${m.icon}</i>${m.label}</span>`; }
+function st(cls, text){ return `<span class="st ${cls}">${text}</span>`; }
+function monthsSince(d){ const a = new Date(d), b = new Date(SNAP); return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()); }
+async function copyText(text){
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch {} ta.remove(); return ok; }
+}
+
+/* ============================================================
+   框架：步骤、顶栏
+   ============================================================ */
+const STEPS = [
+  {t:'建案卷', s:'替谁看、看什么'},
+  {t:'透视宣传单', s:'宣称 vs 记录'},
+  {t:'四个信号', s:'财务·信用·风险·口碑'},
+  {t:'新材料', s:'判断被改写'},
+  {t:'替你追问', s:'对方答了吗'},
+  {t:'给家人的一页', s:'人人可懂'},
+];
+function renderStepper(){
+  $('#stepper').innerHTML = STEPS.map((s, i) => `
+    <button type="button" class="step-btn${i < state.maxStep || (i === state.maxStep && i < state.step) ? ' done' : ''}" data-go="${i}" ${i === state.step ? 'aria-current="step"' : ''}>
+      <span class="no">0${i + 1}</span><span class="t">${s.t}</span><span class="s">${s.s}</span>
+    </button>`).join('') + `<div class="kbd-hint"><kbd>←</kbd> <kbd>→</kbd> 切换步骤</div>`;
+  const cur = $('.step-btn[aria-current]');
+  if (cur && innerWidth <= 900) cur.scrollIntoView({inline:'center', block:'nearest'});
+}
+function renderTop(){
+  const w = WHO[state.forWhom];
+  $('#caseStrip').innerHTML = `<span>CASE-0001</span><span>${w.self ? '给自己看' : '替' + w.name + '看'}</span><span class="co">${CO.hz.name}</span><span>${yuan(state.amount)}</span><span>判断 <b class="ver" id="ver">${state.version}</b></span>`;
+  $$('.who-name').forEach(e => e.textContent = w.self ? '你' : w.name);
+  speakLabel(false);
+  $$('.pron').forEach(e => e.textContent = w.pron);
+  $('#k5').textContent = `06 · ${w.self ? '给自己的一页' : '给' + w.name + '的一页'}`;
+  $('[data-go="3"].btn').textContent = `${w.self ? '你' : w.name}又发来两张照片 →`;
+}
+function setVersion(v){ state.version = v; renderTop(); const el = $('#ver'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+function syncTopHeight(){ document.documentElement.style.setProperty('--top-h', $('#topbar').offsetHeight + 'px'); }
+
+const RENDER = [renderCase, renderXray, renderSignals, renderUpdate, renderAsks, renderLetter];
+function go(i){
+  i = Math.max(0, Math.min(STEPS.length - 1, i));
+  if (i === 0 && state.step === STEPS.length - 1) resetDemo();
+  state.step = i; state.maxStep = Math.max(state.maxStep, i);
+  $$('.step').forEach(s => s.hidden = +s.dataset.step !== i);
+  RENDER[i]();
+  renderStepper();
+  window.scrollTo({top:0, behavior: reduceMotion ? 'auto' : 'smooth'});
+  closePop();
+  history.replaceState(null, '', location.pathname + location.search + '#' + (i + 1));
+  if (AUTO && i === 3) setTimeout(runCompare, 600);
+  if (AUTO && i === 4) setTimeout(playAll, 600);
+}
+// 彩排用：#4 直接打开第 4 步；加 ?auto 自动播放该步动画
+const AUTO = new URLSearchParams(location.search).has('auto');
+function resetDemo(){
+  Object.assign(state, {scanned:false, compared:false, clarified:false, version:'v1', replies:[false,false,false], maxStep:0});
+  renderTop();
+}
+
+/* ============================================================
+   01 建案卷
+   ============================================================ */
+function renderCase(){
+  $('#whoChips').innerHTML = Object.keys(WHO).map(k => `<button type="button" class="chip" data-who="${k}" aria-pressed="${k === state.forWhom}">${k}</button>`).join('');
+  $('#fCo').value = CO.hz.name;
+  $('#fAmt').value = state.amount;
+  $('#fAmtWan').textContent = '= ' + wan(state.amount);
+  $('#fConcern').value = state.concern;
+  $('#premiseIntro').innerHTML = PREMISES().map(p => `
+    <li><span class="pid">${p.id}</span><span class="ptext">${p.text}</span><span class="psub">${p.was} · <span style="color:var(--green)">暂时成立</span></span></li>`).join('');
+}
+
+/* ============================================================
+   02 透视
+   ============================================================ */
+function zoneStyle(z){ return `top:${z.top}%;left:${z.left}%;width:${z.w}%;height:${z.h}%`; }
+function renderXray(){
+  $('#skin').innerHTML = ZONES.map(z => `<div class="zone" data-z="${z.id}" style="${zoneStyle(z)}">${z.skin}</div>`).join('');
+  $('#film').innerHTML = ZONES.map(z => `<div class="zone" data-z="${z.id}" style="${zoneStyle(z)}">${val(z.film)}</div>`).join('');
+  const order = ['A2','A1','A4','A3','A5','A6'];
+  const list = order.map(id => ASSERTIONS.find(a => a.id === id));
+  $('#claims').innerHTML = list.map(a => `
+    <article class="claim" data-z="${a.id}" tabindex="-1">
+      <span class="cid">${a.id}</span>
+      <div class="ctext"><q>${a.text}</q><span class="ckind">${a.kind}</span>${badge(a.verdict)}</div>
+      <p class="plain">${val(a.plain)}</p>
+      <details><summary>核验记录 · ${a.checks().length} 处来源</summary>
+        <ul class="checks">${a.checks().map(([src, res, k]) => `<li class="${CK[k].cls}"><span class="ck" aria-hidden="true">${CK[k].icon}</span><span class="ck-src">${src}</span><span class="ck-res">${res}</span></li>`).join('')}</ul>
+      </details>
+      <div class="claim-foot"><button type="button" class="linkish" data-ask="${a.id}">为什么这是问题？问 X-Ray →</button></div>
+    </article>`).join('') + `
+    <article class="claim" data-z="M1" tabindex="-1">
+      <span class="cid">M1</span>
+      <div class="ctext"><q>${MISSING.text}</q>${badge('missing')}</div>
+      <p class="plain">${MISSING.plain}</p>
+    </article>`;
+  const tally = {red:0, amber:0, grey:0};
+  ASSERTIONS.forEach(a => tally[VERDICT[a.verdict].cls]++);
+  $('#tally').innerHTML = `<span class="tt">宣传单 6 条说法</span><span class="tr"><b>${tally.red}</b>条与记录不符或不合规</span><span class="ta"><b>${tally.amber}</b>条有误导</span><span class="tg"><b>${tally.grey}</b>条无法核验</span><span class="ta"><b>1</b>项该有的没有</span>`;
+  if (state.scanned) { setY(100); revealAll(); }
+  else { setY(0); $('#tally').hidden = true; $('#vquote').hidden = true; setTimeout(runScan, reduceMotion ? 0 : 500); }
+}
+function setY(y){
+  y = Math.max(0, Math.min(100, y));
+  const f = $('#frame'); f.style.setProperty('--y', y + '%'); f.dataset.y = Math.round(y);
+  $('#handle').setAttribute('aria-valuenow', Math.round(y));
+  setY.cur = y;
+}
+function revealAll(){ $$('#claims .claim').forEach(c => c.classList.add('in')); $('#tally').hidden = false; $('#vquote').hidden = false; }
+let scanning = false;
+function runScan(){
+  if (scanning || state.step !== 1) return;
+  scanning = true;
+  $$('#claims .claim').forEach(c => c.classList.remove('in'));
+  $('#tally').hidden = true; $('#vquote').hidden = true;
+  const dur = reduceMotion ? 1 : 3200, t0 = performance.now();
+  const mids = Object.fromEntries(ZONES.map(z => [z.id, z.top + z.h * 0.55]));
+  const tick = now => {
+    const p = Math.min(1, (now - t0) / dur), e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2, y = e * 100;
+    setY(y);
+    $$('#claims .claim').forEach(c => { if (y >= mids[c.dataset.z]) c.classList.add('in'); });
+    if (p < 1) requestAnimationFrame(tick);
+    else { scanning = false; state.scanned = true; revealAll(); }
+  };
+  requestAnimationFrame(tick);
+}
+function highlight(id, on){ $$(`[data-z="${id}"]`).forEach(e => e.classList.toggle('hl', on)); }
+
+/* ============================================================
+   03 信号
+   ============================================================ */
+function chartSVG(){
+  const {months, counts} = COMPLAINTS;
+  const W = 360, H = 150, pad = 14, base = H - 22, bw = (W - pad * 2) / counts.length, max = Math.max(...counts);
+  let s = `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="近 12 个月投诉数：${counts.join('、')}">`;
+  s += `<line x1="${pad}" y1="${base}" x2="${W - pad}" y2="${base}" stroke="var(--rule-2)"/>`;
+  counts.forEach((c, i) => {
+    const h = c / max * (base - 22), x = pad + i * bw + bw * .2, y = base - h, hot = i >= counts.length - 3;
+    s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * .6).toFixed(1)}" height="${Math.max(h, 1).toFixed(1)}" rx="1.5" fill="${hot ? 'var(--red)' : 'var(--ink-3)'}" opacity="${hot ? 1 : .5}"/>`;
+    if (c) s += `<text x="${(x + bw * .3).toFixed(1)}" y="${(y - 5).toFixed(1)}" text-anchor="middle" class="cv">${c}</text>`;
+    if (i % 3 === 0 || i === counts.length - 1) s += `<text x="${(x + bw * .3).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="cm">${months[i]}</text>`;
+  });
+  return s + '</svg>';
+}
+function row(k, v, s){ return `<div class="row"><span class="k">${k}</span><span class="v">${v}</span>${s}</div>`; }
+function renderSignals(){
+  const c = CO.hz, mo = monthsSince(c.founded), total = COMPLAINTS.counts.reduce((a, b) => a + b, 0);
+  const last3 = COMPLAINTS.counts.slice(-3).reduce((a, b) => a + b, 0), top = COMPLAINTS.topics[0];
+  const fin = `
+    <section class="card sig">
+      <div class="sig-head"><h3>财务<span>FINANCE</span></h3>${st('red','2 处异常')}</div>
+      <p class="sig-lede">普通公司不公开财报。但缺钱的公司，会在登记记录里留下影子。</p>
+      ${row(T('实缴资本'), `¥0 <small>认缴 ¥5,000 万，期限 ${c.due}</small>`, st('red','✕ 空壳'))}
+      ${row(T('股权出质'), `1 笔 <small>2026-07-15，大股东张某明把 70% 股份押给「宁波某投资合伙企业」</small>`, st('red','✕ 缺钱信号'))}
+      ${row(T('参保人数'), `4 人 <small>2025 年报；宣称 30 家门店</small>`, st('amber','! 规模不符'))}
+      ${row('动产抵押', '无', st('green','✓ 查过'))}
+      ${row('欠税公告', '无', st('green','✓ 查过'))}
+    </section>`;
+  const cred = `
+    <section class="card sig">
+      <div class="sig-head"><h3>信用<span>CREDIT</span></h3>${st('red','1 处异常')}</div>
+      <p class="sig-lede">"没有不良记录"只说明查过的地方没有，不等于可靠。</p>
+      ${row('登记状态', `${c.status} <small>成立于 ${c.founded}，${Math.floor(mo / 12)} 年 ${mo % 12} 个月</small>`, st('amber','! 成立时间短'))}
+      ${row(T('行政处罚'), `1 条 <small>2026-05-12 某区市场监督管理局：发布虚假广告，罚款 3 万元</small>`, st('red','✕'))}
+      ${row(T('经营异常名录'), '未列入', st('green','✓ 查过'))}
+      ${row(T('失信被执行人'), '无', st('green','✓ 查过'))}
+      ${row('司法诉讼', '演示版未接入', st('none','没查'))}
+    </section>`;
+  const risk = `
+    <section class="card sig">
+      <div class="sig-head"><h3>风险<span>RISK</span></h3>${st('red','3 处异常')}</div>
+      <p class="sig-lede">最关键的一条：它有没有资格收你的钱。</p>
+      ${row(T('金融许可证'), '银行业金融机构名单未收录', st('red','✕'))}
+      ${row(T('私募基金管理人登记'), '未登记', st('red','✕'))}
+      ${row(T('理财产品登记编码'), '未提供', st('none','缺'))}
+      ${row('收益承诺', `"${T('保本')}保息"，9% ≈ 定存 ${ratio()} 倍`, st('red','✕ 不合规'))}
+      ${row('法定风险提示', '宣传单上没有', st('amber','! 缺失'))}
+      <div class="qcheck">
+        <label class="small" for="qcInput">查任意机构有没有牌照（演示名单）</label>
+        <div class="qcheck-row"><input class="inp" id="qcInput" placeholder="输入机构全称"><button type="button" class="btn sm" id="qcBtn">查</button></div>
+        <div class="qtry">试试：<button type="button" class="chip" data-qc="杭州银行股份有限公司">杭州银行股份有限公司</button><button type="button" class="chip" data-qc="${c.name}">${c.short}</button></div>
+        <div class="qres" id="qcRes" aria-live="polite"></div>
+      </div>
+    </section>`;
+  const rep = `
+    <section class="card sig">
+      <div class="sig-head"><h3>口碑<span>WORD OF MOUTH</span></h3>${st('amber','趋势上升')}</div>
+      <p class="sig-lede">近 12 个月投诉（演示数据）。红色为最近 3 个月。</p>
+      ${chartSVG()}
+      <div class="stat-line"><span>最近 3 个月 <b>${last3}</b> 条，占全年 ${Math.round(last3 / total * 100)}%</span><span>"${top.name.split(' / ')[0]}"占 <b>${Math.round(top.n / total * 100)}%</b></span></div>
+      <ul class="topics">${COMPLAINTS.topics.map(t => `<li><div class="topic-bar"><span>${t.name}</span><span class="bar" title="${t.n} 条"><i style="width:${t.n / top.n * 100}%"></i></span></div><q>${t.quote}</q></li>`).join('')}</ul>
+      <p class="caveat">单条投诉不能证明什么，可能有误会或夸大。我们看的是趋势和集中的主题。正式版由大模型做主题归类，每类附原文，计数由程序完成。</p>
+    </section>`;
+  $('#signals').innerHTML = risk + fin + cred + rep;
+}
+function quickCheck(name){
+  const n = (name || '').trim(), out = $('#qcRes');
+  if (!n) { out.textContent = ''; return; }
+  $('#qcInput').value = n;
+  if (LICENSED.includes(n)) out.innerHTML = `${st('green','✓ 在名单中')} 「${n}」是持牌金融机构。<span class="muted">来源：银行业金融机构法人名单（演示快照）</span>`;
+  else if (n === CO.hz.name || n === CO.sz.name || n.includes('满盈禾')) out.innerHTML = `${st('red','✕ 未收录')} 「${n}」不在持牌机构名单中，也没有私募管理人登记。`;
+  else out.innerHTML = `${st('none','演示名单未收录')} 演示版只收了 ${LICENSED.length} 家机构；正式版接入监管公布的完整名单后，"未收录"才有意义。`;
+}
+
+/* ============================================================
+   04 新材料
+   ============================================================ */
+function renderUpdate(){
+  const w = WHO[state.forWhom], P = PREMISES();
+  const premiseCard = p => {
+    const broken = state.compared, partial = p.id === 'P2' && state.clarified, d = partial ? p.clarified : p;
+    return `<article class="premise ${broken ? (partial ? 'partial' : 'broken') : ''}" data-p="${p.id}">
+      <span class="stamp ${partial ? 'amberc' : ''} ${broken ? 'on' : ''}">${d.stamp}</span>
+      <span class="pid">${p.id}</span>
+      <h4>${p.text}</h4>
+      <span class="was">${p.was}</span>
+      ${broken ? '' : '<span class="state-ok">v1 · 暂时成立</span>'}
+      <div class="now">${d.body}<div class="ev">${d.ev.map(e => `<span>${e}</span>`).join('')}</div></div>
+    </article>`;
+  };
+  $('#update').innerHTML = `
+    <div class="materials ${state.compared ? 'compared' : ''}" id="mats">
+      <div>
+        <div class="mat-label">材料 D2 · 合同照片（${w.self ? '你' : w.name}转发）</div>
+        <div class="doc">
+          <h4>满盈禾·颐养收益权转让协议</h4>
+          <p><span class="hlx">甲方（管理人）：${CO.sz.name}</span></p>
+          <p>乙方（受让人）：王**</p>
+          <span class="ln"></span>
+          <p>第三条 本计划<span class="hlx">预期年化收益率为 9%</span>，按季度付息……</p>
+          <span class="ln"></span><span class="ln" style="width:80%"></span>
+          <p>第七条 <span class="hlx">乙方持有未满 12 个月申请退出的，甲方扣除本金 20% 作为违约金</span>……</p>
+          <span class="ln"></span><span class="ln" style="width:60%"></span>
+          <p style="margin-top:14px">甲方（盖章）：</p>
+          <div class="seal">深圳前海满盈禾<br>资产管理有限公司<br>合同专用章<br>（示意）</div>
+          <p style="margin-top:44px;color:#8a8273">签订日期：2026 年 10 月 __ 日</p>
+        </div>
+      </div>
+      <div>
+        <div class="mat-label">材料 D3 · 转账截图</div>
+        <div class="phone">
+          <div class="phone-bar"><span>10:42</span><span>●●● 5G</span></div>
+          <h5>确认转账</h5>
+          <div class="amt">${yuan(state.amount)}.00</div>
+          <dl>
+            <dt>收款人</dt><dd><span class="hlx">张*明（个人）</span></dd>
+            <dt>收款账户</dt><dd>某银行 · 尾号 3381</dd>
+            <dt>转账说明</dt><dd>颐养计划认购款</dd>
+          </dl>
+        </div>
+        <div class="actions" style="margin-top:22px">
+          <button class="btn" id="compareBtn" ${state.compared ? 'disabled' : ''}>${state.compared ? '已对照 ✓' : '让 X-Ray 对照 →'}</button>
+        </div>
+      </div>
+    </div>
+    <div class="obs-wrap" id="obsWrap" ${state.compared ? '' : 'hidden'}>
+      <div class="ledger-head"><h3>从新材料里读到的</h3><span class="small muted">"读到了"不等于"是真的"——每一项都标明核验到哪一步</span></div>
+      <div style="overflow-x:auto"><table class="obs"><thead><tr><th>出处</th><th>字段</th><th>内容</th><th>状态</th></tr></thead><tbody>
+        ${OBS().map(o => `<tr class="${state.compared ? 'in' : ''}"><td class="src">${o.src}</td><td>${o.field}</td><td>${o.value}${o.flag ? ` <span class="st amber">${o.flag}</span>` : ''}</td><td>${st(o.st[1], o.st[0])}</td></tr>`).join('')}
+      </tbody></table></div>
+    </div>
+    <div class="ledger-head"><h3>前提账本</h3><span class="small muted mono" id="ledgerVer">${state.compared ? (state.clarified ? 'v1 → v2 → v2.1' : 'v1 → v2') : 'v1'}</span></div>
+    <div class="ledger" id="ledger">${P.map(premiseCard).join('')}</div>
+    <div id="afterBlock" ${state.compared ? '' : 'hidden'}>${afterHTML()}</div>`;
+}
+function afterHTML(){
+  const c = state.clarified;
+  return `<div class="after">
+    <div class="card hyp">
+      <h4>关于「收款是个人」，有两种解释</h4>
+      <div class="hyp-row"><span class="hid">H1</span><div>公司授权大股东代收——不规范，但不一定是骗局。<div class="small muted">支持：杭州公司大股东叫张某明。存疑：截图户名已打码，无法确认是同一人；而且合同甲方是深圳公司，不是杭州公司。${c ? '<br><b style="color:var(--green)">＋ 新证据：收到授权书（真伪未核验）</b>' : ''}</div></div></div>
+      <div class="hyp-row"><span class="hid">H2</span><div class="${c ? 'weak' : ''}">钱进了个人口袋，合同上的公司不认这笔钱。${c ? '<div class="small muted">可能性下降，但没有排除。</div>' : ''}</div></div>
+      <div class="best-q"><div class="kicker">最该问的一个问题（能把两种解释分开）</div>
+        <p>"能否出具加盖深圳公司公章的收款授权书，并改为向深圳公司的对公账户付款？"</p>
+        <small>对方爽快同意 → 更像 H1；推脱或拒绝 → 更像 H2。</small></div>
+      <div class="actions" style="margin-top:12px">${c ? '<span class="small muted">已演示：疑点可以被新证据部分澄清，系统不会只加警告。</span>' : '<button class="btn ghost sm" id="clarifyBtn">演示：对方补交了授权书</button>'}</div>
+    </div>
+    <div class="card">
+      <h4 class="card-title">判断变了什么</h4>
+      <div class="diff">
+        <div class="v v1"><span class="vt">v1 · 透视宣传单之后</span>宣传单上 6 条说法，3 条与记录不符或不合规；它没有卖理财的资格。</div>
+        <div class="v v2"><span class="vt">v2 · 新材料之后</span>除此之外，实际交易的对象也变了：要签的是另一家公司，钱要进个人卡，一年内取回要扣 ${wan(state.amount * PENALTY)}。之前核验的对象，和实际收钱的不是同一个。</div>
+      </div>
+      <h4 class="card-title" style="margin-top:16px;font-size:15px">新发现</h4>
+      <ul class="unchanged"><li>宣传说"保本"，合同第三条只写"预期年化收益率 9%"，全文没有保本条款 → <b>宣传承诺没有写进合同</b></li></ul>
+      <h4 class="card-title" style="margin-top:12px;font-size:15px">没有变的</h4>
+      <ul class="unchanged"><li>杭州公司登记状态：存续</li><li>行政处罚 1 条、股权出质 1 笔：不变</li></ul>
+    </div>
+  </div>`;
+}
+async function runCompare(){
+  if (state.compared) return;
+  const btn = $('#compareBtn'); btn.disabled = true; btn.textContent = '读取中…';
+  $('#mats').classList.add('compared');
+  $('#obsWrap').hidden = false;
+  for (const tr of $$('#obsWrap tbody tr')) { await sleep(230); tr.classList.add('in'); }
+  btn.textContent = '对照前提账本…';
+  await sleep(500);
+  $('#ledger').scrollIntoView({behavior: reduceMotion ? 'auto' : 'smooth', block:'center'});
+  await sleep(600);
+  for (const card of $$('#ledger .premise')) {
+    card.classList.add('broken'); card.querySelector('.state-ok')?.remove();
+    card.querySelector('.stamp').classList.add('on');
+    await sleep(650);
+  }
+  state.compared = true; setVersion('v2');
+  $('#ledgerVer').textContent = 'v1 → v2';
+  btn.textContent = '已对照 ✓';
+  $('#afterBlock').innerHTML = afterHTML(); $('#afterBlock').hidden = false;
+}
+async function clarify(){
+  state.clarified = true; setVersion('v2.1');
+  const card = $('#ledger [data-p="P2"]'), p = PREMISES()[1].clarified, stamp = card.querySelector('.stamp');
+  stamp.classList.remove('on'); void stamp.offsetWidth;
+  stamp.textContent = p.stamp; stamp.classList.add('amberc', 'on');
+  card.classList.remove('broken'); card.classList.add('partial');
+  card.querySelector('.now').innerHTML = `${p.body}<div class="ev">${p.ev.map(e => `<span>${e}</span>`).join('')}</div>`;
+  $('#ledgerVer').textContent = 'v1 → v2 → v2.1';
+  $('#afterBlock').innerHTML = afterHTML();
+  card.scrollIntoView({behavior: reduceMotion ? 'auto' : 'smooth', block:'center'});
+  toast('P2 降级为"部分澄清"：疑点可以被撤回，但不会被一张授权书一笔勾销');
+}
+
+/* ============================================================
+   05 追问
+   ============================================================ */
+function judgeHTML(a, i){
+  if (!state.replies[i]) return `<div class="judge"><h4>X-Ray 判断</h4><div class="pending">等对方回复…<button class="btn sm ghost" data-play="${i}">看对方怎么回 →</button></div></div>`;
+  return `<div class="judge"><span class="stamp on ${a.cls === 'amber' ? 'amberc' : ''}">${a.stamp}</span><h4>X-Ray 判断</h4>
+    ${a.rows.map(([k, v]) => `<div class="jrow"><span class="k">${k}</span><span>${v}</span></div>`).join('')}
+    <div class="jnext">${a.next}</div></div>`;
+}
+function renderAsks(){
+  $('#asks').innerHTML = ASKS.map((a, i) => `
+    <article class="card ask-card" data-i="${i}">
+      <div class="chat">
+        <span class="who r">你 · X-Ray 生成的问题 Q${i + 1}</span>
+        <div class="bubble me">${a.q}</div>
+        <span class="dist">${a.dist}</span>
+        <div class="reply-slot">${state.replies[i] ? `<span class="who">理财经理</span><div class="bubble them">${a.reply}</div>` : ''}</div>
+      </div>
+      <div class="judge-slot">${judgeHTML(a, i)}</div>
+    </article>`).join('');
+}
+async function playReply(i){
+  if (state.replies[i]) return;
+  const card = $(`.ask-card[data-i="${i}"]`), slot = card.querySelector('.reply-slot');
+  card.querySelector('[data-play]')?.setAttribute('disabled', '');
+  slot.innerHTML = `<span class="who">理财经理</span><div class="typing" aria-label="对方正在输入"><i></i><i></i><i></i></div>`;
+  await sleep(1100);
+  slot.innerHTML = `<span class="who">理财经理</span><div class="bubble them">${ASKS[i].reply}</div>`;
+  await sleep(700);
+  state.replies[i] = true;
+  card.querySelector('.judge-slot').innerHTML = judgeHTML(ASKS[i], i);
+}
+async function playAll(){ for (let i = 0; i < ASKS.length; i++) { if (state.step !== 4) return; await playReply(i); await sleep(300); } }
+function judgeCustom(){
+  const text = $('#tryText').value.trim(), out = $('#tryRes');
+  if (!text) { out.innerHTML = '<span class="muted">先粘贴一段回复。</span>'; return; }
+  const cleaned = text.replace(/1[3-9]\d{9}/g, '');
+  const code = cleaned.match(/(?=[A-Z0-9]*\d{4})[A-Z0-9]{8,}/i);
+  const DODGE = ['放心','合作','存管','老客户','好多','很多人','国企','国资','政府','口碑','十几年','大品牌','安全','保本','不用担心','上市'];
+  const hits = DODGE.filter(k => text.includes(k));
+  if (code) {
+    out.innerHTML = `<div class="box green"><b>对方给出了一个可以查的编号：<span class="mono">${code[0]}</span></b><br>这是正面回答。下一步：去中国理财网或国家金融监督管理总局网站查这个编号是否存在、是否对应合同上的那家公司。<span class="muted">（编号存在 ≠ 产品没风险，只说明它有资格卖。）</span></div>`;
+  } else {
+    out.innerHTML = `<div class="box red"><b>没有给出可以查的编号。</b><br>${hits.length ? `对方用 ${hits.map(h => `「${h}」`).join('')} 代替了编号——这些都没法拿去核验。` : '回答里没有任何可以核验的信息。'}<br>建议：再问一次，只要编号。</div>`;
+  }
+}
+
+/* ============================================================
+   06 给家人
+   ============================================================ */
+function letterModel(){
+  const w = WHO[state.forWhom], A = state.amount;
+  const title = w.self ? '这笔钱，先别急着转' : `${w.call ? w.call + '，' : ''}这笔钱先别急着转`;
+  const intro = w.self ? `查了「满盈禾」，有三件事要先弄清楚：` : `我帮你查了「满盈禾」，有三件事得先弄清楚：`;
+  const pts = [
+    ['它没有卖理财的执照。', `正规卖理财的，都能报出一个编号，在监管的网站上查得到。问他们要，他们只说"和银行合作、很安全"，没给。就像一个没有驾照的人，跟你说他车开得最稳。`],
+    ['合同上是深圳的另一家公司，钱却要转进个人卡。', `钱到了谁手里、出了事找谁，现在说不清。`],
+    [`说"保本、一年 9%"，合同里却没写保本；一年内取钱，还要扣 ${wan(A * PENALTY)}。`, `${wan(A)}放银行存一年定期，利息大约 ${yuanCN(A * REF_RATE)}；他们说给 ${yuanCN(A * PROMISED)}。多出来的钱从哪来，得问清楚。`],
+  ];
+  const close = w.self ? '先别转。去银行柜台问一问，或者让他们先把编号发过来。' : '先别转。我们一起去银行柜台问一问，或者让他们先把编号发过来。我陪你一起看。';
+  return {title, intro, pts, close, sign: w.sign};
+}
+function renderLetter(){
+  const m = letterModel();
+  const L = $('#letter');
+  L.style.setProperty('--lf', state.lf + 'px');
+  L.innerHTML = `<h3>${m.title}</h3><p>${m.intro}</p><ol>${m.pts.map(([a, b]) => `<li><strong>${a}</strong><span class="sub">${b}</span></li>`).join('')}</ol><p>${m.close}</p>${m.sign ? `<p class="sign">—— ${m.sign}</p>` : ''}`;
+  $('#slip').innerHTML = `
+    <div class="slip-head"><b>大额转出风险提示单 · 网点版</b><span class="mono small">X-Ray · ${SNAP}</span></div>
+    <div class="slip-row"><span class="k">客户拟转出</span><span><b>${yuan(state.amount)}</b>　用途：认购"满盈禾·颐养收益权转让计划"</span></div>
+    <div class="slip-row"><span class="k">收款方</span><span>个人账户 张*明 ${st('red','与合同甲方不一致')}</span></div>
+    <div class="slip-row"><span class="k">合同甲方</span><span>${CO.sz.name}<br>${st('red','金融许可 ✕')} ${st('red','私募登记 ✕')}</span></div>
+    <div class="slip-row"><span class="k">宣传材料</span><span>含"保本保息" ${st('red','不合规承诺')}　无法定风险提示语 ${st('amber','缺失')}</span></div>
+    <div class="slip-row"><span class="k">近 3 月投诉</span><span>17 条，以"到期不兑付"为主（演示数据）</span></div>
+    <div class="script"><small>建议话术</small>"阿姨，这个产品我们查不到登记编号，钱又是转给个人的。您先别急，我们帮您一起问清楚再转。"</div>
+    <div class="slip-note">本单只列可查的记录与材料差异，不认定违法，不构成投资建议。✂ 可打印交客户带回</div>`;
+}
+function letterPlain(){ const m = letterModel(); return [m.title, m.intro, ...m.pts.map(([a, b], i) => `${i + 1}. ${a}\n   ${b}`), m.close, m.sign ? `—— ${m.sign}` : ''].filter(Boolean).join('\n'); }
+function speakLabel(on){
+  const w = WHO[state.forWhom];
+  $('#speak').textContent = on ? '■ 停止朗读' : `▶ 读给${w.self ? '自己' : (w.call || w.name)}听`;
+}
+function speak(){
+  if (!('speechSynthesis' in window)) { toast('这个浏览器不支持朗读'); return; }
+  if (speechSynthesis.speaking) { speechSynthesis.cancel(); speakLabel(false); return; }
+  const u = new SpeechSynthesisUtterance(letterPlain().replace(/——/g, '')); u.lang = 'zh-CN'; u.rate = .9;
+  const v = speechSynthesis.getVoices().find(v => /zh[-_]CN/i.test(v.lang)); if (v) u.voice = v;
+  u.onend = () => speakLabel(false);
+  speakLabel(true);
+  speechSynthesis.speak(u);
+}
+
+/* ============================================================
+   浮层：术语解释、问 X-Ray
+   ============================================================ */
+const pop = $('#pop');
+function openPop(btn){
+  const g = GLOSS[btn.dataset.term]; if (!g) return;
+  pop.innerHTML = `<button class="x" aria-label="关闭">×</button><h5>${btn.dataset.term}</h5><dl><dt>是什么</dt><dd>${g.what}</dd><dt>对你意味着什么</dt><dd>${val(g.you)}</dd><dt>来源</dt><dd class="mono" style="font-size:12px">${g.src}</dd></dl>`;
+  pop.hidden = false;
+  const r = btn.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let left = Math.min(Math.max(12, r.left), innerWidth - pw - 12), top = r.bottom + 8;
+  if (top + ph > innerHeight - 12) top = Math.max(12, r.top - ph - 8);
+  pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  pop._for = btn;
+}
+function closePop(){ pop.hidden = true; pop._for = null; }
+
+let drawerFor = null;
+function typeInto(el, text){
+  return new Promise(res => {
+    if (reduceMotion) { el.textContent = text; return res(); }
+    let i = 0; el.textContent = '';
+    const t = setInterval(() => { i += 2; el.textContent = text.slice(0, i); if (i >= text.length) { clearInterval(t); res(); } }, 18);
+  });
+}
+async function answer(qa){
+  const body = $('#drBody');
+  body.insertAdjacentHTML('beforeend', `<div class="dr-q">${qa.q}</div>`);
+  const a = document.createElement('div'); a.className = 'dr-a'; body.appendChild(a);
+  const txt = document.createElement('div'); a.appendChild(txt);
+  await typeInto(txt, val(qa.a));
+  if (qa.cites) a.insertAdjacentHTML('beforeend', `<div class="cites">${qa.cites.map(c => `<span>${c}</span>`).join('')}</div>`);
+  body.scrollTop = body.scrollHeight;
+}
+function openDrawer(id){
+  const a = ASSERTIONS.find(x => x.id === id); if (!a) return;
+  drawerFor = a;
+  $('#drTitle').textContent = `“${a.text}”`;
+  $('#drCtx').innerHTML = `引用：<code>${a.id}</code> · <code>CASE-0001</code> · <code>判断 ${state.version}</code>`;
+  $('#drBody').innerHTML = '';
+  $('#drSugs').innerHTML = a.qa.slice(1).map((q, i) => `<button type="button" class="chip" data-sug="${i + 1}">${q.q}</button>`).join('');
+  $('#drawer').classList.add('open'); $('#drawer').setAttribute('aria-hidden', 'false'); $('#scrim').classList.add('on');
+  answer(a.qa[0]);
+  setTimeout(() => $('#drClose').focus(), 50);
+}
+function closeDrawer(){ $('#drawer').classList.remove('open'); $('#drawer').setAttribute('aria-hidden', 'true'); $('#scrim').classList.remove('on'); }
+
+/* ============================================================
+   事件
+   ============================================================ */
+document.addEventListener('click', e => {
+  const t = e.target;
+  const goBtn = t.closest('[data-go]'); if (goBtn) { go(+goBtn.dataset.go); return; }
+  const term = t.closest('.term'); if (term) { e.preventDefault(); e.stopPropagation(); (pop._for === term && !pop.hidden) ? closePop() : openPop(term); return; }
+  if (t.closest('.pop .x') || (!t.closest('.pop') && !pop.hidden)) closePop();
+  const who = t.closest('[data-who]'); if (who) { state.forWhom = who.dataset.who; renderCase(); renderTop(); return; }
+  if (t.closest('[data-soon]')) { toast('演示版只做了理财场景；换场景 = 换一套检查模板，引擎不变'); return; }
+  const ask = t.closest('[data-ask]'); if (ask) { openDrawer(ask.dataset.ask); return; }
+  const sug = t.closest('[data-sug]'); if (sug && drawerFor) { const qa = drawerFor.qa[+sug.dataset.sug]; sug.remove(); answer(qa); return; }
+  const qc = t.closest('[data-qc]'); if (qc) { quickCheck(qc.dataset.qc); return; }
+  const play = t.closest('[data-play]'); if (play) { playReply(+play.dataset.play); return; }
+  switch (t.closest('button')?.id) {
+    case 'rescan': state.scanned = false; runScan(); break;
+    case 'qcBtn': quickCheck($('#qcInput').value); break;
+    case 'compareBtn': runCompare(); break;
+    case 'clarifyBtn': clarify(); break;
+    case 'playAll': playAll(); break;
+    case 'tryBtn': judgeCustom(); break;
+    case 'tryFill': { const i = (TRY_SAMPLES.indexOf($('#tryText').value) + 1) % TRY_SAMPLES.length; $('#tryText').value = TRY_SAMPLES[i]; judgeCustom(); break; }
+    case 'copyLetter': copyText(letterPlain()).then(ok => toast(ok ? '已复制，可以直接粘贴到家庭群' : '复制失败，请手动选择文字')); break;
+    case 'speak': speak(); break;
+    case 'fsUp': state.lf = Math.min(34, state.lf + 2); $('#letter').style.setProperty('--lf', state.lf + 'px'); break;
+    case 'fsDown': state.lf = Math.max(18, state.lf - 2); $('#letter').style.setProperty('--lf', state.lf + 'px'); break;
+    case 'printLetter': window.print(); break;
+    case 'drClose': closeDrawer(); break;
+    case 'tabFamily': case 'tabTeller': {
+      const fam = t.closest('button').id === 'tabFamily';
+      $('#tabFamily').setAttribute('aria-selected', fam); $('#tabTeller').setAttribute('aria-selected', !fam);
+      $('#paneFamily').hidden = !fam; $('#paneTeller').hidden = fam; break;
+    }
+  }
+});
+$('#scrim').addEventListener('click', closeDrawer);
+$('#drForm').addEventListener('submit', e => {
+  e.preventDefault(); const q = $('#drInput').value.trim(); if (!q) return; $('#drInput').value = '';
+  answer({q, a:'演示版只回答预置问题。\n正式版会把你的问题，连同当前案卷编号、判断版本和相关证据一起交给大模型；回答里的每句话都必须引用证据，引用不到的句子不会显示。', cites:['CASE-0001', '判断 ' + state.version]});
+});
+$('#fAmt').addEventListener('input', e => {
+  const v = Math.round(+e.target.value);
+  if (v >= 1000) { state.amount = v; $('#fAmtWan').textContent = '= ' + wan(v); renderTop(); }
+});
+$('#fConcern').addEventListener('input', e => { state.concern = e.target.value; });
+$('#qcInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') quickCheck(e.target.value); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closePop(); closeDrawer(); return; }
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (['input', 'textarea', 'select'].includes(tag) || e.target.getAttribute('role') === 'slider' || $('#drawer').classList.contains('open')) return;
+  if (e.key === 'ArrowRight') go(state.step + 1);
+  if (e.key === 'ArrowLeft') go(state.step - 1);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'qcInput') quickCheck(e.target.value); });
+
+// 透视片：悬停联动 + 拖动扫描线
+document.addEventListener('pointerover', e => { const z = e.target.closest('[data-z]'); if (z) highlight(z.dataset.z, true); });
+document.addEventListener('pointerout', e => { const z = e.target.closest('[data-z]'); if (z) highlight(z.dataset.z, false); });
+(() => {
+  const h = $('#handle'), f = $('#frame');
+  let drag = false;
+  const at = ev => { const r = f.getBoundingClientRect(); setY((ev.clientY - r.top) / r.height * 100); };
+  h.addEventListener('pointerdown', ev => { if (scanning) return; drag = true; h.setPointerCapture(ev.pointerId); at(ev); });
+  h.addEventListener('pointermove', ev => { if (drag) at(ev); });
+  h.addEventListener('pointerup', () => { drag = false; });
+  h.addEventListener('keydown', ev => {
+    const step = ev.shiftKey ? 20 : 5;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowRight') { setY((setY.cur || 0) + step); ev.preventDefault(); }
+    if (ev.key === 'ArrowUp' || ev.key === 'ArrowLeft') { setY((setY.cur || 0) - step); ev.preventDefault(); }
+    if (ev.key === 'Home') setY(0); if (ev.key === 'End') setY(100);
+  });
+})();
+
+addEventListener('resize', syncTopHeight);
+syncTopHeight(); renderTop();
+const startAt = +(location.hash.match(/^#([1-6])$/) || [])[1] || 1;
+if (startAt > 2) state.scanned = true;
+go(startAt - 1);
+</script>
+</body>
+</html>
