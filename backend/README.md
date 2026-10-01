@@ -13,13 +13,15 @@ cd backend
 - 接口文档：http://localhost:8000/docs
 - 断网备用的静态演示：http://localhost:8000/demo/
 - 测试：`.venv\Scripts\python -m pytest`（不连网、不需要 Key）
-- 新机器：`python -m venv .venv`，再 `.venv\Scripts\pip install -r requirements.txt`
+- 新机器：`python -m venv .venv`，再 `.venv\Scripts\python -m pip install -r requirements-b.txt`（包含共享依赖和图片验证所需的 Pillow）
 
 ### 接模型
 
-复制 `.env.example` 为 `.env`，填比赛 Tokendance 的地址、Key、模型名。不填也能跑：助手退回模板回答，需求识别退回关键词，图片材料提示手动粘贴。
+复制 `.env.example` 为 `.env`，填比赛 Tokendance 的地址、Key、模型名，Key 只保存在被 Git 忽略的本机 `.env`。当前地址为 `https://tokendance.space/gateway/v1`，文本与视觉均使用 `qwen3.8-max`，保守设置 `TOKENDANCE_JSON_MODE=0`。不填也能跑：助手退回模板回答，需求识别退回关键词，图片材料提示手动粘贴。
 
-`XRAY_LLM_MODE`：`live` 调网关并把每次响应录进 `data/cache/`，网关挂了自动回放；`replay` 只回放（断网演示，界面会标"离线回放"）；`off` 不调模型。
+`XRAY_LLM_MODE`：`live` 调网关并把成功结果录进 `data/cache/`，网络故障时尝试明确标注的回放；`replay` 只回放（断网演示，界面会标"离线回放"）；`off` 不调模型。401/403 直接报告鉴权问题，不重试。
+
+当前模型尚未接通：2026-10-02 05:34（中国时间）的文本、JSON、视觉探针均鉴权失败，诊断为 HTTP 401 / `API密钥不存在`。需要有效 Key 后继续验证，不能把上游旧模型的历史成功记录当作当前验收。详见 [Tokendance 能力记录](../docs/tokendance.md)；B 的版本引用、缓存与待接入服务见 [B 接入说明](../docs/backend-b-integration.md)。
 
 ## 接口
 

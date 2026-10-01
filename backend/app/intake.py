@@ -3,7 +3,7 @@
 先用模型；模型不可用、输出不合格或给了不存在的场景，就退回关键词规则（scenarios.keyword_intake）。
 用户手动选了场景时，以用户为准。
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.llm import LLM, LLMError
 from app.models import Intake
@@ -13,10 +13,11 @@ FOCUS_LABELS = [label for _, label in FOCUS_RULES]
 
 
 class _ModelIntake(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     scenario: str
-    focus: list[str] = Field(default_factory=list)
-    for_whom: str | None = None
-    amount: float | None = None
+    focus: list[str] = Field(default_factory=list, max_length=3)
+    for_whom: str | None = Field(default=None, max_length=30)
+    amount: float | None = Field(default=None, gt=0, allow_inf_nan=False, strict=True)
 
 
 def _prompt(need: str, company: str | None) -> list[dict]:
@@ -37,12 +38,16 @@ def run_intake(need: str, llm: LLM, scenario: str | None = None, company: str | 
     if base.method == "user" or not need.strip():
         return base
     try:
-        out, _ = llm.chat_json(_prompt(need, company), _ModelIntake, temperature=0)
+        out, _ = llm.chat_json(_prompt(need, company), _ModelIntake, temperature=0, cache_namespace="intake")
     except LLMError:
         return base
     if out.scenario not in load_scenarios():
         return base
+    # An amount not grounded in the user's text is not a personalization default.
+    # Keep A's deterministic currency parser as authority; users can edit later.
+    if out.amount is not None and out.amount != base.amount:
+        return base
     focus = [f.strip()[:20] for f in out.focus if f.strip()][:3] or base.focus
     return Intake(scenario=out.scenario, scenario_label=get_scenario(out.scenario).label, focus=focus,
-                  for_whom=out.for_whom or base.for_whom, amount=out.amount if out.amount and out.amount > 0 else base.amount,
+                  for_whom=base.for_whom, amount=base.amount,
                   method="model", matched=base.matched)
