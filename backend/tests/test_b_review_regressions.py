@@ -8,7 +8,7 @@ from PIL import Image
 from app.assistant import answer
 from app.models import ChatIn
 from app.readers import read_upload
-from tests.helpers import DEMO_COMPANY, make_case
+from tests.helpers import DEMO_COMPANY, flyer, make_case
 from tests.test_llm_assistant import FakeLLM
 
 
@@ -83,3 +83,18 @@ def test_structured_overreach_rewrite_still_checks_authoritative_verdict(tmp_pat
     assert result.rewrites == 1 and result.blocked == ["很可能"]
     assert result.not_found and "与记录相符" not in result.text
     assert case.model_dump_json() == before and len(fake.calls) == 2
+
+
+def test_glossary_example_cannot_supply_a_company_yield_number(tmp_path):
+    case = make_case(DEMO_COMPANY, flyer("manyinghe.txt"))
+    out = {"segments": [{"text": "该公司的年化收益是 2.25%。", "citations": ["A2", "term.annualized"]}]}
+    result = answer(case, ChatIn(text="年化收益是多少"), FakeLLM([json.dumps(out)], tmp_path))
+    assert result.not_found and "该公司的年化收益是" not in result.text
+
+
+def test_glossary_only_numeric_example_remains_available(tmp_path):
+    case = make_case(DEMO_COMPANY, flyer("manyinghe.txt"))
+    out = {"segments": [{"text": "年化 9% 存满一年大约多 9%，只存三个月大约只多 2.25%。",
+                         "citations": ["term.annualized"]}]}
+    result = answer(case, ChatIn(text="年化怎么理解"), FakeLLM([json.dumps(out)], tmp_path))
+    assert not result.not_found and result.citations == ["term.annualized"] and "2.25%" in result.text

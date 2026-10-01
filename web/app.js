@@ -25,23 +25,10 @@ const SUP_KIND = {
   reply: { label: '对方的回复', help: '对方怎么回答你的问题。会记为"对方说的，未核实"，只用来对照，不当作事实。' },
   need: { label: '改需求', help: '换一句需求。事实不会变，变的是看的重点和措辞；变化清单会写明这一点。' },
 };
-const TERMS = {
-  '持牌机构名单': '金融监管部门公布的持牌金融机构名单。吸收存款、卖理财、做保险、做支付都要持牌。这几份名单里查不到它，说明它至少不是这几类持牌机构。',
-  '私募基金管理人登记': '在中国证券投资基金业协会（中基协）登记过的机构才能发私募基金。登记只是备案，不代表协会为它担保。',
-  '理财产品登记编码': '正规理财产品都有登记编码，可以在中国理财网（chinawealth.com.cn）查到。',
-  '实缴资本': '股东实际已经拿出来的钱。注册资本多数是"认缴"，也就是承诺将来出，可能一分都还没出。',
-  '注册资本': '股东承诺出资的总额。多数是认缴，不等于公司账上真有这么多钱。',
-  '经营范围': '营业执照上写的公司能做的业务。卖理财、吸收存款这类金融业务，必须持牌才能做。',
-  '参保人数': '公司给多少人交了社保，来自年报，能侧面看出公司实际有多少员工。',
-  '股权出质': '股东把股权质押出去借钱。出质多，可能说明股东缺钱。',
-  '风险提示语': '正规理财销售材料必须写的提醒，例如"理财非存款、产品有风险、投资须谨慎"。',
-  '收益承诺': '承诺保本保息、固定高收益。正规理财产品不允许这样承诺。',
-  '收款信息': '钱打到哪个账户、户名是谁。户名应当就是和你签约的这家公司。',
-  '退款承诺': '"随时可退""随时取出"这类说法。要写进合同才作数。',
-};
-
+// 名词解释来自后端的固定词表（/api/glossary，backend/app/glossary.json），不在前端写死
 const S = {
   health: null, scenarios: [], sources: [], demos: [], cases: [],
+  terms: [], termById: new Map(), termByName: new Map(), termRe: null,
   case: null, viewNo: null, selected: new Set(), busy: false, audience: 'family', opCache: {},
   tab: 'signals', openRest: new Set(),
   form: { userScenario: null, showScen: false, dirty: {}, intake: null },
@@ -93,9 +80,42 @@ const isDemoCase = () => S.case && S.case.raw.some(r => r.kind === 'demo' && r.c
 const isId = s => /^(R\d+|A\d+|M\d+|Q\d+|[a-z]+\.[a-z0-9_]+)$/.test(s);
 const versionRaws = v => v.raw_ids.map(rawById).filter(Boolean);
 
-const termify = label => (TERMS[label] ? `<button type="button" class="term" data-act="term" data-term="${esc(label)}">${esc(label)}</button>` : esc(label));
+// 名词标注：在一段文字里认出词表里的词，点开看解释。seen 让同一块内容里每个词只标第一次，免得满屏虚线
+function setGlossary(terms) {
+  S.terms = terms || [];
+  S.termById = new Map(S.terms.map(t => [t.id, t]));
+  S.termByName = new Map();
+  for (const t of S.terms) for (const n of [t.term, ...t.aliases]) if (!S.termByName.has(n)) S.termByName.set(n, t);
+  const names = [...S.termByName.keys()].sort((a, b) => b.length - a.length)   // 长的优先："失信被执行人"不会被认成"被执行人"
+    .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  S.termRe = names.length ? new RegExp(names.join('|'), 'g') : null;
+}
+function termText(text, seen = new Set()) {
+  text = String(text ?? '');
+  if (!S.termRe) return esc(text);
+  let out = '', last = 0;
+  for (const m of text.matchAll(S.termRe)) {
+    const t = S.termByName.get(m[0]);
+    if (!t || seen.has(t.id)) continue;
+    seen.add(t.id);
+    out += esc(text.slice(last, m.index)) + `<button type="button" class="term" data-act="term" data-term="${esc(t.id)}">${esc(m[0])}</button>`;
+    last = m.index + m[0].length;
+  }
+  return out + esc(text.slice(last));
+}
+const termify = label => termText(label);
+function termPop(el, id) {
+  const t = S.termById.get(id);
+  if (!t) return;
+  const src = t.basis && srcOf(t.basis);
+  const basis = src ? src.name : t.law;
+  popAt(el, `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${basis ? `<p class="pb">依据：${esc(basis)}</p>` : ''}`);
+}
 const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问助手">${S.selected.has(id) ? '已选' : '问'}</button>`;
-const goLink = id => `<button type="button" class="cite" data-act="goto" data-id="${esc(id)}">${esc(id)}</button>`;
+const goLink = id => {
+  const t = id.startsWith('term.') && S.termById.get(id.slice(5));
+  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}">${esc(t ? `名词·${t.term}` : id)}</button>`;
+};
 const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(r)}</button>`).join('');
 const selCls = id => (S.selected.has(id) ? ' is-sel' : '');
 
@@ -388,10 +408,12 @@ async function loadOnepager(v) {
 }
 function opBody(op, v) {
   if (!op) return '<p class="muted">正在生成…</p>';
+  const seen = new Set();   // 整页每个词只标一次；打印时在页尾列出这些词的解释
+  const line = l => `<li>${termText(l.text, seen)}${refLinks(l.refs)}</li>`;
   const col = (title, lines, cls, empty) => `<div class="op-col ${cls}"><h4>${title}</h4>${lines.length
-    ? `<ul>${lines.map(l => `<li>${esc(l.text)}${refLinks(l.refs)}</li>`).join('')}</ul>` : `<p class="small muted">${empty}</p>`}</div>`;
+    ? `<ul>${lines.map(line).join('')}</ul>` : `<p class="small muted">${empty}</p>`}</div>`;
   const noClaims = !v.assertions.length;
-  return `<div class="op-head"><div><h3>${esc(op.title)}</h3><p>${esc(op.subject)}</p></div>
+  const body = `<div class="op-head"><div><h3>${esc(op.title)}</h3><p>${esc(op.subject)}</p></div>
       <div class="stamp">案卷 ${esc(S.case.id)} · 第 ${v.no} 版<br>${esc(fmtTime(v.created_at))}${isDemoCase() ? '<br><b class="demo-mark">演示数据 · 公司为虚构</b>' : ''}</div></div>
     <p class="headline">${esc(op.headline)}</p>
     <div class="op-cols">
@@ -399,7 +421,10 @@ function opBody(op, v) {
       ${col('查到了什么', op.found, 'found', '还没查到具体记录。')}
       ${col('还不知道什么', op.unknown, 'unknown', '没有列出来的未知项。')}
     </div>
-    ${op.next_steps.length ? `<div class="op-next"><h4>在下一步之前，先确认这几件事</h4><ol>${op.next_steps.map(l => `<li>${esc(l.text)}${refLinks(l.refs)}</li>`).join('')}</ol></div>` : ''}
+    ${op.next_steps.length ? `<div class="op-next"><h4>在下一步之前，先确认这几件事</h4><ol>${op.next_steps.map(line).join('')}</ol></div>` : ''}`;
+  const used = [...seen].map(id => S.termById.get(id)).filter(Boolean).slice(0, 6);
+  return `${body}
+    ${used.length ? `<div class="op-terms"><h4>这页里的几个词</h4><dl>${used.map(t => `<div><dt>${esc(t.term)}</dt><dd>${esc(t.plain)}</dd></div>`).join('')}</dl></div>` : ''}
     <p class="op-foot">${esc(op.footer)}</p>`;
 }
 
@@ -476,11 +501,11 @@ function signalCard(sig, cm) {
   </section>`;
 }
 function itemHtml(sigKey, it, cm) {
-  const id = `${sigKey}.${it.key}`;
+  const id = `${sigKey}.${it.key}`, seen = new Set();
   return `<div class="it s-${esc(it.status)}${selCls(id)}" data-item="${esc(id)}">
-    <div class="it-h"><span class="it-l">${termify(it.label)}</span>${it.value === STATUS[it.status] ? '' : `<span class="it-s">${STATUS[it.status] || ''}</span>`}${chgTag(id, cm)}${askBtn(id)}</div>
-    <div class="it-v">${esc(it.value)}</div>
-    ${it.detail ? `<div class="it-d">${esc(it.detail)}</div>` : ''}
+    <div class="it-h"><span class="it-l">${termText(it.label, seen)}</span>${it.value === STATUS[it.status] ? '' : `<span class="it-s">${STATUS[it.status] || ''}</span>`}${chgTag(id, cm)}${askBtn(id)}</div>
+    <div class="it-v">${termText(it.value, seen)}</div>
+    ${it.detail ? `<div class="it-d">${termText(it.detail, seen)}</div>` : ''}
     <div class="it-m">${srcLink(it.source, it.ref)}</div>
   </div>`;
 }
@@ -518,19 +543,20 @@ function claimsPanel(v, cm) {
   return `<p class="panel-lede">对方的每条说法，都拿官方记录和法规对一遍。判定由固定规则给出，不由 AI 决定。</p>
     <div class="tally-line">${parts.join('')}</div>
     <div class="claims">${v.assertions.map(a => claimCard(a, cm)).join('')}</div>
-    ${v.missing.length ? `<h4 class="sub-h">该写却没写</h4><div class="claims">${v.missing.map(m => `<article class="claim c-miss${selCls(m.id)}" data-item="${esc(m.id)}">
-        <div class="cl-h"><q>${esc(m.text)}</q><span class="verdict">该写没写</span>${chgTag(m.id, cm)}${askBtn(m.id)}</div>
-        <p class="cl-p">${esc(m.plain)}</p>
-        <div class="cl-f">${srcLink(m.source)}${m.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}">看材料 ${esc(r)}</button>`).join('')}</div></article>`).join('')}</div>` : ''}`;
+    ${v.missing.length ? `<h4 class="sub-h">该写却没写</h4><div class="claims">${v.missing.map(m => { const seen = new Set(); return `<article class="claim c-miss${selCls(m.id)}" data-item="${esc(m.id)}">
+        <div class="cl-h"><q>${termText(m.text, seen)}</q><span class="verdict">该写没写</span>${chgTag(m.id, cm)}${askBtn(m.id)}</div>
+        <p class="cl-p">${termText(m.plain, seen)}</p>
+        <div class="cl-f">${srcLink(m.source)}${m.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}">看材料 ${esc(r)}</button>`).join('')}</div></article>`; }).join('')}</div>` : ''}`;
 }
 function claimCard(a, cm) {
+  const seen = new Set();   // 对方原话里的词（"保本保息""资金存管"）最需要解释，先标
   return `<article class="claim ${esc(a.color)}${selCls(a.id)}" data-item="${esc(a.id)}">
-    <div class="cl-h"><q>${esc(a.text)}</q><span class="verdict">${esc(a.verdict_label)}</span>${chgTag(a.id, cm)}${askBtn(a.id)}</div>
-    <p class="cl-p"><span class="ckind">${termify(a.kind_label)}</span>${esc(a.plain)}</p>
+    <div class="cl-h"><q>${termText(a.text, seen)}</q><span class="verdict">${esc(a.verdict_label)}</span>${chgTag(a.id, cm)}${askBtn(a.id)}</div>
+    <p class="cl-p"><span class="ckind">${termText(a.kind_label, seen)}</span>${termText(a.plain, seen)}</p>
     <div class="cl-f">
       ${a.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(a.quotes))}">看原文 ${esc(r)}</button>`).join('')}
       <details><summary>怎么查的（${a.checks.length} 项）</summary><ul class="checks">${a.checks.map(ck => `<li class="s-${esc(ck.status)}">
-        <span class="ck-l">${termify(ck.label)}</span><span class="ck-s">${STATUS[ck.status] || ''}</span><div>${esc(ck.result)}</div>${srcLink(ck.source, ck.ref)}</li>`).join('')}</ul></details>
+        <span class="ck-l">${termText(ck.label, seen)}</span><span class="ck-s">${STATUS[ck.status] || ''}</span><div>${termText(ck.result, seen)}</div>${srcLink(ck.source, ck.ref)}</li>`).join('')}</ul></details>
     </div>
   </article>`;
 }
@@ -538,10 +564,10 @@ function claimCard(a, cm) {
 function questionsPanel(v) {
   if (!v.questions.length) return '<p class="empty-line">暂时没有要追问的。</p>';
   return `<p class="panel-lede">拿到回复后，点上面的"补充信息"，选"对方的回复"贴进来，系统会重新判断。</p>
-    <ol class="qs">${v.questions.map(q => `<li class="${selCls(q.id).trim()}" data-item="${esc(q.id)}">
-      <div class="q-h"><span class="q-ask">${esc(q.ask)}</span>${askBtn(q.id)}</div>
-      <div class="q-why">${esc(q.why)}</div>
-      <div class="q-where">拿到答案后：${esc(q.check_where)}</div></li>`).join('')}</ol>`;
+    <ol class="qs">${v.questions.map(q => { const seen = new Set(); return `<li class="${selCls(q.id).trim()}" data-item="${esc(q.id)}">
+      <div class="q-h"><span class="q-ask">${termText(q.ask, seen)}</span>${askBtn(q.id)}</div>
+      <div class="q-why">${termText(q.why, seen)}</div>
+      <div class="q-where">拿到答案后：${termText(q.check_where, seen)}</div></li>`; }).join('')}</ol>`;
 }
 
 // 第四层：原始数据
@@ -850,7 +876,7 @@ function printOnepager() {
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   const pop = $('#pop');
-  if (!pop.hidden && !e.target.closest('#pop') && !(el && ['term', 'src'].includes(el.dataset.act))) closePop();
+  if (!pop.hidden && !e.target.closest('#pop') && !(el && ['term', 'src', 'goto'].includes(el.dataset.act))) closePop();
   if (!el) {
     if (e.target.tagName === 'DIALOG') e.target.close(); // 点遮罩关闭
     return;
@@ -858,7 +884,7 @@ document.addEventListener('click', e => {
   const d = el.dataset;
   switch (d.act) {
     case 'raw': openRaw(d.ref, d.hl ? JSON.parse(d.hl) : []); break;
-    case 'goto': gotoItem(d.id); break;
+    case 'goto': if (d.id.startsWith('term.')) termPop(el, d.id.slice(5)); else gotoItem(d.id); break;
     case 'sel': toggleSel(d.id); break;
     case 'unsel': S.selected.delete(d.id); refreshSel(); break;
     case 'ver': location.hash = `#/case/${S.case.id}/v/${d.no}`; break;
@@ -867,7 +893,7 @@ document.addEventListener('click', e => {
     case 'aud': S.audience = d.aud; $$('[data-act="aud"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.aud === d.aud));
       $('#onepager').innerHTML = opBody(currentOp(ver()), ver()); loadOnepager(ver()); break;
     case 'print': printOnepager(); break;
-    case 'term': popAt(el, `<h5>${esc(d.term)}</h5><p>${esc(TERMS[d.term] || '')}</p>`); break;
+    case 'term': termPop(el, d.term); break;
     case 'src': showSource(el, d.src); break;
     case 'close-pop': closePop(); break;
     case 'ask': ask(d.q); break;
@@ -912,12 +938,13 @@ async function route() {
 }
 
 async function boot() {
-  const [health, scenarios, sources, demos] = await Promise.allSettled([
-    api('/api/health'), api('/api/scenarios'), api('/api/sources'), api('/api/demo/cases')]);
+  const [health, scenarios, sources, demos, glossary] = await Promise.allSettled([
+    api('/api/health'), api('/api/scenarios'), api('/api/sources'), api('/api/demo/cases'), api('/api/glossary')]);
   S.health = health.value || null;
   S.scenarios = scenarios.value || [];
   S.sources = sources.value || [];
   S.demos = demos.value || [];
+  setGlossary(glossary.value);
   if (!S.health) toast('连不上后端：先启动 backend（uvicorn app.main:app --port 8000）', true);
   window.addEventListener('hashchange', route);
   route();
