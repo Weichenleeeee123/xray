@@ -109,8 +109,9 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     assertions.sort(key=lambda a: rank(a.kind))
     raw_by_id = {r.id: r for r in raw}
     web_refs = {raw_by_id[rid].url: rid for rid in collected_ids if raw_by_id[rid].source_id.startswith("web_")}
+    amount = inp.amount or intake.amount
     signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
-                            collected.others, collected.web, web_refs)
+                            collected.others, collected.web, web_refs, amount)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
     link_refs(assertions, missing, signals, by_source, texts)
     charts = build_charts(ext, company, assertions, by_source, collected.web, web_refs, collected.complaints,
@@ -137,7 +138,6 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
         notes.append("材料里没有识别到需要核验的说法。")
 
     for_whom = inp.for_whom or intake.for_whom
-    amount = inp.amount or intake.amount
     questions = build_questions(assertions, missing, signals, scenario, intake.focus)
     page = onepager(company_name=inp.company_name, for_whom=for_whom, amount=amount, scenario=scenario,
                     assertions=assertions, missing=missing, signals=signals, questions=questions,

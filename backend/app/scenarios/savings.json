@@ -20,7 +20,7 @@
   ],
   "hand_over": "储蓄",
   "first_question": "它有没有资格收这笔钱",
-  "first_items": ["A1", "risk.bank_list", "risk.amac", "risk.scope", "risk.product_code"],
+  "first_items": ["A1", "risk.bank_list", "risk.amac", "risk.pf_threshold", "risk.scope", "risk.product_code"],
   "license_checks": [
     "nfra_bank_list",
     "amac",

@@ -35,6 +35,11 @@ GAP_QUESTIONS = {
     "risk.amac": ("amac", "有没有私募基金管理人登记编号",
                   "中国证券投资基金业协会信息公示（gs.amac.org.cn）按名称或编号查"),
 }
+# 有问题 / 要留意时追问的条目
+FLAG_QUESTIONS = {
+    "risk.pf_threshold": ("pf_threshold", "你们推荐的是不是私募基金？我达不到合格投资者标准（单只 100 万起），为什么能卖给我",
+                          "中国证券投资基金业协会信息公示（gs.amac.org.cn）查这只产品的备案编号；查不到备案的不要买"),
+}
 # 用户最担心的事，对应到要问的主题
 FOCUS_ABOUT = {"急用时钱能不能拿回来": "refund", "本金会不会亏": "return_promise", "说的收益是不是真的": "return_promise",
                "这家公司正不正规、有没有资格": "qualification", "会不会让我先交钱": "upfront_fee"}
@@ -61,9 +66,13 @@ def build_questions(assertions: list[Assertion], missing: list[MissingItem], sig
             key = f"{s.key}.{item.key}"
             if key in ("credit.official_web", "risk.regulator_warning") and item.status is Status.bad:
                 candidates.append((1, "official_web", Question(
-                    id="", ask=f"政府网站上有一份点名你们的文件（{item.detail}），这件事现在处理完了吗",
+                    id="", ask=f"政府网站上有一份点名你们的文件（{(item.detail or '').split('；另有')[0]}），这件事现在处理完了吗",
                     why=f"{item.label}：{item.value}", check_where="点开原始数据里的原文链接，看处罚或通报的内容和日期",
                     linked=[key])))
+            if key in FLAG_QUESTIONS and item.status in (Status.bad, Status.warn):
+                about, ask, where = FLAG_QUESTIONS[key]
+                candidates.append((0 if item.status is Status.bad else 2, about,
+                                   Question(id="", ask=ask, why=f"{item.label}：{item.value}", check_where=where, linked=[key])))
             if key in GAP_QUESTIONS and item.status is Status.none:
                 about, ask, where = GAP_QUESTIONS[key]
                 candidates.append((3, about, Question(id="", ask=ask, why=f"{item.label}还没查：{item.detail or item.value}",

@@ -72,14 +72,17 @@ def test_company_charts_skip_fields_the_source_did_not_give():
 
 def test_timeline_keeps_only_official_events_that_matter():
     from app.sources.web import WebFindings, WebHit
-    hit = lambda cat, title, d: WebHit(cat, {"penalty": "行政处罚 / 监管措施", "judicial": "法院文书", "other": "其他提及",
-                                             "license": "许可 / 批复"}[cat], True, title, f"https://x.gov.cn/{d}", "x", d, "")
+    labels = {"penalty": "行政处罚 / 监管措施", "judicial": "法院文书", "other": "其他提及", "license": "许可 / 批复"}
+    hit = lambda cat, title, d, subject=True, dated=True: WebHit(cat, labels[cat], True, title, f"https://x.gov.cn/{d}",
+                                                                 "x", d, "", subject=subject, dated=dated)
     web = WebFindings(searched=True, official=[
         hit("penalty", "关于对某某公司采取责令改正措施的决定", "2023-02-24"),
         hit("other", "关于王某某等同志任职的通知", "2024-06-20"),           # 其他提及：不上线
         hit("judicial", "张某某与某某公司借款合同纠纷判决书", "2025-01-02"),  # 当事人姓名不上线
-        hit("license", "关于某某公司开业的批复", "2021-07-05")])
+        hit("license", "关于某某公司开业的批复", "2021-07-05"),
+        hit("penalty", "关于对某某另一家公司采取警示函措施的决定", "2022-03-31", subject=False),  # 只是顺带提到它
+        hit("penalty", "行政处罚决定书[2024]35号(某某公司、王某某)_浙江监管局", "2024-09-13", dated=False)])
     tl = timeline_chart(None, web, {}, None, {}, date(2026, 10, 2))
     assert [e.label for e in tl.events] == ["许可 / 批复：关于某某公司开业的批复", "行政处罚 / 监管措施：关于对某某公司采取责令改正措施的决定",
-                                          "法院文书"]
-    assert [e.tone for e in tl.events] == ["neutral", "bad", "warn"]
+                                          "行政处罚 / 监管措施：行政处罚决定书[2024]35号（日期是网页收录日）", "法院文书"]
+    assert [e.tone for e in tl.events] == ["neutral", "bad", "bad", "warn"]    # 括号里的当事人人名不上线

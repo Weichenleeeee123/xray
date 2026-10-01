@@ -5,6 +5,7 @@
 - 不同单位不放在一根轴上：门店数和分支机构数放一起，参保人数只写在读图的那句话里。
 - 自然人股东不显示姓名。
 """
+import re
 from datetime import date
 
 from app.analysis.extract import Extraction
@@ -128,10 +129,13 @@ def timeline_chart(company: CompanyProfile | None, web: WebFindings | None, web_
                                     ref=reg, item="finance.paid_capital"))
     if web is not None:
         for h in web.official:
-            if not h.date or h.category not in OFFICIAL_TONE:   # "其他提及"（采购公告、任职通知……）不上线
+            if not h.date or h.category not in OFFICIAL_TONE or not h.subject:   # 其他提及、只是顺带提到它的，不上线
                 continue
-            # 法院文书的标题常带当事人姓名，只写类别
-            label = h.category_label if h.category == "judicial" else f"{h.category_label}：{h.title[:24]}"
+            # 法院文书的标题常带当事人姓名，只写类别；处罚决定书标题括号里列的当事人（常有人名）也去掉
+            title = re.split(r"[（(_]", h.title)[0][:24]
+            label = h.category_label if h.category == "judicial" else f"{h.category_label}：{title}"
+            if not h.dated:
+                label += "（日期是网页收录日）"
             ev.append(TimelineEvent(date=h.date[:10], label=label, tone=OFFICIAL_TONE[h.category], ref=web_refs.get(h.url),
                                     item="risk.regulator_warning" if h.category == "warning" else "credit.official_web"))
         news = sorted((TimelineEvent(date=h.date[:10], label=f"{h.category_label}：{h.title[:20]}", tone="warn",

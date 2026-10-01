@@ -3,7 +3,7 @@ import re
 from datetime import date
 
 from app.analysis.extract import Extraction
-from app.analysis.fmt import money, months_between
+from app.analysis.fmt import money, months_between, wan
 from app.analysis.verify import qualification_review, return_review
 from app.config import LOW_PAID_RATIO, YOUNG_COMPANY_MONTHS
 from app.models import (AmacHit, Assertion, ClaimKind, CompanyProfile, LicenseHit, RegistryHit, Scenario, Signal,
@@ -45,15 +45,25 @@ def official_web_item(web: WebFindings | None, refs: dict[str, str]) -> SignalIt
     if not web.official and any("官方" in e for e in web.errors):
         return SignalItem(key="official_web", label=label, value="查询失败", detail="；".join(web.errors),
                           status=Status.none, source="web_official")
-    bad = [h for h in web.official if h.category in ("penalty", "warning")]
-    judicial = [h for h in web.official if h.category == "judicial"]
+    # 只算它是当事人的文件；正文里顺带提到它的（比如别家公司的处罚决定里写"员工在它那里兼职"）单独说
+    subject = [h for h in web.official if h.subject]
+    mentioned = [h for h in web.official if not h.subject and h.category in ("penalty", "warning", "judicial")]
+    also = f"；另有 {len(mentioned)} 份文件在正文里提到它，它不是当事人" if mentioned else ""
+    bad = [h for h in subject if h.category in ("penalty", "warning")]
+    judicial = [h for h in subject if h.category == "judicial"]
     if bad:
         kinds = "、".join(dict.fromkeys(h.category_label for h in bad))
-        return _hit_item("official_web", label, f"{len(bad)} 份文件点名了它（{kinds}）", bad[0], Status.bad, refs,
+        item = _hit_item("official_web", label, f"{len(bad)} 份文件点名了它（{kinds}）", bad[0], Status.bad, refs,
                          "web_official")
+        if also:
+            item.detail = (item.detail or "") + also
+        return item
     if judicial:
         return _hit_item("official_web", label, f"{len(judicial)} 份法院相关文件提到它", judicial[0], Status.warn, refs,
                          "web_official")
+    if mentioned:
+        return _hit_item("official_web", label, f"{len(mentioned)} 份处罚或法院文件在正文里提到它（它不是当事人）",
+                         mentioned[0], Status.warn, refs, "web_official")
     if web.official:
         return _hit_item("official_web", label, f"{len(web.official)} 份文件提到它，没有处罚或警示", web.official[0],
                          Status.ok, refs, "web_official")
@@ -62,9 +72,26 @@ def official_web_item(web: WebFindings | None, refs: dict[str, str]) -> SignalIt
                       status=Status.ok, source="web_official")
 
 
+PF_MIN = 1_000_000  # 投资单只私募基金的最低金额
+
+
+def pf_threshold_item(amac: AmacHit, amount: float | None) -> SignalItem | None:
+    """它是私募基金管理人：卖的只能是私募，只能卖给合格投资者，单只起投 100 万。"""
+    if not amac.registered:
+        return None
+    label, src = "私募门槛", "reg_pf_qualified"
+    if amount is not None and amount < PF_MIN:
+        return SignalItem(key="pf_threshold", label=label,
+                          value=f"私募基金只能卖给合格投资者，单只至少 100 万；这笔是 {wan(amount)}，达不到",
+                          detail="它登记的是私募基金管理人，不能向普通人公开推销产品", status=Status.bad, source=src)
+    return SignalItem(key="pf_threshold", label=label, value="私募基金只能卖给合格投资者，单只至少 100 万",
+                      detail="个人还要金融资产不低于 300 万元，或近三年年均收入不低于 50 万元", status=Status.warn, source=src)
+
+
 def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
                 scenario: Scenario, assertions: list[Assertion], others: list[RegistryHit] = (),
-                web: WebFindings | None = None, refs: dict[str, str] | None = None) -> Signal:
+                web: WebFindings | None = None, refs: dict[str, str] | None = None,
+                amount: float | None = None) -> Signal:
     items: list[SignalItem] = []
     warnings = [h for h in (web.official if web else []) if h.category == "warning"]
     if warnings:
@@ -74,6 +101,8 @@ def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit
         checks, _, _ = qualification_review(ext, company, lic, amac, others)
         items += [SignalItem(key=k, label=c.label, value=c.result, status=c.status, source=c.source)
                   for k, c in zip(QUAL_KEYS, checks)]
+        if "amac" in scenario.license_checks and (pf := pf_threshold_item(amac, amount)):
+            items.append(pf)
     else:
         items.append(SignalItem(key="bank_list", label="金融牌照", value="你的需求和材料都不涉及理财或投资，不适用",
                                 status=Status.ok, source="material"))
@@ -238,12 +267,14 @@ def reputation_signal(data: dict | None, web: WebFindings | None = None, refs: d
 def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
                   complaints: dict | None, as_of: date, scenario: Scenario,
                   assertions: list[Assertion] = (), others: list[RegistryHit] = (),
-                  web: WebFindings | None = None, web_refs: dict[str, str] | None = None) -> list[Signal]:
+                  web: WebFindings | None = None, web_refs: dict[str, str] | None = None,
+                  amount: float | None = None) -> list[Signal]:
     """四个信号的内容不随场景变；场景只改排序和开头那句话。"""
     scale = ext.claims.get(ClaimKind.scale)
     stores = scale.numbers.get("stores") if scale else None
     refs = web_refs or {}
-    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions), list(others), web, refs),
+    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions), list(others), web, refs,
+                                              amount),
                                   finance_signal(company, stores), credit_signal(company, as_of, web, refs),
                                   reputation_signal(complaints, web, refs)]}
     for key, lede in scenario.signal_ledes.items():

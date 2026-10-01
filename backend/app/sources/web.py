@@ -52,8 +52,10 @@ class WebHit:
     url: str
     site: str
     date: str | None
-    excerpt: str           # 摘要里公司名前后的原文
+    excerpt: str           # 摘要里公司名前后的原文（出生日期、住址等个人信息已遮掉）
     by_short_name: bool = False  # 只匹配上了简称
+    subject: bool = True   # 官方文件：它是文件的当事人（标题有全称、或抬头 / 当事人写的是它）；False 只是正文里提到
+    dated: bool = False    # 日期取自页面上的发文日期；False 时是搜索引擎的收录日期，可能晚于发文
 
 
 @dataclass
@@ -90,6 +92,35 @@ def _excerpt(text: str, name: str, width: int = 70) -> str | None:
     if i < 0:
         return None
     return flat[max(0, i - width): i + len(normalize(name)) + width * 2]
+
+
+# 页面上的发文日期。搜索引擎给的 datePublished 常常是收录日期（证监会页面实测差了快一年）
+DOC_DATE_MS = re.compile(r"发文日期\s*(\d{13})")
+DOC_DATE = re.compile(r"(?:发文|发布|成文)日期[:：]?\s*(\d{4})[-年./](\d{1,2})[-月./](\d{1,2})")
+# 处罚决定书里常写当事人的出生年月和住址，存进案卷前遮掉
+PERSONAL = [(re.compile(r"[男女][，,]\s*\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?\s*出生"), "（出生信息略）"),
+            (re.compile(r"住址[:：][^，。；,;]{1,40}"), "住址：略"),
+            (re.compile(r"身份证(?:号码?)?[:：]?\s*\d{6}[\d*]{8,11}[\dXx*]"), "身份证：略")]
+
+
+def doc_date(text: str) -> str | None:
+    m = DOC_DATE_MS.search(text)
+    if m:
+        return datetime.fromtimestamp(int(m.group(1)) / 1000).strftime("%Y-%m-%d")
+    m = DOC_DATE.search(text)
+    return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}" if m else None
+
+
+def redact(text: str) -> str:
+    for pattern, repl in PERSONAL:
+        text = pattern.sub(repl, text)
+    return text
+
+
+def is_subject(title: str, text: str, name: str) -> bool:
+    """官方文件是不是冲着它来的：标题有全称，或者抬头 / 当事人写的是它。只在正文里提到的不算。"""
+    flat, n = re.sub(r"\s+", "", text), normalize(name)
+    return n in normalize(title) or re.search(rf"(当事人[:：]|^|[。；，,]){re.escape(n)}[（(:：]", flat) is not None
 
 
 def _classify(text: str, cats) -> tuple[str, str]:
@@ -185,7 +216,11 @@ class WebClient:
                     if k == "news" and official:
                         continue  # 官方页面由第一路搜索负责
                     cat, label = _classify(p["name"] + excerpt, OFFICIAL_CATS if official else NEWS_CATS)
-                    hit = WebHit(cat, label, official, p["name"], p["url"], p["site"] or domain, p["date"], excerpt,
-                                 by_short)
+                    found = doc_date(p["text"])
+                    hit = WebHit(cat, label, official, p["name"], p["url"], p["site"] or domain, found or p["date"],
+                                 # 风险提示点名的公司多写在正文里，提到就算点名；处罚、法院文书要它是当事人
+                                 redact(excerpt), by_short,
+                                 subject=not official or cat == "warning" or is_subject(p["name"], p["text"], name),
+                                 dated=found is not None)
                     (out.official if k == "official" else out.news).append(hit)
         return out
