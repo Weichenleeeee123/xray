@@ -1,8 +1,10 @@
 /* X-Ray 前端：原生 JS，不打包。契约以 backend/app/models.py 为准。
  *
  * 路由：#/ 输入页；#/case/<id> 最新版报告；#/case/<id>/v/<n> 第 n 版。
+ * 报告页：一页结论在最上面；四个信号、宣称 vs 记录、该问对方的、原始数据放在下面的标签页里，按需展开。
  * 页面里所有可点的东西都用 data-act 声明，统一在 onClick 里分发。
- * 条目 id：A1 说法、M1 缺项、risk.bank_list 信号条目、Q1 问题、R1 原始数据。R 开头的打开原始数据，其余滚动到报告里那一条。
+ * 条目 id：A1 说法、M1 缺项、risk.bank_list 信号条目、Q1 问题、R1 原始数据。R 开头的打开原始数据，其余跳到所在标签页里那一条。
+ * 报告条目的锚点用 data-item；按钮要去的目标用 data-id，两者不要混用。
  */
 'use strict';
 
@@ -14,10 +16,10 @@ const KIND = { none: '没有数据', official: '官方记录', collected: '人�
   demo: '演示·虚构', user_material: '用户材料', web: '网络公开' };
 const COVERAGE = { found: '查到了', not_found: '查了没有', not_covered: '没查', failed: '查询失败' };
 const STATUS = { bad: '有问题', warn: '要留意', miss: '该有的没有', none: '没查', ok: '没问题' };
-const STATUS_CLS = { bad: 'red', warn: 'amber', miss: 'miss', none: 'none', ok: 'green' };
+const FLAG = new Set(['bad', 'warn', 'miss']);   // 要看的；ok、none 默认折叠
 const CHANGE = { new_concern: '新疑点', worse: '更严重', clarified: '疑点减轻', unchanged: '没变', added: '新增', removed: '这版没有了' };
-const SIGNAL_EN = { risk: 'RISK', finance: 'FINANCE', credit: 'CREDIT', reputation: 'REPUTATION' };
 const MODE = { model: '模型回答', replay: '离线回放', template: '模板回答', guard: '已拦截' };
+const TABS = { changes: '变化', signals: '四个信号', claims: '宣称 vs 记录', questions: '该问对方的', raw: '原始数据' };
 const SUP_KIND = {
   material: { label: '新材料', help: '宣传单、合同、聊天记录的文字。可以上传图片、PDF、Word，读出来的文字会填进下面，你可以改。' },
   reply: { label: '对方的回复', help: '对方怎么回答你的问题。会记为"对方说的，未核实"，只用来对照，不当作事实。' },
@@ -41,7 +43,8 @@ const TERMS = {
 const S = {
   health: null, scenarios: [], sources: [], demos: [], cases: [],
   case: null, viewNo: null, selected: new Set(), busy: false, audience: 'family', opCache: {},
-  form: { userScenario: null, dirty: {}, intake: null, read: null },
+  tab: 'signals', openRest: new Set(),
+  form: { userScenario: null, showScen: false, dirty: {}, intake: null },
 };
 
 // ---------- 接口 ----------
@@ -88,19 +91,21 @@ const srcOf = id => (S.case && S.case.sources[id]) || S.sources.find(s => s.id =
 const rawKind = r => (r.coverage === 'not_covered' && r.kind === 'demo' ? 'none' : r.kind);
 const isDemoCase = () => S.case && S.case.raw.some(r => r.kind === 'demo' && r.coverage === 'found');
 const isId = s => /^(R\d+|A\d+|M\d+|Q\d+|[a-z]+\.[a-z0-9_]+)$/.test(s);
+const versionRaws = v => v.raw_ids.map(rawById).filter(Boolean);
 
 const termify = label => (TERMS[label] ? `<button type="button" class="term" data-act="term" data-term="${esc(label)}">${esc(label)}</button>` : esc(label));
-const stBadge = st => `<span class="st ${STATUS_CLS[st] || 'none'}">${STATUS[st] || st}</span>`;
-const selBtn = id => `<button type="button" class="selbtn" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，再去问助手">${S.selected.has(id) ? '已选中' : '选中提问'}</button>`;
+const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问助手">${S.selected.has(id) ? '已选' : '问'}</button>`;
 const goLink = id => `<button type="button" class="cite" data-act="goto" data-id="${esc(id)}">${esc(id)}</button>`;
 const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(r)}</button>`).join('');
+const selCls = id => (S.selected.has(id) ? ' is-sel' : '');
 
-function srcTag(sourceId, ref) {
+// 来源：一行灰字"类型 · 日期 · 编号"，点开是原始记录（法规、参数类没有编号，点开是出处说明）
+function srcLink(sourceId, ref) {
   const s = srcOf(sourceId), r = ref && rawById(ref);
   const kind = (r && rawKind(r)) || (s && s.kind) || '';
   const date = kind === 'none' ? null : (r && r.as_of) || (s && s.as_of);
   const title = s ? s.name : sourceId;
-  const inner = `<span class="k-${esc(kind)}">${esc(KIND[kind] || '来源')}</span>${date ? `<time>${esc(date)}</time>` : ''}${ref ? `<b>${esc(ref)}</b>` : ''}`;
+  const inner = `<span class="k-${esc(kind)}">${esc(KIND[kind] || '来源')}</span>${date ? ` · ${esc(date)}` : ''}${ref ? ` · <b>${esc(ref)}</b>` : ''}`;
   return ref
     ? `<button type="button" class="src" data-act="raw" data-ref="${esc(ref)}" title="${esc(title)} · 点开看原始数据">${inner}</button>`
     : `<button type="button" class="src" data-act="src" data-src="${esc(sourceId)}" title="${esc(title)}">${inner}</button>`;
@@ -111,19 +116,13 @@ function changeMap(v) {
   if (v && v.no > 1) for (const c of v.changes) if (c.kind !== 'unchanged') m[c.target] = c.kind;
   return m;
 }
-function chgTag(id, cm) {
-  const k = cm[id];
-  return k ? `<span class="chg-tag ${k}" title="和上一版比">${CHANGE[k]}</span>` : '';
-}
+const chgTag = (id, cm) => (cm[id] ? `<span class="chg-tag ${cm[id]}" title="和上一版比">${CHANGE[cm[id]]}</span>` : '');
 
 // ---------- 顶栏 ----------
 
 function renderTop() {
-  const strip = $('#caseStrip'), badges = $('#topBadges');
-  const v = ver();
-  strip.innerHTML = S.case && location.hash.startsWith('#/case/')
-    ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span><span>案卷 ${esc(S.case.id)}</span><span>第 ${v.no} 版 / 共 ${S.case.versions.length} 版</span>`
-    : '';
+  const onCase = S.case && location.hash.startsWith('#/case/');
+  $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : '';
   const llm = S.health && S.health.llm;
   let b = '';
   if (llm) {
@@ -131,73 +130,53 @@ function renderTop() {
     else if (llm.mode === 'replay') b += '<span class="tb replay" title="断网演示：只用录好的模型响应">离线回放</span>';
     else b += `<span class="tb live" title="${esc(llm.model || '')}">模型在线</span>`;
   }
-  if (S.case && location.hash.startsWith('#/case/') && isDemoCase()) b += '<span class="tb demo" title="这家公司和它的记录都是编的，只用来演示">演示数据 · 公司为虚构</span>';
-  badges.innerHTML = b;
+  if (onCase && isDemoCase()) b += '<span class="tb demo" title="这家公司和它的记录都是编的，只用来演示">演示数据 · 公司为虚构</span>';
+  $('#topBadges').innerHTML = b;
 }
 
 // ---------- 首页 ----------
 
 async function renderHome() {
   S.case = null; renderTop();
-  S.form = { userScenario: null, dirty: {}, intake: null, read: null };
-  const lists = S.health ? [{ title: '银行业金融机构法人名单', count: S.health.licensed_count, as_of: S.health.licensed_as_of },
-    ...Object.values(S.health.official_lists || {})] : [];
+  S.form = { userScenario: null, showScen: false, dirty: {}, intake: null };
+  const h = S.health;
+  const SHORT = { nfra_insurance: '保险', csrc_futures: '期货', pbc_payment: '支付', amac_managers: '私募' };
+  const lists = h ? [{ title: '银行业', count: h.licensed_count },
+    ...Object.entries(h.official_lists || {}).map(([k, l]) => ({ title: SHORT[k] || l.title, count: l.count }))] : [];
   $('#view').innerHTML = `
   <div class="home">
-    <section class="hero">
-      <div>
-        <div class="kicker">杭州银行赛题 · X-RAY 透视·真相</div>
-        <h1>把钱或信任交给一家公司之前，<br>先看清它。</h1>
-        <p>输入公司全称，说一句你要做什么。我们把散在各处的官方记录汇到一起，对照它的说法，交给你一份看得懂的报告；每条结论都能点开原始数据。看不懂就问助手，有了新情况就补进来。</p>
-      </div>
-      <div class="film-mini" aria-hidden="true"><svg viewBox="0 0 40 50"><path d="M20 2v46M9 10c5.5 3 16.5 3 22 0M6 19c7 3.6 21 3.6 28 0M8 28c6 3 18 3 24 0M11 37c4.6 2.4 13.4 2.4 18 0" stroke="#c4f0ff" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".85"/></svg><div class="scan"></div></div>
+    <section class="home-hero">
+      <div class="kicker">X-RAY · 透视·真相</div>
+      <h1>把钱交给一家公司之前，先看清它。</h1>
+      <p>输入公司全称，说一句你要做什么。官方记录会汇到一起，对照它的说法，给你一份看得懂的报告。</p>
     </section>
-    <div class="home-grid">
-      <div id="formWrap">${formHtml()}</div>
-      <div class="side">
-        <section class="card"><h2>演示案例</h2><ul class="demo-list" id="demoList">${demoListHtml()}</ul></section>
-        <section class="card"><h2>最近的案卷</h2><ul class="case-list" id="caseList"><li class="muted small">读取中…</li></ul></section>
-        <section class="card"><h2>每家公司都查这些名单</h2>
-          <ul class="lists">${lists.map(l => `<li><span>${esc(l.title)}</span><span class="mono">${(l.count || 0).toLocaleString()} 家 · ${esc(l.as_of || '')}</span></li>`).join('') || '<li class="muted">读取中…</li>'}</ul>
-          <p class="hint">全部是官方公布的整份名单，已入库。企业登记、处罚、被执行等要过验证码的网站，我们不绕过：配了模型网关就联网搜监管和法院网站上点名它的文件，其余写"没查"。</p>
-        </section>
-      </div>
-    </div>
+    <div id="formWrap">${formHtml()}</div>
+    <section class="recent" id="recent"></section>
+    ${lists.length ? `<p class="lists-line">每家公司都查 ${lists.length} 份官方名单：${lists.map(l => `${esc(l.title)} ${(l.count || 0).toLocaleString()} 家`).join('、')}。要过验证码的网站（企业登记、被执行、裁判文书）我们不绕过，查不到的写"没查"。</p>` : ''}
   </div>`;
   bindForm();
   try {
     S.cases = await api('/api/cases');
-    $('#caseList').innerHTML = S.cases.length
-      ? S.cases.slice(0, 8).map(c => `<li><a href="#/case/${esc(c.id)}"><b>${esc(c.company_name)}</b><span>${esc(c.scenario_label)} · ${c.versions} 版 · ${esc(fmtTime(c.created_at))}</span></a></li>`).join('')
-      : '<li class="muted small">还没有案卷。</li>';
-  } catch (e) { $('#caseList').innerHTML = `<li class="err">${esc(e.message)}</li>`; }
-}
-
-function demoListHtml() {
-  if (!S.demos.length) return '<li class="muted small">没有演示案例。</li>';
-  return S.demos.map(d => `<li>
-    <div class="dl-h"><b>${esc(d.id)} · ${esc(d.label)}</b>${d.ready ? `<button type="button" class="btn sm ghost" data-act="demo-fill" data-id="${esc(d.id)}">填入</button>` : '<span class="small muted">未准备好</span>'}</div>
-    ${d.note ? `<div class="hint">${esc(d.note)}</div>` : ''}</li>`).join('');
+    if (S.cases.length) $('#recent').innerHTML = `<h2>最近的案卷</h2>${S.cases.slice(0, 5).map(c => `<a href="#/case/${esc(c.id)}"><b>${esc(c.company_name)}</b><span>${esc(c.scenario_label)} · ${c.versions} 版 · ${esc(fmtTime(c.created_at).slice(5))}</span></a>`).join('')}`;
+  } catch (e) { /* 列表读不到不影响新建 */ }
 }
 
 function formHtml() {
-  return `<form class="card" id="caseForm" autocomplete="off">
-    <h2>看一家公司</h2>
-    <div class="field"><label for="fCompany">公司全称</label>
-      <div><input class="inp" id="fCompany" name="company" required minlength="2" placeholder="例如：杭州银行股份有限公司">
-      <div class="hint">写营业执照上的全称。名单按全称核对，简称容易对错公司。</div></div></div>
-    <div class="field"><label for="fNeed">一句需求</label>
-      <div><textarea class="box" id="fNeed" name="need" rows="2" placeholder="例如：我妈想在这家公司存 20 万理财，最怕急用时取不出来"></textarea>
-      <div class="intake" id="intake">${intakeHtml()}</div></div></div>
-    <div class="field"><span class="lab">替谁看</span>
-      <div class="pair"><input class="inp" name="for_whom" placeholder="例如：妈妈（可不填）"><div><input class="inp mono" name="amount" placeholder="金额，例如 20万（可不填）"><div class="hint" id="amtHint"></div></div></div></div>
-    <div class="field mat"><span class="lab">材料<br><small>可选</small></span>
-      <div><details id="matBox"><summary>有宣传单、合同或聊天记录？贴进来就能逐条对照它的说法</summary>
-        <div class="mat-tools"><span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="fFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="read-note muted" id="readNote"></span></div>
-        <input class="inp" name="material_title" placeholder="材料名称，例如：业务员发的宣传单" style="font-size:14px;margin-bottom:8px">
-        <textarea class="box" name="material_text" rows="6" placeholder="把材料上的文字贴在这里"></textarea>
-      </details></div></div>
-    <div class="submit-row"><button class="btn" type="submit" id="fSubmit">生成报告</button><span class="small muted">只填公司和需求也能出报告。</span></div>
+  const demos = S.demos.filter(d => d.ready);
+  return `<form class="ask-card" id="caseForm" autocomplete="off">
+    <div class="f-row"><label class="f-l" for="fCompany">公司全称</label>
+      <input class="big-inp" id="fCompany" name="company" required minlength="2" placeholder="例如：杭州银行股份有限公司" title="写营业执照上的全称，名单按全称核对"></div>
+    <div class="f-row"><label class="f-l" for="fNeed">你要做什么</label>
+      <textarea class="big-inp" id="fNeed" name="need" rows="2" placeholder="例如：我妈想在这家公司存 20 万理财，最怕急用时取不出来"></textarea>
+      <div class="intake" id="intake">${intakeHtml()}</div></div>
+    <div class="facts"><label>替 <input name="for_whom" placeholder="谁"> 看</label><label>金额 <input name="amount" class="mono" placeholder="可不填"></label><span class="muted small" id="amtHint"></span></div>
+    <details class="mat" id="matBox"><summary>有宣传单、合同或聊天记录？贴进来就能逐条对照它的说法</summary>
+      <div class="mat-tools"><span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="fFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="muted small" id="readNote"></span></div>
+      <input class="big-inp sm" name="material_title" placeholder="材料名称，例如：业务员发的宣传单">
+      <textarea class="big-inp sm" name="material_text" rows="5" placeholder="把材料上的文字贴在这里"></textarea>
+    </details>
+    <div class="submit-row"><button class="btn" type="submit" id="fSubmit">生成报告</button>
+      ${demos.length ? `<span class="muted small">或填入演示案例：${demos.map(d => `<button type="button" class="linkish" data-act="demo-fill" data-id="${esc(d.id)}">${esc(d.label)}</button>`).join('、')}</span>` : ''}</div>
     <div class="err" id="formErr" role="alert"></div>
   </form>`;
 }
@@ -206,11 +185,12 @@ function intakeHtml() {
   const f = S.form, it = f.intake;
   const chosen = f.userScenario || (it && it.scenario);
   const sc = S.scenarios.find(s => s.id === chosen);
-  const how = f.userScenario ? '你选的' : it ? (it.method === 'model' ? '模型识别' : `关键词识别${it.matched && it.matched.length ? '：' + it.matched.join('、') : ''}`) : '';
-  return `<div class="hint" style="margin-top:8px">${it || f.userScenario ? `场景（${esc(how)}，可以改）` : '写完需求会自动识别场景，也可以直接选：'}</div>
-    <div class="chips" style="margin-top:4px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="scenario" data-id="${esc(s.id)}" aria-pressed="${s.id === chosen}">${esc(s.label)}</button>`).join('')}</div>
-    ${sc ? `<div class="first-q">先回答这一问：<b>${esc(sc.first_question)}</b></div>` : ''}
-    ${it && it.focus && it.focus.length ? `<div class="hint" style="margin-top:6px">你最担心的：</div><ul class="focus-list">${it.focus.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`;
+  const how = f.userScenario ? '你选的' : it ? (it.method === 'model' ? '模型识别' : '关键词识别') : '';
+  const line = sc
+    ? `<span class="muted">识别为</span> <b>${esc(sc.label)}</b> <span class="muted small">（${esc(how)}）</span> <button type="button" class="linkish" data-act="scen-toggle">${f.showScen ? '收起' : '换一个'}</button>
+       <div class="first-q">先回答：${esc(sc.first_question)}${it && it.focus && it.focus.length ? `<span class="muted">；你最担心：${it.focus.map(esc).join('、')}</span>` : ''}</div>`
+    : `<span class="muted small">写完会自动识别场景，也可以</span> <button type="button" class="linkish" data-act="scen-toggle">${f.showScen ? '收起' : '直接选'}</button>`;
+  return `${line}${f.showScen ? `<div class="chips scen-chips">${S.scenarios.map(s => `<button type="button" class="chip" data-act="scenario" data-id="${esc(s.id)}" aria-pressed="${s.id === chosen}">${esc(s.label)}</button>`).join('')}</div>` : ''}`;
 }
 
 function bindForm() {
@@ -236,7 +216,7 @@ function bindForm() {
   };
   const amtHint = () => {
     const n = parseAmount(form.amount.value);
-    $('#amtHint').textContent = form.amount.value.trim() ? (n ? `= ${n.toLocaleString()} 元` : '没看懂这个金额，写成 200000 或 20万') : '';
+    $('#amtHint').textContent = form.amount.value.trim() ? (n ? `= ${n.toLocaleString()} 元` : '没看懂，写成 200000 或 20万') : '';
   };
   form.need.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(runIntake, 800); });
   form.need.addEventListener('blur', () => { clearTimeout(timer); runIntake(); });
@@ -252,7 +232,7 @@ function bindForm() {
       if (r.method === 'failed') { note.innerHTML = `<span class="err">读不出来：${esc(r.note || '')}请把文字手动贴进下面。</span>`; return; }
       form.material_text.value = r.text;
       if (!form.material_title.value) form.material_title.value = file.name;
-      note.textContent = `已读出 ${r.text.length} 字（${{ text: '文本', pdf: 'PDF', vision: '看图识别' }[r.method] || r.method}）${r.note ? '。' + r.note : ''}。请核对一遍。`;
+      note.textContent = `已读出 ${r.text.length} 字（${{ text: '文本', pdf: 'PDF', vision: '看图识别' }[r.method] || r.method}），请核对一遍。`;
     } catch (err) { note.innerHTML = `<span class="err">${esc(err.message)}</span>`; }
     finally { e.target.value = ''; }
   });
@@ -262,14 +242,13 @@ function bindForm() {
     if (company.length < 2) { $('#formErr').textContent = '请填公司全称'; return; }
     const amount = parseAmount(form.amount.value);
     if (form.amount.value.trim() && !amount) { $('#formErr').textContent = '金额没看懂，写成 200000 或 20万，或者留空'; return; }
-    const body = {
+    await createCase({
       company_name: company, need: form.need.value.trim(),
       scenario: S.form.userScenario || null,
       for_whom: form.for_whom.value.trim() || null, amount,
       material_text: form.material_text.value.trim() || null,
       material_title: form.material_title.value.trim() || null,
-    };
-    await createCase(body);
+    });
   });
 }
 
@@ -290,10 +269,10 @@ async function createCase(body) {
     '企业登记和年报（证据包、商业接口、演示数据，有哪个用哪个）', '投诉记录'];
   if (llmOn && !fictional) names.push('监管、法院、政府网站上点名它的文件（联网搜索）', '公开报道和投诉（联网搜索）');
   if (body.material_text) names.push('你给的材料');
-  wrap.innerHTML = `<section class="card collecting" aria-busy="true">
+  wrap.innerHTML = `<section class="ask-card collecting" aria-busy="true">
     <div class="kicker">正在汇集</div>
     <h2>${esc(body.company_name)}</h2>
-    <p class="small">正在查下面这些来源，查完一起出结果。每个来源查到了、查了没有、没查、查询失败，会在报告顶部分开标出来。</p>
+    <p class="small muted">正在查下面这些来源，查完一起出结果：</p>
     <ul>${names.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
     <div class="bar"></div>
     <p class="small muted" style="margin:10px 0 0">已用 <span class="mono" id="elapsed">0</span> 秒。联网查证的公司大约要 5–10 秒。</p>
@@ -302,7 +281,7 @@ async function createCase(body) {
   const tick = setInterval(() => { const el = $('#elapsed'); if (el) el.textContent = Math.round((Date.now() - t0) / 1000); }, 500);
   try {
     const c = await api('/api/cases', { method: 'POST', body });
-    S.case = c; S.viewNo = c.current; S.selected.clear(); S.opCache = {};
+    S.case = c; S.viewNo = c.current; S.selected.clear(); S.opCache = {}; S.tab = 'signals'; S.openRest.clear();
     location.hash = `#/case/${c.id}`;
   } catch (e) {
     wrap.innerHTML = keep; bindForm();
@@ -325,7 +304,6 @@ function fillDemo(id) {
   if (d.input.material_text) $('#matBox').open = true;
   S.form.userScenario = d.input.scenario || null;
   f.need.dispatchEvent(new Event('blur'));
-  f.company.focus();
   toast(`已填入演示案例 ${d.id}，点"生成报告"`);
 }
 
@@ -336,35 +314,28 @@ async function openCase(id, no) {
     $('#view').innerHTML = '<div class="home"><p class="muted">读取案卷…</p></div>';
     try { S.case = await api(`/api/cases/${encodeURIComponent(id)}`); }
     catch (e) {
-      $('#view').innerHTML = `<div class="home"><div class="card"><h2>打不开这个案卷</h2><p class="err">${esc(e.message)}</p><a class="btn sm" href="#/">回到首页</a></div></div>`;
+      $('#view').innerHTML = `<div class="home"><div class="ask-card"><h2>打不开这个案卷</h2><p class="err">${esc(e.message)}</p><a class="btn sm" href="#/">回到首页</a></div></div>`;
       return;
     }
-    S.selected.clear(); S.opCache = {};
+    S.selected.clear(); S.opCache = {}; S.tab = 'signals'; S.openRest.clear();
   }
   S.viewNo = no && S.case.versions.some(v => v.no === no) ? no : S.case.current;
   renderCase();
 }
 
 function renderCase() {
-  const c = S.case, v = ver(), cm = changeMap(v);
+  const c = S.case, v = ver();
+  if (S.tab === 'changes' && v.no === 1) S.tab = 'signals';
   const assistOpen = $('#assist') && $('#assist').classList.contains('open');
   renderTop();
   $('#view').innerHTML = `
   <div class="case-layout">
     <div class="report" id="report">
       ${caseHead(c, v)}
-      ${coverageHtml(c, v)}
-      ${v.no > 1 ? changesHtml(v) : ''}
-      <nav class="layer-nav" aria-label="报告分层">
-        ${v.no > 1 ? '<a href="#L0" data-act="jump"><i>Δ</i>变化清单</a>' : ''}
-        <a href="#L1" data-act="jump"><i>1</i>一页结论</a><a href="#L2" data-act="jump"><i>2</i>四个信号</a>
-        <a href="#L3" data-act="jump"><i>3</i>宣称 vs 记录</a><a href="#LQ" data-act="jump"><i>?</i>该问对方的</a><a href="#L4" data-act="jump"><i>4</i>原始数据</a>
-      </nav>
-      ${onepagerHtml(v)}
-      ${signalsHtml(v, cm)}
-      ${claimsHtml(v, cm)}
-      ${questionsHtml(v)}
-      ${rawsHtml(c, v)}
+      ${conclusionHtml(v)}
+      ${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc(v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}
+      ${tabsHtml(v)}
+      <div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>
       <footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>
     </div>
     <aside class="assist${assistOpen ? ' open' : ''}" id="assist" aria-label="AI 助手">${assistHtml()}</aside>
@@ -375,66 +346,34 @@ function renderCase() {
 }
 
 function caseHead(c, v) {
-  const latest = v.no === c.current;
-  const scen = S.scenarios.find(s => s.id === v.scenario);
+  const raws = versionRaws(v);
+  const n = k => raws.filter(r => r.coverage === k).length;
+  const cov = [['found', '查到'], ['not_found', '查了没有'], ['not_covered', '没查'], ['failed', '查询失败']]
+    .filter(([k]) => n(k)).map(([k, l]) => `${n(k)} ${l}`).join(' · ');
   return `<header class="case-head">
-    <div class="kicker">案卷 ${esc(c.id)} · 第 ${v.no} 版 · ${esc(v.trigger_label)} · ${esc(fmtTime(v.created_at))}</div>
+    <div class="ch-top">
+      ${c.versions.length > 1 ? `<div class="vers" role="group" aria-label="版本">${c.versions.map(x => `<button type="button" class="ver" data-act="ver" data-no="${x.no}" aria-current="${x.no === v.no}"><b>v${x.no}</b>${esc(x.trigger_label)}</button>`).join('')}</div>` : '<span></span>'}
+      <button type="button" class="btn sm ghost" data-act="supplement">＋ 补充信息</button>
+    </div>
     <h1>${esc(c.case.company_name)}</h1>
-    ${v.need ? `<p class="need">${esc(v.need)}</p>` : ''}
+    ${v.need ? `<p class="need">“${esc(v.need)}”</p>` : ''}
     <div class="meta-line">
-      <span><span class="lab">场景</span> <b>${esc(v.scenario_label)}</b></span>
-      ${scen ? `<span><span class="lab">第一问</span> ${esc(scen.first_question)}</span>` : ''}
-      ${v.for_whom ? `<span><span class="lab">替谁看</span> ${esc(v.for_whom)}</span>` : ''}
-      ${v.amount ? `<span><span class="lab">金额</span> <span class="mono">${esc(fmtMoney(v.amount))}</span></span>` : ''}
-      ${v.focus && v.focus.length ? `<span><span class="lab">最担心</span> ${v.focus.map(esc).join('；')}</span>` : ''}
+      <span>${esc(v.scenario_label)}</span>
+      ${v.for_whom ? `<span>替${esc(v.for_whom)}看</span>` : ''}
+      ${v.amount ? `<span class="mono">${esc(fmtMoney(v.amount))}</span>` : ''}
+      <button type="button" class="linkish" data-act="tab" data-tab="raw">汇集了 ${raws.length} 条记录：${cov}</button>
     </div>
-    <div class="vers" role="group" aria-label="版本">
-      ${c.versions.map(x => `<button type="button" class="ver" data-act="ver" data-no="${x.no}" aria-current="${x.no === v.no}"><b>v${x.no}</b><small>${esc(x.trigger_label)}</small></button>`).join('')}
-      <button type="button" class="btn sm" data-act="supplement">补充信息 · 生成第 ${c.versions.length + 1} 版</button>
-    </div>
-    ${latest ? '' : `<div class="old-banner">你在看第 ${v.no} 版（${esc(v.trigger_label)}），不是最新的。最新是第 ${c.current} 版。<button type="button" class="linkish" data-act="ver" data-no="${c.current}">回到最新</button></div>`}
-    ${v.notes && v.notes.length ? `<div class="notes">${v.notes.map(n => `<div class="note-line${/演示|虚构/.test(n) ? ' demo' : ''}">${esc(n)}</div>`).join('')}</div>` : ''}
+    ${v.no === c.current ? '' : `<div class="old-banner">你在看第 ${v.no} 版（${esc(v.trigger_label)}），最新是第 ${c.current} 版。<button type="button" class="linkish" data-act="ver" data-no="${c.current}">回到最新</button></div>`}
+    ${v.notes && v.notes.length ? `<ul class="notes">${v.notes.map(t => `<li${/演示|虚构/.test(t) ? ' class="demo"' : ''}>${esc(t)}</li>`).join('')}</ul>` : ''}
   </header>`;
 }
 
-function coverageHtml(c, v) {
-  const raws = v.raw_ids.map(rawById).filter(Boolean);
-  const n = k => raws.filter(r => r.coverage === k).length;
-  return `<section class="coverage" aria-label="数据汇集结果">
-    <div class="cov-head"><h2>这次汇集了 ${raws.length} 条原始数据</h2>
-      <div class="cov-sum"><span>查到了 ${n('found')}</span><span>查了没有 ${n('not_found')}</span><span>没查 ${n('not_covered')}</span><span>查询失败 ${n('failed')}</span></div></div>
-    <div class="cov-list">${raws.map(r => {
-      const s = srcOf(r.source_id);
-      return `<button type="button" class="cov ${esc(r.coverage)}" data-act="raw" data-ref="${esc(r.id)}" title="${esc(r.title)}"><i>${esc(r.id)}</i><span>${esc(s ? s.name : r.title)}</span><em>${COVERAGE[r.coverage] || ''}</em></button>`;
-    }).join('')}</div>
-  </section>`;
-}
-
-function changesHtml(v) {
-  const changed = v.changes.filter(x => x.kind !== 'unchanged');
-  const same = v.changes.filter(x => x.kind === 'unchanged');
-  return `<section class="card changes" id="L0">
-    <div class="kicker">变化清单 · 第 ${v.no} 版（${esc(v.trigger_label)}）和第 ${v.no - 1} 版比</div>
-    <h2>${esc(v.change_summary || (changed.length ? `${changed.length} 项有变化` : '没有影响判断的变化'))}</h2>
-    ${changed.length ? `<div class="chg-list">${changed.map(x => `<div class="chg ${x.kind}">
-        <div class="chg-h"><span class="chg-k">${CHANGE[x.kind]}</span><button type="button" class="linkish" data-act="goto" data-id="${esc(x.target)}">${esc(x.label)}</button></div>
-        <div class="ba">${x.before ? `<s>${esc(x.before)}</s> → ` : ''}<b>${esc(x.after || '这版没有了')}</b></div>
-        ${x.after && x.plain.includes(x.after.slice(0, 12)) ? '' : `<p>${esc(x.plain)}</p>`}
-        ${x.quote ? `<blockquote>${esc(x.quote)}</blockquote>` : ''}
-        ${x.because.length ? `<div class="msg-meta">依据 ${x.because.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(x.quote ? [x.quote] : []))}">${esc(r)}</button>`).join('')}</div>` : ''}
-      </div>`).join('')}</div>` : `<p class="small">${v.trigger === 'need' ? '公司的记录和它的说法都没变，每条判定也没变；变的是信号的排序、"第一问"和报告措辞。' : '新信息没有改变任何一条判断。'}</p>`}
-    ${same.length ? `<details class="same"><summary>没变的 ${same.length} 项（展开看）</summary><ul>${same.map(x => `<li><button type="button" class="linkish" data-act="goto" data-id="${esc(x.target)}">${esc(x.label)}</button>：${esc(x.after || x.before || '')}</li>`).join('')}</ul></details>` : ''}
-  </section>`;
-}
-
 // 第一层：一页结论
-function onepagerHtml(v) {
-  return `<section class="layer" id="L1">
-    <div class="layer-head"><div><span class="kicker">第一层</span><h2>一页结论</h2></div>
-      <div class="tools">
-        <div class="seg" role="group" aria-label="给谁看"><button type="button" data-act="aud" data-aud="family" aria-pressed="${S.audience === 'family'}">给家人</button><button type="button" data-act="aud" data-aud="teller" aria-pressed="${S.audience === 'teller'}">给网点柜员</button></div>
-        <button type="button" class="btn sm ghost" data-act="print">打印这一页</button>
-      </div></div>
+function conclusionHtml(v) {
+  return `<section class="conclusion" id="L1">
+    <div class="cc-bar"><span class="kicker">一页结论</span>
+      <div class="seg" role="group" aria-label="给谁看"><button type="button" data-act="aud" data-aud="family" aria-pressed="${S.audience === 'family'}">给家人</button><button type="button" data-act="aud" data-aud="teller" aria-pressed="${S.audience === 'teller'}">给网点柜员</button></div>
+      <button type="button" class="linkish" data-act="print">打印</button></div>
     <article class="onepager" id="onepager">${opBody(currentOp(v), v)}</article>
   </section>`;
 }
@@ -453,122 +392,173 @@ function opBody(op, v) {
     ? `<ul>${lines.map(l => `<li>${esc(l.text)}${refLinks(l.refs)}</li>`).join('')}</ul>` : `<p class="small muted">${empty}</p>`}</div>`;
   const noClaims = !v.assertions.length;
   return `<div class="op-head"><div><h3>${esc(op.title)}</h3><p>${esc(op.subject)}</p></div>
-      <div class="stamp">X-Ray 案卷 ${esc(S.case.id)}<br>第 ${v.no} 版 · ${esc(fmtTime(v.created_at))}${isDemoCase() ? '<br><b class="demo-mark">演示数据 · 公司为虚构</b>' : ''}</div></div>
+      <div class="stamp">案卷 ${esc(S.case.id)} · 第 ${v.no} 版<br>${esc(fmtTime(v.created_at))}${isDemoCase() ? '<br><b class="demo-mark">演示数据 · 公司为虚构</b>' : ''}</div></div>
     <p class="headline">${esc(op.headline)}</p>
     <div class="op-cols">
-      ${col('查到了什么', op.found, 'found', '还没查到具体记录。')}
       ${col('哪里对不上', op.mismatch, 'mismatch', noClaims ? '还没有它的说法可以对照。' : '它的说法和记录没有对不上的地方。')}
+      ${col('查到了什么', op.found, 'found', '还没查到具体记录。')}
       ${col('还不知道什么', op.unknown, 'unknown', '没有列出来的未知项。')}
     </div>
     ${op.next_steps.length ? `<div class="op-next"><h4>在下一步之前，先确认这几件事</h4><ol>${op.next_steps.map(l => `<li>${esc(l.text)}${refLinks(l.refs)}</li>`).join('')}</ol></div>` : ''}
     <p class="op-foot">${esc(op.footer)}</p>`;
 }
 
-// 第二层：四个信号
-function signalsHtml(v, cm) {
-  return `<section class="layer" id="L2">
-    <div class="layer-head"><div><span class="kicker">第二层</span><h2>四个信号</h2></div></div>
-    <p class="layer-lede">排序跟着你的需求走。每一行右边是状态，下面是来源角标：来源类型、数据日期、原始数据编号，点开就是原始记录。</p>
-    <div class="signals">${v.signals.map(sig => signalCard(sig, cm)).join('')}</div>
-  </section>`;
+// 标签页：第二到第四层
+function tabsHtml(v) {
+  const flagged = v.signals.reduce((n, s) => n + s.items.filter(i => FLAG.has(i.status)).length, 0);
+  const changed = v.changes.filter(x => x.kind !== 'unchanged').length;
+  const counts = { changes: [changed, changed > 0], signals: [flagged, flagged > 0], claims: [v.assertions.length + v.missing.length, (v.tally.red || 0) > 0],
+    questions: [v.questions.length, false], raw: [v.raw_ids.length, false] };
+  const tabs = Object.keys(TABS).filter(k => k !== 'changes' || v.no > 1);
+  return `<nav class="tabs" role="tablist" aria-label="报告的各层">${tabs.map(k => `<button type="button" class="tab" role="tab" data-act="tab" data-tab="${k}" aria-selected="${S.tab === k}">${TABS[k]}<span class="n${counts[k][1] ? ' hot' : ''}">${counts[k][0]}</span></button>`).join('')}</nav>`;
+}
+function panelHtml(v) {
+  const cm = changeMap(v);
+  switch (S.tab) {
+    case 'changes': return changesPanel(v);
+    case 'claims': return claimsPanel(v, cm);
+    case 'questions': return questionsPanel(v);
+    case 'raw': return rawPanel(v);
+    default: return signalsPanel(v, cm);
+  }
+}
+function renderPanel() {
+  const v = ver();
+  $$('.tabs .tab').forEach(t => t.setAttribute('aria-selected', t.dataset.tab === S.tab));
+  $('#panel').innerHTML = panelHtml(v);
+}
+function showTab(tab, scroll = true) {
+  S.tab = tab; renderPanel();
+  if (scroll) {
+    const tabs = $('.tabs');
+    const top = tabs.getBoundingClientRect().top;
+    if (top < 0 || top > window.innerHeight * 0.6) tabs.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function changesPanel(v) {
+  const changed = v.changes.filter(x => x.kind !== 'unchanged');
+  const same = v.changes.filter(x => x.kind === 'unchanged');
+  return `<p class="panel-lede">第 ${v.no} 版（${esc(v.trigger_label)}）和第 ${v.no - 1} 版逐条比对的结果，由程序算出。</p>
+    ${changed.length ? `<div class="chg-list">${changed.map(x => `<div class="chg ${x.kind}">
+        <div class="chg-h"><span class="chg-k">${CHANGE[x.kind]}</span><button type="button" class="linkish" data-act="goto" data-id="${esc(x.target)}">${esc(x.label)}</button></div>
+        <div class="ba">${x.before ? `<s>${esc(x.before)}</s> → ` : ''}<b>${esc(x.after || '这版没有了')}</b></div>
+        ${x.after && x.plain.includes(x.after.slice(0, 12)) ? '' : `<p>${esc(x.plain)}</p>`}
+        ${x.quote ? `<blockquote>${esc(x.quote)}</blockquote>` : ''}
+        ${x.because.length ? `<div class="chg-src">依据 ${x.because.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(x.quote ? [x.quote] : []))}">${esc(r)}</button>`).join('')}</div>` : ''}
+      </div>`).join('')}</div>`
+      : `<p class="empty-line">${v.trigger === 'need' ? '公司的记录和它的说法都没变，每条判定也没变；变的是信号的排序、"第一问"和报告措辞。' : '新信息没有改变任何一条判断。'}</p>`}
+    ${same.length ? `<details class="same"><summary>没变的 ${same.length} 项</summary><ul>${same.map(x => `<li><button type="button" class="linkish" data-act="goto" data-id="${esc(x.target)}">${esc(x.label)}</button>：${esc(x.after || x.before || '')}</li>`).join('')}</ul></details>` : ''}`;
+}
+
+// 第二层：四个信号。每张卡只列要看的，其余折叠
+function signalsPanel(v, cm) {
+  return `<p class="panel-lede">财务、信用、风险、口碑，排序跟着你的需求走。每张卡只列要看的，没问题和没查的折叠在下面。</p>
+    <div class="signals">${v.signals.map(sig => signalCard(sig, cm)).join('')}</div>`;
 }
 function signalCard(sig, cm) {
-  const rows = sig.items.map(it => {
-    const id = `${sig.key}.${it.key}`;
-    return `<div class="row${S.selected.has(id) ? ' is-sel' : ''}" data-item="${esc(id)}">
-      <div class="k">${termify(it.label)}</div>
-      <div class="v">${esc(it.value)}${it.detail ? `<small>${esc(it.detail)}</small>` : ''}<div class="meta">${srcTag(it.source, it.ref)}${chgTag(id, cm)}</div></div>
-      <div class="s">${stBadge(it.status)}${selBtn(id)}</div>
-    </div>`;
-  }).join('');
-  return `<section class="card sig" aria-labelledby="sig-${sig.key}">
-    <div class="sig-head"><h3 id="sig-${sig.key}">${esc(sig.title)}<span>${SIGNAL_EN[sig.key] || ''}</span></h3>
-      ${sig.flags ? `<span class="flags">${sig.flags} 项要看</span>` : '<span class="flags zero">没有标记</span>'}</div>
+  const flagged = sig.items.filter(i => FLAG.has(i.status));
+  const rest = sig.items.filter(i => !FLAG.has(i.status));
+  const open = S.openRest.has(sig.key) || !flagged.length && rest.length <= 2;
+  const nOk = rest.filter(i => i.status === 'ok').length, nNone = rest.length - nOk;
+  const restLabel = [nOk && `${nOk} 项没问题`, nNone && `${nNone} 项没查`].filter(Boolean).join('、');
+  // 没查不等于没问题：有没查的项就不用绿色
+  const head = flagged.length ? ['', `${flagged.length} 项要看`]
+    : !nOk ? [' none', '没查到数据'] : nNone ? [' none', `查过的没问题，${nNone} 项没查`] : [' zero', '查过的没问题'];
+  return `<section class="sig" aria-labelledby="sig-${sig.key}">
+    <header><h3 id="sig-${sig.key}">${esc(sig.title)}</h3><span class="flags${head[0]}">${head[1]}</span></header>
     <p class="sig-lede">${esc(sig.lede)}</p>
-    ${rows}${sigExtra(sig)}
+    ${flagged.map(it => itemHtml(sig.key, it, cm)).join('')}
+    ${rest.length ? (open
+      ? `<div class="rest">${rest.map(it => itemHtml(sig.key, it, cm)).join('')}</div>${flagged.length || rest.length > 2 ? `<button type="button" class="rest-tog" data-act="rest" data-key="${sig.key}">收起</button>` : ''}`
+      : `<button type="button" class="rest-tog" data-act="rest" data-key="${sig.key}">另外 ${restLabel} ▾</button>`) : ''}
+    ${sigExtra(sig)}
   </section>`;
+}
+function itemHtml(sigKey, it, cm) {
+  const id = `${sigKey}.${it.key}`;
+  return `<div class="it s-${esc(it.status)}${selCls(id)}" data-item="${esc(id)}">
+    <div class="it-h"><span class="it-l">${termify(it.label)}</span>${it.value === STATUS[it.status] ? '' : `<span class="it-s">${STATUS[it.status] || ''}</span>`}${chgTag(id, cm)}${askBtn(id)}</div>
+    <div class="it-v">${esc(it.value)}</div>
+    ${it.detail ? `<div class="it-d">${esc(it.detail)}</div>` : ''}
+    <div class="it-m">${srcLink(it.source, it.ref)}</div>
+  </div>`;
 }
 function sigExtra(sig) {
   const x = sig.extra;
   if (!x) return '';
   let out = '';
   if (Array.isArray(x.months) && Array.isArray(x.counts) && x.counts.length) {
-    const max = Math.max(1, ...x.counts), w = 300, h = 74, bw = w / x.counts.length;
-    out += `<svg class="chart" viewBox="0 0 ${w} ${h + 14}" role="img" aria-label="近 12 个月投诉数">${x.counts.map((n, i) => {
+    const max = Math.max(1, ...x.counts), w = 300, h = 64, bw = w / x.counts.length;
+    out += `<div class="chart-wrap"><svg class="chart" viewBox="0 0 ${w} ${h + 14}" role="img" aria-label="近 12 个月投诉数">${x.counts.map((n, i) => {
       const bh = Math.round((n / max) * (h - 12));
-      return `<rect x="${i * bw + 3}" y="${h - bh}" width="${bw - 6}" height="${bh}" fill="${i >= x.counts.length - 3 ? 'var(--red)' : 'var(--ink-2)'}" opacity=".85"/>`
+      return `<rect x="${i * bw + 3}" y="${h - bh}" width="${bw - 6}" height="${bh}" fill="${i >= x.counts.length - 3 ? 'var(--red)' : 'var(--ink-3)'}" opacity=".8"/>`
         + `<text class="cv" x="${i * bw + bw / 2}" y="${h - bh - 2}" text-anchor="middle">${n}</text>`
         + `<text x="${i * bw + bw / 2}" y="${h + 11}" text-anchor="middle">${esc(String(x.months[i] || '').slice(5))}</text>`;
-    }).join('')}</svg><div class="hint">红色是最近 3 个月。</div>`;
+    }).join('')}</svg><div class="small muted">近 12 个月投诉数，红色是最近 3 个月。</div></div>`;
   }
   if (Array.isArray(x.web) && x.web.length) {
     out += `<details class="webhits"><summary>搜到的 ${x.web.length} 条公开报道和投诉</summary><ul>${x.web.map(hh => `<li>
-      <span class="kind k-web">${esc(hh.category || '其他')}</span> <a href="${esc(hh.url)}" target="_blank" rel="noopener noreferrer">${esc(hh.title)}</a>
-      <div class="wm">${esc(hh.site || '')}${hh.date ? ' · ' + esc(hh.date) : ''}${hh.ref ? ` · <button type="button" class="cite" data-act="raw" data-ref="${esc(hh.ref)}">${esc(hh.ref)}</button>` : ''}</div>
+      <a href="${esc(hh.url)}" target="_blank" rel="noopener noreferrer">${esc(hh.title)}</a>
+      <div class="wm">${esc(hh.category || '其他')} · ${esc(hh.site || '')}${hh.date ? ' · ' + esc(hh.date) : ''}${hh.ref ? ` · <button type="button" class="cite" data-act="raw" data-ref="${esc(hh.ref)}">${esc(hh.ref)}</button>` : ''}</div>
       ${hh.excerpt ? `<div class="small">${esc(hh.excerpt)}</div>` : ''}</li>`).join('')}</ul></details>`;
   }
   return out;
 }
 
 // 第三层：宣称 vs 记录
-function claimsHtml(v, cm) {
+function claimsPanel(v, cm) {
   const t = v.tally || {};
-  const body = v.assertions.length
-    ? `<div class="tally"><span class="tr"><b>${t.red || 0}</b>处与记录不符或不合规</span><span class="ta"><b>${t.amber || 0}</b>处有误导或要留意</span><span class="tg"><b>${t.grey || 0}</b>处无法核验</span><span class="tgr"><b>${t.green || 0}</b>处与记录相符</span>${t.missing ? `<span class="ta"><b>${t.missing}</b>处该写没写</span>` : ''}</div>
-       <div class="claims">${v.assertions.map(a => claimCard(a, cm)).join('')}</div>`
-    : `<div class="empty"><p>还没有这家公司的说法。上传宣传材料、合同或聊天记录，就能逐条对照。</p><button type="button" class="btn sm" data-act="supplement" data-kind="material">补充材料</button></div>`;
-  return `<section class="layer" id="L3">
-    <div class="layer-head"><div><span class="kicker">第三层</span><h2>宣称 vs 记录</h2></div></div>
-    <p class="layer-lede">对方的每条说法，都拿官方记录和法规对一遍。判定由固定规则给出，不由 AI 决定。</p>
-    ${body}
-    ${v.missing.length ? `<div class="missing"><h3>该写却没写</h3>${v.missing.map(m => `<div class="miss-item${S.selected.has(m.id) ? ' is-sel' : ''}" data-item="${esc(m.id)}">
-        <div class="ctext"><span class="cid mono small muted">${esc(m.id)}</span><q>${esc(m.text)}</q>${chgTag(m.id, cm)}</div>
-        <p>${esc(m.plain)}</p><div class="cfoot">${srcTag(m.source)}${m.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}">看材料 ${esc(r)}</button>`).join('')}${selBtn(m.id)}</div></div>`).join('')}</div>` : ''}
-  </section>`;
+  const parts = [['red', '条与记录不符或不合规'], ['amber', '条有误导或要留意'], ['grey', '条无法核验'], ['green', '条与记录相符']]
+    .filter(([k]) => t[k]).map(([k, l]) => `<span class="t ${k}"><b>${t[k]}</b>${l}</span>`);
+  if (t.missing) parts.push(`<span class="t amber"><b>${t.missing}</b>处该写没写</span>`);
+  if (!v.assertions.length && !v.missing.length) {
+    return `<div class="empty"><p>还没有这家公司的说法。上传宣传材料、合同或聊天记录，就能拿它的每句话去对照官方记录。</p><button type="button" class="btn sm" data-act="supplement" data-kind="material">补充材料</button></div>`;
+  }
+  return `<p class="panel-lede">对方的每条说法，都拿官方记录和法规对一遍。判定由固定规则给出，不由 AI 决定。</p>
+    <div class="tally-line">${parts.join('')}</div>
+    <div class="claims">${v.assertions.map(a => claimCard(a, cm)).join('')}</div>
+    ${v.missing.length ? `<h4 class="sub-h">该写却没写</h4><div class="claims">${v.missing.map(m => `<article class="claim c-miss${selCls(m.id)}" data-item="${esc(m.id)}">
+        <div class="cl-h"><q>${esc(m.text)}</q><span class="verdict">该写没写</span>${chgTag(m.id, cm)}${askBtn(m.id)}</div>
+        <p class="cl-p">${esc(m.plain)}</p>
+        <div class="cl-f">${srcLink(m.source)}${m.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}">看材料 ${esc(r)}</button>`).join('')}</div></article>`).join('')}</div>` : ''}`;
 }
 function claimCard(a, cm) {
-  return `<article class="claim ${esc(a.color)}${S.selected.has(a.id) ? ' is-sel' : ''}" data-item="${esc(a.id)}">
-    <div class="cid">${esc(a.id)}</div>
-    <div>
-      <div class="ctext"><span class="ckind">${termify(a.kind_label)}</span><q>${esc(a.text)}</q><span class="badge ${esc(a.color)}">${esc(a.verdict_label)}</span>${chgTag(a.id, cm)}</div>
-      <p class="plain">${esc(a.plain)}</p>
-      <details${a.color === 'red' ? ' open' : ''}><summary>怎么查的 · ${a.checks.length} 项</summary><ul class="checks">${a.checks.map(ck => `<li>
-        ${stBadge(ck.status)}<span class="cl">${termify(ck.label)}</span><span class="cr">${esc(ck.result)} ${srcTag(ck.source, ck.ref)}</span></li>`).join('')}</ul></details>
-      <div class="cfoot">${a.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(a.quotes))}">原文在 ${esc(r)}</button>`).join('')}${selBtn(a.id)}</div>
+  return `<article class="claim ${esc(a.color)}${selCls(a.id)}" data-item="${esc(a.id)}">
+    <div class="cl-h"><q>${esc(a.text)}</q><span class="verdict">${esc(a.verdict_label)}</span>${chgTag(a.id, cm)}${askBtn(a.id)}</div>
+    <p class="cl-p"><span class="ckind">${termify(a.kind_label)}</span>${esc(a.plain)}</p>
+    <div class="cl-f">
+      ${a.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(a.quotes))}">看原文 ${esc(r)}</button>`).join('')}
+      <details><summary>怎么查的（${a.checks.length} 项）</summary><ul class="checks">${a.checks.map(ck => `<li class="s-${esc(ck.status)}">
+        <span class="ck-l">${termify(ck.label)}</span><span class="ck-s">${STATUS[ck.status] || ''}</span><div>${esc(ck.result)}</div>${srcLink(ck.source, ck.ref)}</li>`).join('')}</ul></details>
     </div>
   </article>`;
 }
 
-function questionsHtml(v) {
-  return `<section class="layer" id="LQ">
-    <div class="layer-head"><div><span class="kicker">下一步</span><h2>该问对方的问题</h2></div></div>
-    ${v.questions.length ? `<ol class="qs">${v.questions.map(q => `<li data-item="${esc(q.id)}" class="${S.selected.has(q.id) ? 'is-sel' : ''}">
-      <span class="qid">${esc(q.id)}</span>
-      <div><div class="ask">${esc(q.ask)}</div><div class="why">${esc(q.why)} ${q.linked.map(goLink).join('')}</div><div class="where">${esc(q.check_where)}</div></div>
-      ${selBtn(q.id)}</li>`).join('')}</ol>
-      <p class="small muted">问到回复后，点上面的"补充信息"，选"对方的回复"贴进来，系统会重新判断。</p>`
-      : '<p class="muted">暂时没有要追问的。</p>'}
-  </section>`;
+function questionsPanel(v) {
+  if (!v.questions.length) return '<p class="empty-line">暂时没有要追问的。</p>';
+  return `<p class="panel-lede">拿到回复后，点上面的"补充信息"，选"对方的回复"贴进来，系统会重新判断。</p>
+    <ol class="qs">${v.questions.map(q => `<li class="${selCls(q.id).trim()}" data-item="${esc(q.id)}">
+      <div class="q-h"><span class="q-ask">${esc(q.ask)}</span>${askBtn(q.id)}</div>
+      <div class="q-why">${esc(q.why)}</div>
+      <div class="q-where">拿到答案后：${esc(q.check_where)}</div></li>`).join('')}</ol>`;
 }
 
 // 第四层：原始数据
-function rawsHtml(c, v) {
-  const raws = v.raw_ids.map(rawById).filter(Boolean);
-  return `<section class="layer" id="L4">
-    <div class="layer-head"><div><span class="kicker">第四层</span><h2>原始数据</h2></div></div>
-    <p class="layer-lede">每次取数据都留一条原样的记录。报告里任何一条结论都能点进来；真实还是演示、哪天采的，都写在这里。</p>
+function rawPanel(v) {
+  const raws = versionRaws(v);
+  const n = k => raws.filter(r => r.coverage === k).length;
+  return `<p class="panel-lede">每次取数据都原样留一条记录。点开看原文、来源链接、采集时间，以及报告里哪些结论用到了它。</p>
+    <div class="cov-sum">共 ${raws.length} 条：${Object.entries(COVERAGE).map(([k, l]) => `<span class="covl ${k}">${l} ${n(k)}</span>`).join(' · ')}</div>
     <div class="raws">${raws.map(r => {
-      const s = srcOf(r.source_id);
-      return `<div class="raw-row" data-item="${esc(r.id)}">
+      const s = srcOf(r.source_id), kind = rawKind(r);
+      return `<button type="button" class="raw-row" data-act="raw" data-ref="${esc(r.id)}" data-item="${esc(r.id)}">
         <span class="rid">${esc(r.id)}</span>
-        <div><div class="rt">${esc(r.title)}</div>
-          <div class="rm"><span class="kind k-${esc(rawKind(r))}">${esc(KIND[rawKind(r)] || r.kind)}</span><span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span>
-            ${s ? `<span>${esc(s.name)}</span>` : ''}${r.as_of ? `<span>数据截至 ${esc(r.as_of)}</span>` : ''}<span>采集于 ${esc(fmtTime(r.retrieved_at))}</span></div>
-          ${r.note ? `<div class="rn">${esc(r.note)}</div>` : ''}</div>
-        <button type="button" class="btn sm ghost" data-act="raw" data-ref="${esc(r.id)}">查看</button>
-      </div>`;
-    }).join('')}</div>
-  </section>`;
+        <span class="rt">${esc(r.title)}<small>${esc(r.note || (s ? s.name : ''))}${r.as_of ? ` · 截至 ${esc(r.as_of)}` : ''}</small></span>
+        <span class="k-${esc(kind)} rk">${esc(KIND[kind] || r.kind)}</span>
+        <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span>
+      </button>`;
+    }).join('')}</div>`;
 }
 
 // ---------- 原始数据弹窗 ----------
@@ -607,10 +597,10 @@ function contentHtml(content, quotes) {
 function openRaw(rid, quotes) {
   const r = rawById(rid);
   if (!r) { toast(`案卷里没有 ${rid}`, true); return; }
-  const s = srcOf(r.source_id), back = backRefs(rid);
+  const s = srcOf(r.source_id), back = backRefs(rid), kind = rawKind(r);
   const dlg = $('#rawDlg');
   dlg.innerHTML = `<div class="dlg-in">
-    <div class="dlg-head"><div><div class="kicker">原始数据 ${esc(r.id)} · <span class="kind k-${esc(rawKind(r))}">${esc(KIND[rawKind(r)] || r.kind)}</span> · <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span></div>
+    <div class="dlg-head"><div><div class="kicker">原始数据 ${esc(r.id)} · <span class="k-${esc(kind)}">${esc(KIND[kind] || r.kind)}</span> · <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span></div>
       <h3 id="rawTitle">${esc(r.title)}</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
     <div class="dlg-body">
       <dl class="kv">
@@ -620,10 +610,10 @@ function openRaw(rid, quotes) {
         ${r.url ? `<dt>原文链接</dt><dd><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.url)}</a></dd>` : ''}
         ${r.screenshot ? `<dt>截图</dt><dd>${esc(r.screenshot)}</dd>` : ''}
       </dl>
-      ${rawKind(r) === 'demo' ? '<div class="raw-note">演示数据：这家公司和这条记录都是编的，只用来演示。</div>' : ''}
+      ${kind === 'demo' ? '<div class="raw-note">演示数据：这家公司和这条记录都是编的，只用来演示。</div>' : ''}
       ${r.note ? `<div class="raw-note">${esc(r.note)}</div>` : ''}
       <div class="raw-content">${contentHtml(r.content, quotes)}</div>
-      ${back.length ? `<div class="backrefs"><h4>报告里用到这条数据的地方</h4><div class="chips">${back.map(([id, label]) => `<button type="button" class="chip" data-act="goto" data-id="${esc(id)}">${esc(id)} · ${esc(label)}</button>`).join('')}</div></div>` : ''}
+      ${back.length ? `<div class="backrefs"><h4>报告里用到这条数据的地方</h4><div class="chips">${back.map(([id, label]) => `<button type="button" class="chip" data-act="goto" data-id="${esc(id)}">${esc(label)}</button>`).join('')}</div></div>` : ''}
     </div></div>`;
   if (!dlg.open) dlg.showModal();
   const m = $('mark', dlg);
@@ -632,7 +622,7 @@ function openRaw(rid, quotes) {
 function showSource(el, id) {
   const s = srcOf(id);
   if (!s) return;
-  popAt(el, `<h5>${esc(s.name)}</h5><p><span class="kind k-${esc(s.kind)}">${esc(KIND[s.kind] || s.kind)}</span>${s.as_of ? ` · ${esc(s.as_of)}` : ''}</p>${s.note ? `<p style="margin-top:6px">${esc(s.note)}</p>` : ''}${s.url ? `<p style="margin-top:6px"><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">打开出处</a></p>` : ''}<p class="small" style="margin-top:6px;opacity:.75">这一条依据的是法规或参数，不是一次查询，所以没有原始数据编号。</p>`);
+  popAt(el, `<h5>${esc(s.name)}</h5><p>${esc(KIND[s.kind] || s.kind)}${s.as_of ? ` · ${esc(s.as_of)}` : ''}</p>${s.note ? `<p style="margin-top:6px">${esc(s.note)}</p>` : ''}${s.url ? `<p style="margin-top:6px"><a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">打开出处</a></p>` : ''}<p class="small" style="margin-top:6px;opacity:.75">这一条依据的是法规或参数，不是一次查询，所以没有原始数据编号。</p>`);
 }
 
 // ---------- 浮层 ----------
@@ -655,26 +645,40 @@ function toggleSel(id) {
   if (S.selected.has(id)) S.selected.delete(id);
   else { if (S.selected.size >= 10) { toast('最多同时选 10 条'); return; } S.selected.add(id); }
   refreshSel();
+  if (S.selected.has(id) && window.matchMedia('(max-width:1280px)').matches) toast(`已选中 ${id}，点右下角"问助手"提问`);
 }
 function refreshSel() {
-  $$('.selbtn').forEach(b => {
+  $$('.ask').forEach(b => {
     const on = S.selected.has(b.dataset.id);
-    b.setAttribute('aria-pressed', on); b.textContent = on ? '已选中' : '选中提问';
+    b.setAttribute('aria-pressed', on); b.textContent = on ? '已选' : '问';
   });
-  $$('#report [data-item]').forEach(el => el.classList.toggle('is-sel', S.selected.has(el.dataset.item) && !el.classList.contains('raw-row')));
+  $$('#panel [data-item]').forEach(el => el.classList.toggle('is-sel', S.selected.has(el.dataset.item) && !el.classList.contains('raw-row')));
   const box = $('#asSel');
   if (box) box.innerHTML = selHtml();
   const fab = $('.fab');
   if (fab) fab.innerHTML = `问助手${S.selected.size ? `<em>${S.selected.size}</em>` : ''}`;
 }
+function tabFor(id) {
+  if (/^[AM]\d+$/.test(id)) return 'claims';
+  if (/^Q\d+$/.test(id)) return 'questions';
+  if (id.includes('.')) return 'signals';
+  return null;
+}
 function gotoItem(id) {
   if (/^R\d+$/.test(id)) { openRaw(id); return; }
   if ($('#rawDlg').open) $('#rawDlg').close();
   if (window.matchMedia('(max-width:1280px)').matches) $('#assist') && $('#assist').classList.remove('open');
-  const el = $(`#report [data-item="${CSS.escape(id)}"]`);
+  const tab = tabFor(id);
+  if (!tab) { toast(`这一版报告里没有 ${id}`); return; }
+  if (tab === 'signals') {   // 折叠着的条目先展开
+    const key = id.split('.')[0];
+    const sig = ver().signals.find(s => s.key === key);
+    const it = sig && sig.items.find(i => `${key}.${i.key}` === id);
+    if (it && !FLAG.has(it.status)) S.openRest.add(key);
+  }
+  S.tab = tab; renderPanel();
+  const el = $(`#panel [data-item="${CSS.escape(id)}"]`);
   if (!el) { toast(`这一版报告里没有 ${id}`); return; }
-  const det = el.closest('details');
-  if (det) det.open = true;
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
 }
@@ -686,24 +690,24 @@ function modeLine() {
   if (!llm) return '';
   if (!llm.configured || llm.mode === 'off') return '没接模型：用模板回答，只摘报告里的原话。';
   if (llm.mode === 'replay') return '离线回放：只用录好的模型回答。';
-  return '只用这份案卷里的数据回答，每个关键事实标出处；没查到就直说。';
+  return '只用这份案卷里的数据回答，关键事实标出处；没查到就直说。';
 }
 function assistHtml() {
-  return `<div class="as-head"><div><div class="kicker">AI 助手</div><h3>只根据这份案卷回答</h3><p class="small muted">${esc(modeLine())}</p></div>
+  return `<div class="as-head"><div><h3>问助手</h3><p class="small muted">${esc(modeLine())}</p></div>
     <button type="button" class="as-x" data-act="close-assist" aria-label="关闭助手">×</button></div>
   <div class="as-body" id="asBody">${chatHtml()}</div>
   <div class="as-sel" id="asSel">${selHtml()}</div>
   <form class="as-input" id="asForm"><textarea class="box" name="q" rows="2" maxlength="2000" placeholder="问这份报告里的任何一条…（Enter 发送）" aria-label="提问"></textarea><button class="btn sm" type="submit">问</button></form>`;
 }
 function selHtml() {
-  if (!S.selected.size) return '<span class="muted">在报告里点"选中提问"，可以针对某几条问。</span>';
+  if (!S.selected.size) return '<span class="muted">想问某一条？点报告里那一条右边的"问"。</span>';
   return `<span class="muted">针对：</span>${[...S.selected].map(id => `<span class="sel-chip">${esc(id)}<button type="button" data-act="unsel" data-id="${esc(id)}" aria-label="取消选中 ${esc(id)}">×</button></span>`).join('')}`;
 }
 function chatHtml() {
   const chat = S.case.chat;
   const sugg = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？', '它被处罚或点名过吗？'];
-  const intro = `<div class="as-intro"><p style="margin:0">可以这样问：</p><div class="chips" style="margin-top:6px">${sugg.map(q => `<button type="button" class="chip" data-act="ask" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
-    <p class="small muted" style="margin-top:10px">助手不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断，并标出哪里变了。</p></div>`;
+  const intro = `<div class="as-intro"><div class="chips">${sugg.map(q => `<button type="button" class="chip" data-act="ask" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+    <p class="small muted">助手不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断。</p></div>`;
   return (chat.length ? '' : intro) + chat.map((m, i) => msgHtml(m, chat[i - 1])).join('') + (S.busy ? '<div class="typing" aria-label="正在回答"><i></i><i></i><i></i></div>' : '');
 }
 function citeText(text) {
@@ -731,7 +735,7 @@ function msgHtml(m, prev) {
       ? `<button type="button" class="cite" data-act="raw" data-ref="${esc(q.ref)}" data-hl="${esc(JSON.stringify([q.text]))}">${esc(q.ref)}</button>` : goLink(q.ref)}</blockquote>`).join('')}</div>` : ''}
     ${other.length ? `<div class="sugg"><span>可以补充：</span>${other.map(s => `<button type="button" class="chip" data-act="supplement" data-kind="material" data-title="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
-    <div class="msg-meta">${mode}${m.not_found ? '<span>数据里没有</span>' : ''}${m.dropped ? `<span>程序丢掉了 ${m.dropped} 条对不上的出处或引文</span>` : ''}${vNote}</div>
+    <div class="msg-meta">${mode}${m.not_found ? '<span>数据里没有</span>' : ''}${m.dropped ? `<span>丢掉了 ${m.dropped} 条对不上的出处或引文</span>` : ''}${vNote}</div>
     ${rewrite}
   </div>`;
 }
@@ -773,13 +777,13 @@ function openSupplement(opt = {}) {
   dlg.innerHTML = `<form class="dlg-in" id="supForm" method="dialog">
     <div class="dlg-head"><div><div class="kicker">二次分析 · 将生成第 ${S.case.versions.length + 1} 版</div><h3 id="supTitle">补充信息</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
     <div class="dlg-body">
-      <div class="sup-kinds seg" role="radiogroup" aria-label="补充什么">${Object.entries(SUP_KIND).map(([k, o]) => `<button type="button" data-act="sup-kind" data-kind="${k}" aria-pressed="${k === kind}">${o.label}</button>`).join('')}</div>
+      <div class="seg sup-kinds" role="radiogroup" aria-label="补充什么">${Object.entries(SUP_KIND).map(([k, o]) => `<button type="button" data-act="sup-kind" data-kind="${k}" aria-pressed="${k === kind}">${o.label}</button>`).join('')}</div>
       <p class="sup-help" id="supHelp">${esc(SUP_KIND[kind].help)}</p>
-      <div id="supMat"${kind === 'material' ? '' : ' hidden'}><div class="mat-tools"><span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="supFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="read-note muted" id="supRead"></span></div></div>
-      <div id="supScen"${kind === 'need' ? '' : ' hidden'}><div class="hint">场景（不选就从新需求里识别）</div><div class="chips" style="margin:4px 0 10px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="sup-scen" data-id="${esc(s.id)}" aria-pressed="false">${esc(s.label)}</button>`).join('')}</div></div>
-      <input class="inp" name="title" id="supTitleIn" placeholder="${kind === 'reply' ? '例如：业务员的微信回复' : '材料名称，例如：认购协议'}" value="${esc(opt.title || '')}" style="font-size:14px;margin-bottom:10px"${kind === 'need' ? ' hidden' : ''}>
-      <textarea class="box" name="text" rows="8" required placeholder="${kind === 'need' ? '例如：我收到这家公司的 offer，让我去做理财顾问' : '把文字贴在这里'}">${esc(opt.text || '')}</textarea>
-      ${demo && demo.supplements.length ? `<div class="sup-demo"><span class="muted">演示案例 ${esc(demo.id)} 准备好的补充：</span><div class="chips">${demo.supplements.map((s, i) => `<button type="button" class="chip" data-act="sup-fill" data-i="${i}">${esc(SUP_KIND[s.kind].label)}：${esc(s.title || s.text.slice(0, 18))}</button>`).join('')}</div></div>` : ''}
+      <div id="supMat"${kind === 'material' ? '' : ' hidden'}><div class="mat-tools"><span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="supFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="muted small" id="supRead"></span></div></div>
+      <div id="supScen"${kind === 'need' ? '' : ' hidden'}><div class="small muted">场景（不选就从新需求里识别）</div><div class="chips" style="margin:4px 0 10px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="sup-scen" data-id="${esc(s.id)}" aria-pressed="false">${esc(s.label)}</button>`).join('')}</div></div>
+      <input class="big-inp sm" name="title" id="supTitleIn" placeholder="${kind === 'reply' ? '例如：业务员的微信回复' : '材料名称，例如：认购协议'}" value="${esc(opt.title || '')}"${kind === 'need' ? ' hidden' : ''}>
+      <textarea class="big-inp sm" name="text" rows="8" required placeholder="${kind === 'need' ? '例如：我收到这家公司的 offer，让我去做理财顾问' : '把文字贴在这里'}">${esc(opt.text || '')}</textarea>
+      ${demo && demo.supplements.length ? `<div class="sup-demo"><span class="muted">演示案例准备好的补充：</span><div class="chips">${demo.supplements.map((s, i) => `<button type="button" class="chip" data-act="sup-fill" data-i="${i}">${esc(SUP_KIND[s.kind].label)}：${esc(s.title || s.text.slice(0, 18))}</button>`).join('')}</div></div>` : ''}
       <div class="err" id="supErr" role="alert"></div>
     </div>
     <div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">取消</button><button type="submit" class="btn sm" id="supGo">生成新版报告</button></div>
@@ -822,11 +826,11 @@ async function submitSupplement(e) {
   go.disabled = true; go.textContent = '正在重新判断…';
   try {
     const c = await api(`/api/cases/${encodeURIComponent(S.case.id)}/supplements`, { method: 'POST', body });
-    S.case = c; S.opCache = {};
+    S.case = c; S.opCache = {}; S.tab = 'changes';
     dlg.close();
     const target = `#/case/${c.id}/v/${c.current}`;
     if (location.hash === target) { S.viewNo = c.current; renderCase(); } else location.hash = target;
-    setTimeout(() => { const l0 = $('#L0'); if (l0) l0.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+    setTimeout(() => { const t = $('.chg-banner'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
     toast(`已生成第 ${c.current} 版`);
   } catch (err) {
     $('#supErr').textContent = '没生成出来：' + err.message;
@@ -858,7 +862,8 @@ document.addEventListener('click', e => {
     case 'sel': toggleSel(d.id); break;
     case 'unsel': S.selected.delete(d.id); refreshSel(); break;
     case 'ver': location.hash = `#/case/${S.case.id}/v/${d.no}`; break;
-    case 'jump': e.preventDefault(); { const t = $(el.getAttribute('href')); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } break;
+    case 'tab': showTab(d.tab); break;
+    case 'rest': if (S.openRest.has(d.key)) S.openRest.delete(d.key); else S.openRest.add(d.key); renderPanel(); break;
     case 'aud': S.audience = d.aud; $$('[data-act="aud"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.aud === d.aud));
       $('#onepager').innerHTML = opBody(currentOp(ver()), ver()); loadOnepager(ver()); break;
     case 'print': printOnepager(); break;
@@ -875,7 +880,8 @@ document.addEventListener('click', e => {
     case 'sup-fill': { const s = demoForCase().supplements[+d.i]; setSupKind(s.kind); const f = $('#supForm'); f.text.value = s.text; f.title.value = s.title || ''; } break;
     case 'close-dlg': el.closest('dialog').close(); break;
     case 'demo-fill': fillDemo(d.id); break;
-    case 'scenario': { S.form.userScenario = S.form.userScenario === d.id ? null : d.id; $('#intake').innerHTML = intakeHtml(); } break;
+    case 'scen-toggle': S.form.showScen = !S.form.showScen; $('#intake').innerHTML = intakeHtml(); break;
+    case 'scenario': S.form.userScenario = S.form.userScenario === d.id ? null : d.id; S.form.showScen = false; $('#intake').innerHTML = intakeHtml(); break;
   }
 });
 document.addEventListener('keydown', e => {
