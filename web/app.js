@@ -98,7 +98,7 @@ const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf"
 function srcTag(sourceId, ref) {
   const s = srcOf(sourceId), r = ref && rawById(ref);
   const kind = (r && rawKind(r)) || (s && s.kind) || '';
-  const date = (r && r.as_of) || (s && s.as_of);
+  const date = kind === 'none' ? null : (r && r.as_of) || (s && s.as_of);
   const title = s ? s.name : sourceId;
   const inner = `<span class="k-${esc(kind)}">${esc(KIND[kind] || '来源')}</span>${date ? `<time>${esc(date)}</time>` : ''}${ref ? `<b>${esc(ref)}</b>` : ''}`;
   return ref
