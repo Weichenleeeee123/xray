@@ -134,7 +134,7 @@ def test_refresh_puts_new_reviews_into_a_new_version(tmp_path):
     assert ch.kind == "new_concern" and ch.because and ch.plain in v.change_summary
     s.add(body(author="browser-0009"))
     v = refresh_reviews(case, replace(svc, reviews=s)).versions[-1]          # 条数变了，状态没变
-    assert "上一版 3 条，现在 4 条" in v.change_summary and "没变，仍是\"要留意（4 条" in v.change_summary
+    assert "上一版 3 条，现在 4 条" in v.change_summary and "事实有更新" in v.change_summary
     with pytest.raises(NoNewReviews):
         refresh_reviews(case, replace(svc, reviews=s))                     # 没有新的，不再出一版
 

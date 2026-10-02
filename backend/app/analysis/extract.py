@@ -47,6 +47,16 @@ class ClaimExtractor(Protocol):
 QUALIFICATION = re.compile(r"正规理财|正规金融|持牌|合法合规|安全稳健|受监管|监管备案")
 GUARANTEE = re.compile(r"保本|保息|还本付息|本息无忧|刚性兑付|稳赚|零风险|无风险")
 NEGATABLE = {"保本", "保息", "还本付息", "刚性兑付"}
+NEGATION = re.compile(r"(?:不承诺|不保证|不允许|不能|不可|不得|禁止|无需|不需|不收取|不收|不交|不缴|非|未|不|无)(?:任何|再|会|可|能|必|得|要|需要|向|到|转账|支付|收取|保证|承诺)*$")
+
+
+def _positive(pattern: re.Pattern, text: str) -> list[re.Match]:
+    matches = []
+    for match in pattern.finditer(text):
+        clause = re.split(r"[，,。；;！!？?]", text[:match.start()])[-1]
+        if not NEGATION.search(clause):
+            matches.append(match)
+    return matches
 ANNUAL_RATE = re.compile(r"年化(?:收益率?|回报率?)?[^\d%％]{0,4}(\d+(?:\.\d+)?)[%％]")
 BENCHMARK = re.compile(r"业绩比较基准[^\d%％]{0,4}(\d+(?:\.\d+)?)[%％]")
 PARTNER = re.compile(r"(?P<bank>[一-龥]{0,10}银行)?(?:资金)?存管|银行(?:战略)?合作")
@@ -92,9 +102,7 @@ def _flat(s: str) -> str:
 def _guarantees(flat: str) -> list[str]:
     """"非保本""不承诺保本"这类否定说法不算承诺。"""
     words = []
-    for m in GUARANTEE.finditer(flat):
-        if m.group(0) in NEGATABLE and re.search(r"[非不无]", flat[max(0, m.start() - 4):m.start()]):
-            continue
+    for m in _positive(GUARANTEE, flat):
         if m.group(0) not in words:
             words.append(m.group(0))
     return words
@@ -115,8 +123,8 @@ class RuleExtractor:
                  for u in (re.split(r"(?<=[。；！!？?])", line) if len(line) > 40 else [line]) if u.strip()]
         for line in units:
             f = _flat(line)
-            words = QUALIFICATION.findall(f)
-            lic = LICENSE_CLAIM.search(f)
+            words = [m.group() for m in _positive(QUALIFICATION, f)]
+            lic = next(iter(_positive(LICENSE_CLAIM, f)), None)
             if words or lic:
                 c = claim(ClaimKind.qualification)
                 c.add(line, words + (["牌照"] if lic else []))
@@ -128,9 +136,9 @@ class RuleExtractor:
                 c.add(line, guarantees)
                 if rate:
                     c.numbers["annual_rate"] = max(c.numbers.get("annual_rate", 0), float(rate.group(1)))
-            if m := PARTNER.search(f):
+            if (m := next(iter(_positive(PARTNER, f)), None)) and not re.match(r"非|不|无|未|禁止", m.group()):
                 claim(ClaimKind.partner).add(line, banks=[m.group("bank")] if m.group("bank") else [])
-            if words := BACKGROUND.findall(f) + GROUP_BACKING.findall(f):
+            if words := [m.group() for pattern in (BACKGROUND, GROUP_BACKING) for m in _positive(pattern, f)]:
                 claim(ClaimKind.background).add(line, words)
             if m := CAPITAL.search(f):
                 c = claim(ClaimKind.capital)
@@ -151,14 +159,16 @@ class RuleExtractor:
                 if staff:
                     c.numbers["staff"] = float(staff.group(1) or staff.group(2))
             names = [m.group("name") for m in PAYEE.finditer(line)]  # 用原行：空格是户名的分隔
-            personal = PERSONAL_ACCOUNT.findall(f)
-            if names or personal or (TRANSFER.search(f) and ACCOUNT_NO.search(f)):
+            personal = [m.group() for m in _positive(PERSONAL_ACCOUNT, f)]
+            if names or personal or (_positive(TRANSFER, f) and ACCOUNT_NO.search(f)):
                 claim(ClaimKind.payee).add(line, personal, banks=names)  # banks 字段在这里存户名
-            if words := REFUND.findall(f):
+            if words := [m.group() for m in _positive(REFUND, f)]:
                 claim(ClaimKind.refund).add(line, words)
             if NO_REFUND.search(f) and line not in refund_limits:
                 refund_limits.append(line)
-            if job_like and (fees := FEE.findall(f)) and FEE_ASK.search(f):
+            fee_clauses = [part for part in re.split(r"[，,。；;]|但是|不过|但", f)
+                           if FEE.search(part) and not re.search(r"不收|不交|不缴|不需|无需|免收|禁止收|不得收", part)]
+            if job_like and (fees := FEE.findall("，".join(fee_clauses))) and FEE_ASK.search("，".join(fee_clauses)):
                 claim(ClaimKind.upfront_fee).add(line, fees)
 
         # OCR 常把"年化"和"9%"拆成两行：单行没找到数字时，再看相邻两行

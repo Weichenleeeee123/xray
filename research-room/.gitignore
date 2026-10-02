@@ -34,6 +34,7 @@ yarn-error.log*
 .vercel
 next-env.d.ts
 /dist/
+/home-dist/
 /.wrangler/
 /outputs/
 /work/

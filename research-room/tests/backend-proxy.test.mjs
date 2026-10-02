@@ -16,7 +16,7 @@ test('production proxy preserves complete input, query, status and streamed resp
   assert.equal(await response.text(),'{"type":"begin"}\n');
 });
 test('report, assets and offline replay use the same configured backend', async () => {
-  for (const [path,want] of [['/xray/','/'],['/xray/app.js','/app.js'],['/research-assets/goose-actions-v2.png','/research-assets/goose-actions-v2.png'],['/demo/','/demo/']]) {
+  for (const [path,want] of [['/xray/','/xray/'],['/xray/app.js','/xray/app.js'],['/research-assets/goose-actions-v2.png','/research-assets/goose-actions-v2.png'],['/demo/','/demo/']]) {
     const r=await proxyBackend(new Request('https://penguin.test'+path),'https://backend.test',async req=>{
       assert.equal(req.url,'https://backend.test'+want); return new Response('asset');
     });
@@ -33,6 +33,14 @@ test('upstream errors stay errors and gateway failures are actionable JSON', asy
   assert.equal((await proxyBackend(req,'https://backend.test',async()=>{throw new Error('private error')})).status,502);
   const r=await proxyBackend(req,'https://backend.test',async()=>Response.json({detail:'字段不完整'},{status:422}));
   assert.equal(r.status,422); assert.equal((await r.json()).detail,'字段不完整');
+});
+
+test('redirects preserve the mounted report path without duplicating /xray', async () => {
+  const r = await proxyBackend(new Request('https://penguin.test/xray/app.js'),
+    'https://backend.test/prefix', async () => new Response(null, {
+      status: 307, headers: {location: 'https://backend.test/prefix/xray/?saved=1'},
+    }));
+  assert.equal(r.headers.get('location'), '/xray/?saved=1');
 });
 
 test('multipart document bytes and original filename survive forwarding', async () => {

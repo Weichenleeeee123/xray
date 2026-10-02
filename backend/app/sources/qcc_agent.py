@@ -18,6 +18,8 @@ import hashlib
 import json
 import os
 import re
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -27,6 +29,9 @@ from app import config
 from app.models import CompanyProfile, Coverage, Pledge, Penalty, RawRecord, Shareholder, Source
 from app.sources.commercial import CST, _day, parse_money
 from app.sources.licenses import normalize
+from app.persistence import atomic_json, locked
+from app.sources.cache import read_fresh
+from app.sources.commercial import currency
 
 BASE_URL = "https://agent.qcc.com/mcp"
 SITE = "https://agent.qcc.com"
@@ -107,7 +112,7 @@ def parse_response(text: str) -> dict:
 def is_person(name: str) -> bool:
     """股东、出质人是不是自然人：短、没有机构字样。"""
     name = (name or "").strip()
-    return 0 < len(name) <= 4 and not ORG.search(name)
+    return bool(re.fullmatch(r"自然人股东[A-Z0-9]*", name)) or (0 < len(name) <= 4 and not ORG.search(name))
 
 
 def rows(payload: dict) -> list[dict]:
@@ -153,6 +158,9 @@ def clean(obj, people: dict[str, str] | None = None, company: str | None = None)
     people = {} if people is None else people
 
     def alias(name: str) -> str:
+        if name.startswith("自然人股东"):
+            people[name] = name
+            return name
         if name not in people:
             people[name] = f"自然人股东{chr(ord('A') + len(people))}" if len(people) < 26 else "自然人股东"
         return people[name]
@@ -286,6 +294,10 @@ class QccAgentClient:
         self.cache_dir = cache_dir or config.CACHE_DIR / "qcc_agent"
         self.transport, self.timeout, self.points = transport, timeout, 0
         self.provider = "qcc_agent"
+        self._budget_lock = threading.Lock()
+        self._key_lock = threading.Lock()
+        self._reserved = 0
+        self._cooldowns = {}
 
     @property
     def configured(self) -> bool:
@@ -294,7 +306,7 @@ class QccAgentClient:
     def status(self) -> dict:
         return {"provider": self.provider, "configured": self.configured, "points": self.points,
                 "max_points": self.max_points, "keys": len(self.keys), "using": self.current + 1,
-                "dropped": {i + 1: why for i, why in self.dropped.items()}}
+                "budget_scope": "process", "dropped": {i + 1: why for i, why in self.dropped.items()}}
 
     def _path(self, name: str, tool: str):
         return self.cache_dir / (hashlib.sha256(f"{normalize(name)}|{tool}".encode()).hexdigest()[:24] + ".json")
@@ -312,35 +324,72 @@ class QccAgentClient:
         return parse_response(r.text)
 
     def _post_any(self, server: str, tool: str, name: str) -> dict:
+        with self._key_lock:
+            return self._post_keys(server, tool, name)
+
+    def _post_keys(self, server: str, tool: str, name: str) -> dict:
         """从当前 Key 开始试；这个 Key 的问题就换下一个，都不行才报错。"""
+        recovered = [i for i, until in self._cooldowns.items() if until <= time.monotonic()]
+        if recovered and self.current >= len(self.keys):
+            self.current = min(recovered)
+        for i in recovered:
+            self._cooldowns.pop(i, None)
+            self.dropped.pop(i, None)
         while self.current < len(self.keys):
+            if self.current in self.dropped:
+                self.current += 1
+                continue
             try:
                 return self._post(server, tool, name, self.keys[self.current])
             except QccError as e:
                 if not e.switch:
                     raise
                 self.dropped[self.current] = str(e)[:60]
+                if re.search(r"频繁|频率|rate|429", str(e), re.I):
+                    self._cooldowns[self.current] = time.monotonic() + 60
                 self.current += 1
         raise QccError(f"{len(self.keys)} 个 Key 都不能用（" +
                        "；".join(f"第 {i + 1} 个：{why}" for i, why in self.dropped.items()) + "）")
 
-    def call(self, server: str, tool: str, name: str) -> Call:
+    def call(self, server: str, tool: str, name: str, *, force_refresh: bool = False) -> Call:
         path = self._path(name, tool)
-        if path.exists():
-            saved = json.loads(path.read_text(encoding="utf-8"))
-            return Call(saved["data"], None, True, saved["retrieved_at"])
+        with locked(path):
+            return self._call(server, tool, name, path, force_refresh)
+
+    def _call(self, server, tool, name, path, force_refresh):
+        saved = read_fresh(path, "data", force=force_refresh)
+        if saved:
+            data = clean(saved["data"], company=name)
+            if data.get("企业名称") and normalize(data["企业名称"]) != normalize(name):
+                return Call(None, "缓存的企业名称对不上，没有采用", True, saved["retrieved_at"])
+            if data != saved["data"]:
+                try:
+                    atomic_json(path, {**saved, "data": data})
+                except OSError:
+                    pass
+            return Call(data, None, True, saved["retrieved_at"])
         when = datetime.now(CST).isoformat(timespec="seconds")
         cost = COST.get(tool, 5)
-        if self.points + cost > self.max_points:
-            return Call(None, f"本次运行已花 {self.points} 积分，到上限了，没有再查", False, when)
+        with self._budget_lock:
+            if self.points + self._reserved + cost > self.max_points:
+                return Call(None, f"服务进程已花 {self.points} 积分，到上限了，没有再查", False, when)
+            self._reserved += cost
         try:
             data = self._post_any(server, tool, name)
+            with self._budget_lock:
+                self.points += cost
         except (httpx.HTTPError, ValueError, QccError) as e:
             return Call(None, f"查询失败：{e if isinstance(e, QccError) else type(e).__name__}", False, when)
-        self.points += cost
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"query": name, "tool": tool, "retrieved_at": when, "data": data},
-                                   ensure_ascii=False), encoding="utf-8")
+        finally:
+            with self._budget_lock:
+                self._reserved -= cost
+        if data.get("企业名称") and normalize(data["企业名称"]) != normalize(name):
+            return Call(None, "返回的企业名称和输入对不上，没有采用", False, when)
+        data = clean(data, company=name)
+        try:
+            atomic_json(path, {"query": name, "tool": tool, "retrieved_at": when, "data": data, "schema_version": 1})
+        except OSError:
+            pass
         return Call(data, None, False, when)
 
     def financials(self, name: str) -> Call:
@@ -352,6 +401,13 @@ class QccAgentClient:
         return self.call("operation", "get_news_sentiment", name)
 
     def fetch(self, name: str) -> QccAgentResult | None:
+        try:
+            return self._fetch(name)
+        except (ValueError, TypeError, KeyError, AttributeError, OSError):
+            return QccAgentResult(name, datetime.now(CST).isoformat(timespec="seconds"), None, {},
+                                  "工商数据格式不完整或本地缓存不可用，本次未采用", failed=True)
+
+    def _fetch(self, name: str) -> QccAgentResult | None:
         """没配置返回 None。工商信息查不到或名称对不上，就不再调别的工具（省积分）。"""
         if not self.configured:
             return None
@@ -368,11 +424,16 @@ class QccAgentClient:
                                   f"按名称查到的是\"{found}\"，和输入的名字对不上，没有采用。请输入公司全称再查", found=False)
 
         people: dict[str, str] = {}
+        if not _day(reg.get("成立日期")) or parse_money(reg.get("注册资本")) is None:
+            return QccAgentResult(name, when, None, clean(reg), "工商响应缺少有效成立日期或注册资本，未采用", failed=True)
         content: dict = {"工商信息": clean(reg, people, found)}
-        checked = list(BASIC)
+        fields = dict(name="企业名称", code="统一社会信用代码", status="登记状态", founded="成立日期",
+                      reg_capital="注册资本", paid_capital="实缴资本", scope="经营范围", insured="参保人数")
+        checked = [key for key, field in fields.items() if reg.get(field) not in (None, "")]
         p: dict = dict(name=found, code=reg.get("统一社会信用代码") or None, status=reg.get("登记状态") or "未知",
                        founded=_day(reg.get("成立日期")) or "", reg_capital=parse_money(reg.get("注册资本")) or 0.0,
                        paid_capital=parse_money(reg.get("实缴资本")), scope=reg.get("经营范围") or "",
+                       capital_currency=currency(reg.get("注册资本")), paid_currency=currency(reg.get("实缴资本")),
                        insured=_int(reg.get("参保人数")), counts={})
         gaps = []
 
@@ -387,7 +448,7 @@ class QccAgentClient:
             p["risk_scan"] = {k: v for k, v in factors.items() if isinstance(k, str) and isinstance(v, int)}
             for fld, (factor, tool) in RISK.items():
                 n = factors.get(factor)
-                if not isinstance(n, int):
+                if type(n) is not int or n < 0:
                     continue
                 checked.append(fld)
                 p["counts"][fld] = n
@@ -417,6 +478,9 @@ class QccAgentClient:
             calls.append(label)
             data = c.data or {}
             content[label] = clean(data, people, found)
+            if not rows(data) and not is_empty(data) and not (fld == "listing" and self._listing(data)):
+                gaps.append(f"{label}：响应未给出记录或明确的查无结果")
+                continue
             checked.append(fld)
             if fld == "shareholders":
                 p["shareholders"] = [Shareholder(name=self._alias(n, people) if is_person(n) else n,
@@ -430,9 +494,9 @@ class QccAgentClient:
             else:
                 p["listing"] = None if is_empty(data) else self._listing(data)
 
-        p["checked"] = checked
+        p["checked"] = [field for field in checked if field not in p.get("partial", [])]
         profile = CompanyProfile(**p)
-        note = ("缓存（没有重复扣积分）" if all(cached) else f"实时查询，本次运行累计 {self.points} 积分") + \
+        note = ("缓存（没有重复扣积分）" if all(cached) else f"实时查询，服务进程累计 {self.points} 积分") + \
                f"；查了：{'、'.join(calls)}" + (f"；没查成：{'；'.join(gaps)}" if gaps else "")
         return QccAgentResult(name, when, profile, content, note, calls=calls)
 
@@ -452,8 +516,10 @@ class QccAgentClient:
         elif fld in ("pledges", "mortgages"):
             # 平台把它当质权人、抵押权人（别人押给它，比如银行放贷）的记录也算进来了；只留押的是它自己的
             own, creditor = _own_rows(fld, raw_rows, company)
-            shown = len(raw_rows) < total(data)
+            shown = len(raw_rows) < max(total(data), p["counts"].get(fld, 0))
             p["counts"][fld] = len(own)
+            if shown:
+                p.setdefault("partial", []).append(fld)
             notes = []
             if creditor:
                 notes.append(f"另有 {len(creditor)} 条是别人押给它（它是{'质权人' if fld == 'pledges' else '抵押权人'}），"
@@ -474,7 +540,8 @@ class QccAgentClient:
                 p["mortgages"] = clean(own, people, company)
         elif fld in ("executions", "tax_arrears"):
             p[fld] = rs
-        elif fld == "abnormal" and rs and all(_first(r, "移出日期") for r in rs):
+        elif (fld == "abnormal" and rs and len(rs) >= max(total(data), p["counts"].get(fld, 0))
+              and all(_first(r, "移出日期") for r in rs)):
             p["abnormal"] = False            # 都已移出
         if fld in ("dishonest", "restricted", "abnormal", "serious_illegal") and rs:
             p.setdefault("facts", {})[fld] = fact(rs, total(data))

@@ -92,7 +92,7 @@ def test_demo_case_c_full_flow():
     full = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][3]).json()
     v5 = full["versions"][-1]
     assert full["scenario"] == "job" and v5["scenario"] == "job"
-    assert v5["change_summary"].startswith("事实没变")
+    assert "同时重新查询数据" in v5["change_summary"]
     assert v5["signals"][0]["key"] == "reputation"
     assert not [c for c in v5["changes"] if c["kind"] in ("worse", "new_concern", "clarified")]
     assert v5["amount"] is None and v5["for_whom"] != "妈妈"   # 换了场景，存钱的金额和对象不沿用

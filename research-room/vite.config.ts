@@ -60,7 +60,6 @@ export default defineConfig(async ({ mode }) => {
         '/xray/': {
           target: backendUrl,
           changeOrigin: true,
-          rewrite: (path: string) => path.replace(/^\/xray/, ''),
         },
       },
     },

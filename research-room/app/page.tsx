@@ -1,7 +1,6 @@
 'use client';
 import type { CSSProperties, SyntheticEvent } from 'react';
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import {
   BookOpen,
   Building2,
@@ -9,10 +8,11 @@ import {
   CirclePause,
   CirclePlay,
   Database,
-  MessageCircle,
-  Newspaper,
   Search,
   Sparkles,
+  Menu,
+  MessageCircle,
+  Newspaper,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,8 +75,8 @@ export default function Home() {
     step,
     retry,
     retrySave,
-    resume,
-    canResume,
+    reconnect,
+    canReconnect,
   } = useOfficeResearch();
   const idle = state.connection === 'idle',
     status = idle
@@ -136,6 +136,7 @@ export default function Home() {
   }, [opening, state.result?.id, state.connection, testMode]);
   const submit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (query.trim().length < 2) return;
     void begin(query, need);
   };
   useEffect(() => {
@@ -188,13 +189,13 @@ export default function Home() {
         aria-label="小企企业研究室"
         style={{ '--door-progress': door } as CSSProperties}
       >
-        <Image
+        <img
           className="office-background"
-          src="/office-panorama-closed.png"
+          src="/research-assets/office-panorama-closed.png"
           alt="企业研究室全景，包含图书架、企业档案、新闻资料、中央门和研究工位"
-          fill
-          priority
-          sizes="100vw"
+          width={1672}
+          height={941}
+          fetchPriority="high"
         />
         <div className="door-portal" aria-hidden="true" />
         <div className="door-leaf" aria-hidden="true" />
@@ -354,6 +355,14 @@ export default function Home() {
             <small>小企研究室</small>
           </div>
         </div>
+        <details className="office-menu">
+          <summary aria-label="打开站点菜单" title="菜单"><Menu aria-hidden="true" /></summary>
+          <nav className="office-nav" aria-label="站点导航">
+            <a href="/xray/#/cases">案卷</a>
+            <a href="/xray/#/new">附带材料查询</a>
+            <a href="/xray/#/me">使用说明</a>
+          </nav>
+        </details>
         {idle && (
           <div className="query-layer visible">
             <form className="home-query" onSubmit={submit}>
@@ -371,6 +380,11 @@ export default function Home() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="输入公司全称"
+                  autoComplete="organization"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
+                      event.preventDefault();
+                  }}
                   maxLength={80}
                 />
                 <Button type="submit" disabled={query.trim().length < 2}>
@@ -474,13 +488,14 @@ export default function Home() {
                 <a href="/xray/#/cases">
                   查看已保存案卷
                 </a>
-                {canResume && <button onClick={() => void resume()}>继续此查询</button>}
+                {canReconnect && <button onClick={() => void reconnect()}>继续查看本次查询</button>}
                 <button onClick={() => setRetryConfirm(true)}>重新查询</button>
               </div>
             )}
             {inspector && (
               <aside className="live-inspector">
                 <strong>真实任务进度{testMode ? '（测试事件）' : ''}</strong>
+                <button type="button" onClick={() => setInspector(false)} aria-label="关闭任务详情">关闭</button>
                 <p>资料点可并行查询；动作队列不会阻塞后端。</p>
                 <ol>
                   {state.steps.map((s) => (

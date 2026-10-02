@@ -31,8 +31,8 @@ export function useOfficeResearch() {
     director = useRef(new OfficeDirector()),
     request = useRef<AbortController | null>(null),
     transport = useRef<typeof fetch>(fetch),
-    generation = useRef(0),
     activeRun = useRef<string | null>(null),
+    generation = useRef(0),
     inputKnown = useRef(false),
     lastInput = useRef<ResearchInput>({
       company_name: '',
@@ -80,10 +80,6 @@ export function useOfficeResearch() {
           controller.signal,
         );
         if (token !== generation.current || controller.signal.aborted) return;
-        if (!inputKnown.current && typeof confirmed.case?.need === 'string') {
-          lastInput.current = { ...confirmed.case, company_name: company, need: confirmed.case.need };
-          inputKnown.current = true;
-        }
         publish({
           ...stateRef.current,
           connection: 'saved',
@@ -151,10 +147,13 @@ export function useOfficeResearch() {
           );
         } else {
           const runId =
-            resumeId ?? (await startRun(lastInput.current, fetchImpl));
+            resumeId ?? (await startRun(lastInput.current, fetchImpl, {
+              signal: controller.signal,
+              requestKey: crypto.randomUUID(),
+            }));
           if (token !== generation.current || controller.signal.aborted) return;
-          rememberRun(runId);
           activeRun.current = runId;
+          rememberRun(runId);
           let completed: CaseReference | undefined;
           const caseId = await followRun(runId, {
             signal: controller.signal,
@@ -210,6 +209,7 @@ export function useOfficeResearch() {
   }, [run]);
   const begin = useCallback(
     async (company: string, need?: string) => {
+      if (['connecting', 'live'].includes(stateRef.current.connection)) return;
       await run(company, need);
     },
     [run],
@@ -228,7 +228,7 @@ export function useOfficeResearch() {
       lastInput.current.company_name,
     );
   }, [verifySaved]);
-  const resume = useCallback(async () => {
+  const reconnect = useCallback(async () => {
     if (activeRun.current) await run('', undefined, activeRun.current);
   }, [run]);
   const retry = useCallback(async () => {
@@ -244,8 +244,9 @@ export function useOfficeResearch() {
     director.current = new OfficeDirector();
     setScene(director.current.sample());
     setPaused(false);
-    rememberRun(null);
     activeRun.current = null;
+    rememberRun(null);
+    inputKnown.current = false;
     publish(emptyResearch());
   }, [publish]);
   useEffect(() => {
@@ -279,8 +280,8 @@ export function useOfficeResearch() {
     reset,
     step,
     retry,
-    resume,
-    canResume: !!activeRun.current && state.connection === 'disconnected',
     retrySave,
+    canReconnect: !!activeRun.current && state.connection === 'disconnected',
+    reconnect,
   };
 }

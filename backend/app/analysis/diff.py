@@ -50,7 +50,12 @@ def diff(prev: Version, cur: Version, new_texts: dict[str, str]) -> tuple[list[C
         else:
             label, rank, state, quotes = before[key]
         because, quote = _evidence(quotes, new_texts)
-        because = because or (list(new_texts) if new_texts else [])
+        if "." in key:
+            signal_key, item_key = key.split(".", 1)
+            item = next((i for s in cur.signals if s.key == signal_key for i in s.items if i.key == item_key), None)
+            because = [item.ref] if item and item.ref else []
+        else:
+            because = because or (list(new_texts) if new_texts else [])
         said = f"，新信息里写着\"{quote}\"" if quote else ""
 
         if cur.trigger == "need" and (key not in before or key not in after):
@@ -71,6 +76,10 @@ def diff(prev: Version, cur: Version, new_texts: dict[str, str]) -> tuple[list[C
             plain = f"{label}这一条不再出现（上一版是：{b_state}）。"
             changes.append(Change(target=key, label=label, kind="removed", before=b_state, because=because,
                                   plain=plain))
+        elif state.startswith("没查") or (state == "无法核验" and state != b_state):
+            changes.append(Change(target=key, label=label, kind="unchanged" if state == b_state else "unavailable",
+                                  before=b_state, after=state, because=because,
+                                  plain=f"{label}：本次证据不足，不能据此认定原风险减轻。"))
         elif rank > b_rank:
             changes.append(Change(target=key, label=label, kind="worse", before=b_state, after=state, because=because,
                                   quote=quote, plain=f"{label}从\"{b_state}\"变成\"{state}\"{said}。"))
@@ -78,6 +87,9 @@ def diff(prev: Version, cur: Version, new_texts: dict[str, str]) -> tuple[list[C
             changes.append(Change(target=key, label=label, kind="clarified", before=b_state, after=state,
                                   because=because, quote=quote,
                                   plain=f"{label}从\"{b_state}\"变成\"{state}\"{said}，比上一版轻了。"))
+        elif state != b_state or quotes != before[key][3]:
+            changes.append(Change(target=key, label=label, kind="updated", before=b_state, after=state, because=because,
+                                  quote=quote, plain=f"{label}的事实有更新：{b_state} → {state}，风险等级相同。"))
         else:
             changes.append(Change(target=key, label=label, kind="unchanged", before=b_state, after=state, because=[],
                                   plain=f"{label}没变，仍是\"{state}\"。"))
@@ -86,18 +98,20 @@ def diff(prev: Version, cur: Version, new_texts: dict[str, str]) -> tuple[list[C
 
 def summarize(prev: Version, cur: Version, changes: list[Change]) -> str:
     count = {k: sum(c.kind == k for c in changes) for k in
-             ("new_concern", "worse", "clarified", "added", "removed", "unchanged")}
+             ("new_concern", "worse", "clarified", "added", "removed", "unchanged", "updated", "unavailable")}
     moved = len(changes) - count["unchanged"]
     if cur.trigger == "need":
-        head = (f"事实没变，看的重点变了：从\"{prev.scenario_label}\"改成\"{cur.scenario_label}\"，报告的排序和措辞跟着调整。"
-                if prev.scenario != cur.scenario else "事实没变，需求的说法变了，报告的排序和措辞跟着调整。")
+        head = (f"看的重点变了：从\"{prev.scenario_label}\"改成\"{cur.scenario_label}\"，同时重新查询数据。"
+                if prev.scenario != cur.scenario else "需求的说法变了，同时重新查询数据。")
         if moved:
-            head += f"有 {moved} 项检查因为需求不同而加上或去掉。"
+            head += f"有 {moved} 项检查变化，详见逐项比对。"
         return head
     if not moved:
         return f"没有影响判断的变化：{count['unchanged']} 项都和上一版一样。"
     parts = [f"{count['new_concern'] + count['worse']} 项更严重" if count["new_concern"] + count["worse"] else "",
              f"{count['clarified']} 项减轻" if count["clarified"] else "",
              f"{count['added']} 项新增" if count["added"] else "",
-             f"{count['removed']} 项不再出现" if count["removed"] else ""]
+             f"{count['removed']} 项不再出现" if count["removed"] else "",
+             f"{count['updated']} 项事实更新" if count["updated"] else "",
+             f"{count['unavailable']} 项证据不足" if count["unavailable"] else ""]
     return f"{moved} 项有变化（{'，'.join(p for p in parts if p)}），其余 {count['unchanged']} 项没变。"

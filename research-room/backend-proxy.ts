@@ -25,7 +25,7 @@ export async function proxyBackend(
     return Response.json({ detail: '后端服务尚未正确配置，请设置 XRAY_BACKEND_URL' }, { status: 503 });
   }
   const prefix = upstream.pathname.replace(/\/$/, '');
-  upstream.pathname = prefix + (report ? incoming.pathname.slice('/xray'.length) : incoming.pathname);
+  upstream.pathname = prefix + incoming.pathname;
   upstream.search = incoming.search;
   const forwardedRequest = new Request(upstream, request);
   forwardedRequest.headers.delete('host');
@@ -38,7 +38,7 @@ export async function proxyBackend(
     if (location) {
       const redirected = new URL(location, upstream);
       if (redirected.origin === upstream.origin && redirected.pathname.startsWith(prefix + '/')) {
-        headers.set('location', (report ? '/xray' : '') + redirected.pathname.slice(prefix.length) + redirected.search + redirected.hash);
+        headers.set('location', redirected.pathname.slice(prefix.length) + redirected.search + redirected.hash);
       }
     }
     // Pass bodies through without buffering, including NDJSON and uploaded files.

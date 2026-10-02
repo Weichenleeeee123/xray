@@ -2,11 +2,11 @@
 
 - 产品范围依据：[黑客松版 PRD](2026-10-02-xray-hackathon-prd.md) 第 2、5、7、8.1 节；当前接口和页面行为以代码为准。
 - 本文取代旧版交接文档（React + 登录 + SSE 那一套），旧方案作废，不要按它做。
-- 现状：`web/` 已实现查企、案卷、我的三个分区，以及报告、评价、小企、网点版和术语弹层。新建案卷和补充材料已接入[真实进度事件流](progress-events.md)，等待结束进入现有报告；`research-room/` 新版独立动画原型保持原样，尚未整体迁入主站。
+- 现状：`research-room/` 已接为正式首页，复用队友的场景、移动和卷宗动画，按真实 `/api/runs` 任务事件运行。`web/` 挂载到 `/xray/`，保留案卷、报告、评价、小企、网点版和术语弹层；“查企”返回研究室，旧完整材料表单保留在 `/xray/#/new`。详见 [首页接入说明](research-home-integration.md)。下文的流式等待动画仍用于旧完整材料表单与报告内补充材料。
 
 ## 1 交给前端 Agent 的开工提示词
 
-> 你负责企er 的前端 `web/`。先读 PRD 第 2、5、7、8.1 节和 `docs/frontend.md`。技术栈固定：原生 JS + 一个 CSS 文件，不打包、不引框架、不加登录。契约以 `backend/app/models.py` 为准；`docs/sample-case.json` 是早期样例，缺少后加的字段。需要新字段先找后端，不要在前端自己拼假数据。改完用演示案例 C 把"查企 → 报告 → 点原始数据 → 问小企 → 补充信息 → v2"走一遍，再打印一页结论确认是一页 A4。
+> 你负责企er 的前端。首页在 `research-room/`（React + TypeScript，静态构建），报告等业务页在 `web/`（原生 JS + CSS）。先读 PRD 第 2、5、7、8.1 节、本文和 `docs/research-home-integration.md`。契约以 `backend/app/models.py` 为准；`docs/sample-case.json` 是早期样例，缺少后加的字段。需要新字段先找后端，不要在前端自己拼假数据。改完用演示案例 C 把"查企 → 报告 → 点原始数据 → 问小企 → 补充信息 → v2"走一遍，再打印一页结论确认是一页 A4。
 
 ## 2 怎么跑
 
@@ -14,9 +14,9 @@
 cd backend && .venv\Scripts\python -m uvicorn app.main:app --port 8000
 ```
 
-打开 http://localhost:8000 。后端把 `web/` 挂成静态文件，同一个端口，没有跨域问题。改 `web/` 里的文件刷新页面就生效；改了后端要重启。
+先在 `research-room/` 执行 `npm run build:home`，再打开 http://localhost:8000 。根地址是研究室，`web/` 挂在 `/xray/`，同一个端口，没有跨域问题。改 `web/` 里的文件刷新页面就生效；研究室修改后重新构建；改了后端要重启。
 
-- 后端启动时 `web/` 不存在，就会把首页跳到 `/docs`。遇到这种情况，重启后端。
+- 首页未构建时显示 503 和构建提示；不会悄悄回退成旧首页。
 - 不接模型也能用：需求识别退回关键词，助手退回模板回答，顶栏显示"未接模型"。
 
 ## 3 文件
@@ -32,12 +32,12 @@ cd backend && .venv\Scripts\python -m uvicorn app.main:app --port 8000
 
 ### 真实进度与等待动画（2026-10-02 联调）
 
-- 主站新建案卷使用 `POST /api/cases/stream`，补充材料使用 `POST /api/cases/{id}/supplements/stream`。请求体不变，旧非流式接口继续兼容；事件协议见 [progress-events.md](progress-events.md)。
+- 旧完整材料表单新建案卷使用 `POST /api/cases/stream`，补充材料使用 `POST /api/cases/{id}/supplements/stream`。研究室首页使用可恢复的 `/api/runs` 任务接口；事件协议见 [progress-events.md](progress-events.md)。
 - 流程：输入需求和材料 → 小企调研室等待动画 → 收到 `case` 事件后进入现有报告/版本。“小企调研室”不是另一套报告页。初始页视觉仍交由前端维护。
 - `begin` 决定步骤，`step` 的实际开始/完成事件驱动动画；只显示已用秒数，不按定时器编造进度、百分比或查询条数。查了没有、没查、没查成分别展示。
 - `ResearchProgress.mount(host, company)` 返回 `onEvent` 和 `stop`；`readCaseStream(url, body, {onEvent})` 只在收到完整的最终案卷后返回。断流不自动重发创建请求，提示查看案卷列表；后端可能仍在完成该次查询。
 - 用户切换页面后，旧请求完成不会覆盖当前案卷。错误时保留完整输入；补充材料的进度放在弹窗可滚动正文内，防止移动端挤压表单。
-- 动画直接复用 `research-room/public` 的资源，由后端仅将该目录挂到 `/research-assets/`。无需安装或启动独立 React 原型，也未修改该原型的页面逻辑。
+- 两套等待动画复用 `research-room/public` 的资源，由后端将该目录挂到 `/research-assets/`。研究室首页需要先静态构建；正式运行只需启动后端。
 - 本轮没有改动案卷上下文、引文/数字检查、风险规则或模型选择。密钥仅在后端忽略的 `.env` 配置，不能放进前端或提交 Git。
 
 浏览器验收（在 `backend/`，需安装 `requirements-browser.txt`）：
@@ -54,9 +54,12 @@ cd backend && .venv\Scripts\python -m uvicorn app.main:app --port 8000
 
 ## 4 页面
 
+下表中的 hash 路由均位于 `/xray/` 下；旧的根地址报告书签仍会自动跳转。
+
 | 路由 | 页面 | 用到的接口 |
 |---|---|---|
-| `#/check`（空地址默认进入） | 查企：公司全称、一句需求（停顿 0.8 秒自动识别场景，可改）、替谁看、金额、可选材料（粘贴或上传）；演示案例一键填入 | `GET /api/health`、`/api/scenarios`、`/api/sources`、`/api/demo/cases`；`POST /api/intake`、`/api/read`、`/api/cases/stream` |
+| `/` | 研究室首页：叠加式公司输入框、默认公开资料研究、真实任务阶段与卷宗；右下角菜单提供其他入口 | `POST /api/runs`、`GET /api/runs/{id}`、`GET /api/cases/{id}` |
+| `/xray/#/new` | 附带材料查询：公司全称、一句需求（停顿 0.8 秒自动识别场景，可改）、替谁看、金额、可选材料（粘贴或上传）；演示案例一键填入 | `GET /api/health`、`/api/scenarios`、`/api/sources`、`/api/demo/cases`；`POST /api/intake`、`/api/read`、`/api/cases/stream` |
 | `#/cases` | 案卷：本机查过的公司及版本 | `GET /api/cases` |
 | `#/me` | 我的：模型、商业数据源和名单状态，名词解释与使用底线 | `GET /api/health`、`/api/glossary`、`/api/cases` |
 | `#/case/<id>` | 最新版报告，含评价页和小企 | `GET /api/cases/{id}`、`/api/cases/{id}/onepager`、`/api/reviews`；`POST /api/cases/{id}/chat`、`/api/cases/{id}/supplements/stream`、`/api/reviews`、`/api/cases/{id}/reviews` |

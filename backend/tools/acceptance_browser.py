@@ -134,7 +134,7 @@ def run(live: bool, commercial: bool = False, seed_cache: Path | None = None) ->
                 return page.evaluate("S.case")
 
             def create(which: str):
-                page.goto(base + "/#/")
+                page.goto(base + "/xray/#/new")
                 # Observe the actual consumer: it cancels/releases the stream after
                 # the terminal event, so CDP may no longer retain response.body().
                 page.evaluate("""() => {
@@ -320,7 +320,7 @@ def run(live: bool, commercial: bool = False, seed_cache: Path | None = None) ->
                 offline.route("**/*", restrict)
                 page = offline.new_page()
                 page.on("pageerror", lambda err: errors.append(str(err)))
-                page.goto(f'{base}/#/case/{before["id"]}/v/1')
+                page.goto(f'{base}/xray/#/case/{before["id"]}/v/1')
                 page.locator("#report").wait_for()
                 assert "离线回放" in page.locator("#topBadges").inner_text()
                 replay = ask(question)

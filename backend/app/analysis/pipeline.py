@@ -18,7 +18,7 @@ from app.analysis.report import onepager
 from app.analysis.signals import add_pack_items, build_signals, official_pack_items
 from app.analysis.verify import verify
 from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, JudgmentChange, MissingItem, RawRecord,
-                        ResolveIn, Signal, Source, SupplementIn, Version)
+                        ResolveIn, Signal, Source, SupplementIn, Version, Status, Verdict)
 from app.scenarios import claim_rank, get_scenario
 from app import config, progress
 from app.reviews import SOURCE_ID as REVIEW_SOURCE, ReviewStore, review_record
@@ -77,7 +77,8 @@ def load_services() -> Services:
 def attach(raw: list[RawRecord], draft: RawRecord) -> str:
     """同一来源、同样内容的记录只存一份；内容变了才新增一条。"""
     for r in raw:
-        if (r.source_id, r.title, r.coverage, r.content) == (draft.source_id, draft.title, draft.coverage, draft.content):
+        fields = ("source_id", "title", "coverage", "content", "retrieved_at", "as_of", "url", "note", "kind", "screenshot")
+        if all(getattr(r, k) == getattr(draft, k) for k in fields):
             return r.id
     rid = f"R{len(raw) + 1}"
     raw.append(draft.model_copy(update={"id": rid}))
@@ -168,7 +169,8 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
                   for_whom=for_whom, amount=amount, scenario=scenario.id, scenario_label=scenario.label,
                   focus=intake.focus, raw_ids=collected_ids + [t.id for t in texts], company=company, license=lic,
                   amac=amac, assertions=assertions, missing=missing, signals=signals, tally=tally, notes=notes,
-                  questions=questions, onepager=page, charts=charts, judgments=judges)
+                  questions=questions, onepager=page, charts=charts, judgments=judges,
+                  sources={k: s.model_copy(deep=True) for k, s in collected.sources.items()})
     if no == 1:
         ver.judgments, ver.judgment_changes, ver.judgment_summary = update_judgments([], judges, {}, 1)
     checks = sum(len(s.items) for s in signals)
@@ -216,6 +218,7 @@ def supplement(case: Case, body: SupplementIn, intake: Intake | None, svc: Servi
     cur.changes, cur.change_summary = diff(prev, cur, new_texts)
     cur.judgments, cur.judgment_changes, cur.judgment_summary = update_judgments(
         prev.judgments, cur.judgments, new_texts, cur.no)
+    project_resolutions(case, cur)
     case.versions.append(cur)
     case.case, case.scenario, case.focus, case.current = inp, cur.scenario, cur.focus, cur.no
     case.sources = collected.sources
@@ -249,6 +252,7 @@ def refresh_reviews(case: Case, svc: Services) -> Case:
     cur.change_summary = (f"这一版放进了新写的用户评价：上一版 {n_before} 条，现在 {len(after.content)} 条。"
                           + (ch.plain if ch else "") + "评价是用户自己写的，没核实，只影响口碑里这一条。" + base)
     cur.judgments, cur.judgment_changes, cur.judgment_summary = update_judgments(prev.judgments, cur.judgments, {}, cur.no)
+    project_resolutions(case, cur)
     case.versions.append(cur)
     case.current = cur.no
     case.sources = collected.sources
@@ -256,6 +260,35 @@ def refresh_reviews(case: Case, svc: Services) -> Case:
 
 
 VERB = {"clarified": "已澄清", "withdrawn": "已撤回", "recheck": "需要重新核实"}
+RELATED_SIGNAL = {"A2": "risk.promise", "A7": "risk.payee", "A8": "risk.refund", "A9": "risk.upfront_fee"}
+
+
+def project_resolutions(case: Case, cur: Version):
+    """Keep effective cards, counts and exports consistent with human dispositions."""
+    resolved = {j.target: j for j in cur.judgments if j.id.startswith(("check.", "record."))
+                and j.state in ("clarified", "withdrawn") and j.target}
+    resolved.update({RELATED_SIGNAL[k]: j for k, j in list(resolved.items()) if k in RELATED_SIGNAL})
+    for a in cur.assertions:
+        if a.id in resolved:
+            j = resolved[a.id]
+            a.color, a.verdict, a.verdict_label = "grey", Verdict.unverifiable, j.state_label
+            a.plain = f"{j.plain}原来的核验结论是：{j.text}"
+            for check in a.checks:
+                check.status = Status.none
+    for signal in cur.signals:
+        for item in signal.items:
+            j = resolved.get(f"{signal.key}.{item.key}")
+            if j:
+                item.status, item.value, item.detail = Status.none, j.state_label, j.plain
+        signal.flags = sum(i.status in (Status.bad, Status.warn, Status.miss) for i in signal.items)
+    cur.questions = [q for q in cur.questions if not q.linked or not all(x in resolved for x in q.linked)]
+    cur.tally = {c: sum(a.color == c for a in cur.assertions) for c in ("red", "amber", "grey", "green")} | {"missing": len(cur.missing)}
+    if cur.glance:
+        for target in resolved:
+            cur.glance.short.pop(target, None)
+    cur.onepager = onepager(company_name=case.case.company_name, for_whom=cur.for_whom, amount=cur.amount,
+                            scenario=get_scenario(cur.scenario), assertions=cur.assertions, missing=cur.missing,
+                            signals=cur.signals, questions=cur.questions, sources=cur.sources or case.sources)
 
 
 def resolve(case: Case, body: ResolveIn) -> Case:
@@ -272,10 +305,28 @@ def resolve(case: Case, body: ResolveIn) -> Case:
     for j in cur.judgments:
         if j.id != body.judgment_id:
             continue
+        if body.action == "recheck" and j.state in ("clarified", "withdrawn"):
+            for old_version in reversed(case.versions):
+                old = next((x for x in old_version.judgments if x.id == j.id and x.state not in ("clarified", "withdrawn")), None)
+                if old is None:
+                    continue
+                j.unknown = list(old.unknown)
+                prior_cards = {a.id: a for a in old_version.assertions}
+                cur.assertions = [prior_cards[a.id].model_copy(deep=True) if a.id == j.target and a.id in prior_cards else a
+                                  for a in cur.assertions]
+                restore_targets = {j.target, RELATED_SIGNAL.get(j.target)}
+                prior_signals = {f"{s.key}.{i.key}": i for s in old_version.signals for i in s.items}
+                for signal in cur.signals:
+                    signal.items = [prior_signals[f"{signal.key}.{i.key}"].model_copy(deep=True)
+                                    if f"{signal.key}.{i.key}" in restore_targets and f"{signal.key}.{i.key}" in prior_signals
+                                    else i for i in signal.items]
+                cur.questions = build_questions(cur.assertions, cur.missing, cur.signals,
+                                                get_scenario(cur.scenario), cur.focus)
+                break
         before_label = j.state_label or "待核"
         j.history.append(f"第 {prev.no} 版起：{before_label}；第 {cur.no} 版：{VERB[body.action]}"
                          f"（{body.by}：{body.note or '没写说明'}）")
-        j.state, j.state_label, j.changed_at = body.action, VERB[body.action], cur.no
+        j.state, j.state_label, j.changed_at = ("needs_check" if body.action == "recheck" else body.action), VERB[body.action], cur.no
         j.plain = f"{VERB[body.action]}（{body.by}：{body.note or '没写说明'}）。上一次状态：{before_label}。"
         if j.unknown and body.action in ("clarified", "withdrawn"):
             # 人去核实过了，就不能卡片上一边写"已澄清"一边还挂着"还没证明的事"。
@@ -298,7 +349,7 @@ def resolve(case: Case, body: ResolveIn) -> Case:
     for j in cur.judgments:
         if j.id == body.judgment_id:
             cur.judgment_changes.append(JudgmentChange(
-                target=j.id, label=hit.text[:40], kind="cleared", text=hit.text, before=hit.text, after=hit.text,
+                target=j.id, label=hit.text[:40], kind="recheck" if body.action == "recheck" else "cleared", text=hit.text, before=hit.text, after=hit.text,
                 plain=f"{VERB[body.action]}：{body.by}说「{body.note or '没写说明'}」。这条不再和上一版一样看待。"))
         else:
             cur.judgment_changes.append(JudgmentChange(
@@ -309,6 +360,7 @@ def resolve(case: Case, body: ResolveIn) -> Case:
                             f"报告里那条提醒也跟着改了。其余 {max(len(cur.judgments) - 1, 0)} 条保持不变。"
                             + (f"现在案卷里有 {n} 条被撤回，不再算在要留意的事里。" if n else ""))
     cur.changes, cur.change_summary = [], f"没有新材料进来，只是把一条判断的结论改了：{VERB[body.action]}。"
+    project_resolutions(case, cur)
     case.versions.append(cur)
     case.current = cur.no
     return case

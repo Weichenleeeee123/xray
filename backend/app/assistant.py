@@ -89,6 +89,8 @@ SYSTEM = """你是企鹅的案卷解释助手。仅使用给定版本报告和�
 user_reviews 是用户自己写的评价，没核实：引用时写"有用户评价说"，不当作事实，不替用户下结论。
 选中条目时围绕该条目回答，不能偷换版本。新聊天信息需用户加入案卷才能触发二次分析。
 没依据就 not_found=true，segments 留空。suggest 只写要核对什么，不写额外事实。
+登记状态、牌照、资本及处罚等报告事实优先用 fact_id 选择报告条目，服务端原样渲染，该段无需 text。
+引用原始记录的 text 只能摘录连续原文，允许加“记录写明”作为引导，不得新增结论、全称量词或时间判断。
 只输出 JSON：{"segments":[{"text":"解释","citations":["A2"],"quotes":[]}],"not_found":false,"suggest":[]}"""
 
 UNKNOWN = "没查到：本案收集到的数据里没有可支持该回答的记录；不能据此认定有或没有问题。"
@@ -101,7 +103,8 @@ VERSION_REF = re.compile(r"^v:(\d+):(assertion|signal|missing|question):(.+)$")
 
 class _Segment(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    text: str = Field(max_length=3000)
+    text: str = Field("", max_length=3000)
+    fact_id: str | None = Field(None, max_length=100)
     citations: list[str] = Field(default_factory=list, max_length=20)
     quotes: list[Quote] = Field(default_factory=list, max_length=20)
 
@@ -171,7 +174,7 @@ def context(case: Case, v: Version, terms: list[Term] = ()) -> dict:
         "案卷id": case.id, "公司": case.case.company_name, "报告版本": v.no,
         "报告": v.model_dump(mode="json", exclude={"created_at"}),
         "原始数据": [r.model_dump(mode="json", exclude={"retrieved_at"}) for r in case.raw if r.id in v.raw_ids],
-        "来源目录（不可作为事实出处）": {sid: s.model_dump(mode="json") for sid, s in case.sources.items()},
+        "来源目录（不可作为事实出处）": {sid: s.model_dump(mode="json") for sid, s in (v.sources or case.sources).items()},
         "未核实的历史对话（不是证据）": [
             {"role": m.role, "text": m.text} for m in case.chat if m.version == v.no][-HISTORY:],
     }
@@ -212,6 +215,22 @@ def _supported(text: str, refs: list[str], valid: dict[str, str],
     # values. Put numeric definitions in a separate glossary-only segment.
     record_refs = [ref for ref in refs if not ref.startswith("term.")]
     evidence = "\n".join(valid[r] for r in (record_refs or refs))
+    if any(re.fullmatch(r"R\d+", ref) or ref == "credit.status" for ref in refs):
+        # Raw citations are extractive, not a license to invent prose. Strip only
+        # presentation framing; every remaining clause must occur in one record.
+        extract = re.sub(r"^(?:记录写明|记录记载|材料里写着|材料写明|这家公司|该公司)", "", plain.strip())
+        extract = re.sub(r"^文书类别为", "", extract)
+        if "罚款" in evidence:
+            extract = extract.replace("作出处罚", "")
+        pieces = [p.strip(' \t\r\n“”「」\"') for p in re.split(r"[，,。；;：:]", extract)]
+        if not pieces or any(p and p not in evidence for p in pieces):
+            return False
+    # High-impact categorical facts need the same statement in the cited evidence.
+    # This is deliberately conservative: unsupported paraphrases fall back to the rule answer.
+    facts = re.compile(r"停止营业|停止经营|已经停业|已停业|已注销|已吊销|正常营业|正常经营|已登记|未登记|"
+                       r"没有处罚|有处罚记录|持有牌照|没有牌照|可以退款|不能退款|已经破产")
+    if any(m.group() not in evidence for m in facts.finditer(plain)):
+        return False
     if any(label in plain and label not in evidence for label in VERDICTS):
         return False
     if rule_states is not None:
@@ -275,6 +294,15 @@ def validate(ans: _ModelAnswer, valid: dict[str, str], *,
                 # Fail closed instead of turning a provider response into HTTP 500.
                 dropped += 1
     for seg in segments:
+        if seg.fact_id:
+            # Only deterministic report entries can be selected; raw records require quotes.
+            if seg.fact_id not in valid or re.fullmatch(r"R\d+", seg.fact_id):
+                dropped += 1
+                continue
+            lines.append(f"{valid[seg.fact_id]} [{seg.fact_id}]")
+            if seg.fact_id not in cites:
+                cites.append(seg.fact_id)
+            continue
         marked = ID_MARK.findall(seg.text)
         refs = list(dict.fromkeys([*seg.citations, *marked]))
         invalid = [r for r in refs if r not in valid]

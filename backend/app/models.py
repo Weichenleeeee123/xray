@@ -91,6 +91,8 @@ class CompanyProfile(BaseModel):
     status: str
     founded: str
     reg_capital: float
+    capital_currency: str = "人民币"
+    paid_currency: str = "人民币"
     paid_capital: float | None = None   # 年报未公示时为 None
     capital_due: str | None = None
     scope: str
@@ -109,6 +111,7 @@ class CompanyProfile(BaseModel):
     listing: dict | None = None         # 上市信息（交易所、股票代码……）；查了没有是 None，要配合 known("listing") 看
     controller: list[dict] | None = None  # 实际控制人（企查查）：[{名称, 是自然人, 总持股比例, 表决权比例}]；个人只写"自然人"
     counts: dict[str, int] = Field(default_factory=dict)  # 数据源给的总条数；明细只取了前几条或没取到时，以它为准
+    partial: list[str] = Field(default_factory=list)
     facts: dict[str, str] = Field(default_factory=dict)  # 失信、限高这类"有/无"项的一句话明细（日期、法院、金额）
     risk_scan: dict[str, int] | None = None  # 商业数据的风险扫描：各类风险各有几条（含没单列的终本案件、裁判文书……）
     # 实际查过的字段。None 表示全部查过（演示数据）；商业接口、证据包只给了部分字段时，
@@ -289,7 +292,7 @@ class Question(BaseModel):
 class Change(BaseModel):
     target: str                          # 说法 id（A1）、缺项 id（M1）或信号条目（risk.bank_list）
     label: str
-    kind: Literal["new_concern", "worse", "clarified", "unchanged", "added", "removed"]
+    kind: Literal["new_concern", "worse", "clarified", "unchanged", "added", "removed", "updated", "unavailable"]
     before: str | None = None
     after: str | None = None
     because: list[str] = Field(default_factory=list)  # 新信息的 RawRecord id
@@ -317,18 +320,21 @@ class OnePager(BaseModel):
 # ---------- 输入与案卷 ----------
 
 class CaseIn(BaseModel):
-    company_name: str = Field(min_length=2)
-    need: str = ""                        # 一句需求，例如"我妈想存 20 万理财，最怕急用时取不出来"
-    scenario: str | None = None           # 不填就从需求里识别
-    for_whom: str | None = None
-    amount: float | None = Field(None, gt=0)
-    material_text: str | None = None      # 可选：宣传单、合同、聊天记录的文字
-    material_title: str | None = None
+    refresh_sources: bool = False
+    model_config = ConfigDict(str_strip_whitespace=True)
+    company_name: str = Field(min_length=2, max_length=80)
+    need: str = Field("", max_length=4000)
+    scenario: Literal["savings", "takeover", "job", "prepaid", "contract", "general"] | None = None
+    for_whom: str | None = Field(None, max_length=80)
+    amount: float | None = Field(None, gt=0, allow_inf_nan=False)
+    material_text: str | None = Field(None, max_length=200000)
+    material_title: str | None = Field(None, max_length=200)
 
 
 class IntakeIn(BaseModel):
-    need: str = ""
-    company_name: str | None = None
+    model_config = ConfigDict(str_strip_whitespace=True)
+    need: str = Field("", max_length=4000)
+    company_name: str | None = Field(None, min_length=2, max_length=80)
 
 
 class Intake(BaseModel):
@@ -431,6 +437,7 @@ class Version(BaseModel):
     scenario_label: str
     focus: list[str]
     raw_ids: list[str]                    # 本版用到的原始数据
+    sources: dict[str, Source] = Field(default_factory=dict)
     company: CompanyProfile | None
     license: LicenseHit
     amac: AmacHit
@@ -474,6 +481,7 @@ class ChatMessage(BaseModel):
 
 
 class Case(BaseModel):
+    revision: int = 0
     id: str
     created_at: str
     case: CaseIn                          # 最新的输入
@@ -496,10 +504,12 @@ class CaseSummary(BaseModel):
 
 
 class SupplementIn(BaseModel):
+    refresh_sources: bool = False
+    model_config = ConfigDict(str_strip_whitespace=True)
     kind: Literal["material", "reply", "need"]
-    text: str = Field(min_length=1)       # 材料文字、对方回复，或新的需求
-    title: str | None = None
-    scenario: str | None = None           # 改需求时，用户手动指定场景
+    text: str = Field(min_length=1, max_length=200000)
+    title: str | None = Field(None, max_length=200)
+    scenario: Literal["savings", "takeover", "job", "prepaid", "contract", "general"] | None = None
 
 
 class ResolveIn(BaseModel):
@@ -509,13 +519,14 @@ class ResolveIn(BaseModel):
     """
     judgment_id: str
     action: Literal["clarified", "withdrawn", "recheck"] = "clarified"
-    note: str = ""
-    by: str = "用户"
+    note: str = Field("", max_length=4000)
+    by: str = Field("用户", min_length=1, max_length=80)
 
 
 class ChatIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     text: str = Field(min_length=1, max_length=2000)
-    refs: list[str] = Field(default_factory=list)
+    refs: list[str] = Field(default_factory=list, max_length=40)
     version: int | None = Field(default=None, ge=1, strict=True)  # 正在浏览的版本；不选条目也能问旧版
 
 
@@ -523,6 +534,8 @@ class ReadResult(BaseModel):
     text: str
     method: Literal["text", "pdf", "vision", "failed"]
     note: str | None = None
+    status: Literal["ready", "partial", "needs_manual", "failed"] = "ready"
+    pages: list[dict] = Field(default_factory=list)
 
 
 # ---------- 用户评价（按公司存，不按案卷存；别人说的，未核实） ----------

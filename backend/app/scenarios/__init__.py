@@ -58,7 +58,7 @@ WHO = [
 ]
 CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 CN_UNITS = {"十": 10, "百": 100, "千": 1000}
-AMOUNT = re.compile(r"(\d+(?:\.\d+)?|[零一二两三四五六七八九十百千]+)\s*(万|千|元|块)")
+AMOUNT = re.compile(r"(\d+(?:\.\d+)?|[零一二两三四五六七八九十百千]+)\s*(亿|万|千|元|块)")
 
 
 def _cn_number(s: str) -> float | None:
@@ -77,12 +77,17 @@ def _cn_number(s: str) -> float | None:
 
 
 def parse_amount(text: str) -> float | None:
+    text = re.sub(r"(?<=\d)[,，](?=\d{3}(?:\D|$))", "", text)
+    candidates = []
     for m in AMOUNT.finditer(text):
+        clause = re.split(r"[，,。；;]", text[:m.start()])[-1]
+        if re.search(r"月薪|年薪|工资|底薪|薪资", clause):
+            continue
         n = _cn_number(m.group(1))
         if n is None:
             continue
-        return n * {"万": 1e4, "千": 1e3}.get(m.group(2), 1.0)
-    return None
+        candidates.append(n * {"亿": 1e8, "万": 1e4, "千": 1e3}.get(m.group(2), 1.0))
+    return candidates[0] if len(set(candidates)) == 1 else None
 
 
 def parse_for_whom(text: str) -> str | None:

@@ -15,7 +15,7 @@ from app.models import AmacHit, Assertion, Chart, ChartPoint, ClaimKind, Company
 from app.sources.amac_detail import scale_upper
 from app.sources.web import WebFindings
 
-LETTERS = "ABCDEFGH"
+LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 NEWS_MAX = 4
 OFFICIAL_TONE = {"penalty": "bad", "warning": "bad", "judicial": "warn", "license": "neutral"}
 
@@ -28,6 +28,8 @@ def capital_chart(ext: Extraction, company: CompanyProfile | None, assertions: l
                   refs: dict[str, str]) -> Chart | None:
     if company is None or not company.known("reg_capital"):
         return None
+    if company.capital_currency != "人民币" or company.paid_currency != "人民币":
+        return None  # No shared numeric axis across currencies; textual signals retain original units.
     a = _claim(assertions, ClaimKind.capital)
     claimed = ext.claims[ClaimKind.capital].numbers.get("capital") if ClaimKind.capital in ext.claims else None
     reg = company.reg_capital
@@ -121,7 +123,9 @@ def holders_chart(company: CompanyProfile | None, assertions: list[Assertion], r
     people = [h for h in company.shareholders if h.type == "自然人"]
     points = []
     for h in company.shareholders:
-        label = h.name if h.type != "自然人" else (f"自然人股东 {LETTERS[people.index(h)]}" if len(people) > 1 else "自然人股东")
+        index = people.index(h) if h.type == "自然人" else 0
+        alias = LETTERS[index] if index < len(LETTERS) else str(index + 1)
+        label = h.name if h.type != "自然人" else (f"自然人股东 {alias}" if len(people) > 1 else "自然人股东")
         points.append(ChartPoint(label=label, value=h.pct, display=f"{h.pct:g}%", ref=refs.get("registry"),
                                  source="registry"))
     a = _claim(assertions, ClaimKind.background)
