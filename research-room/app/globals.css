@@ -101,6 +101,7 @@ button {
 }
 
 .office-stage {
+  container-type: inline-size;
   --door-progress: 0;
   position: relative;
   width: min(100vw, calc(100svh * 1.776833));
@@ -1080,6 +1081,27 @@ button {
 .live-status a,.live-status button { justify-self:start; margin-top:6px; padding:7px 14px; border-radius:7px; background:#74dfbd; color:#112a27; font-weight:600; font-size:14px; }
 .need-field { margin:12px auto 0; display:flex; align-items:center; gap:12px; max-width:90%; color:#e6ebe8; font-size:13px; }
 .need-field input { flex:1; color:white; background:#121b27dd; border-color:#ffffff33; }
+
+/* Information belongs to the illustrated screen and clock, in scene coordinates. */
+.monitor-display { position:absolute;z-index:7;left:43.82%;top:60.85%;width:12.85%;height:10.4%;overflow:hidden;background:linear-gradient(#10232bf7 0%,#10232be8 50%,#10232b20 100%);color:#cdece1;box-shadow:inset 0 0 12px #07141abb;pointer-events:none; }
+.monitor-caption {position:absolute;bottom:.32cqw;left:.5cqw;display:flex;align-items:center;gap:.3cqw;font-size:.48cqw;letter-spacing:.09em;color:#92b3b4;white-space:nowrap;}
+.monitor-caption i {width:.23cqw;height:.23cqw;border-radius:50%;background:#9cb79a;box-shadow:0 0 5px #9acabb;}
+.monitor-company {margin:.13cqw .48cqw 0;overflow:hidden;font-size:.73cqw;line-height:1.3;font-weight:600;text-shadow:0 0 6px #77c3b63d;pointer-events:auto;}
+.monitor-company span {display:inline-block;white-space:nowrap;}
+.monitor-company.name-overflow span {animation:monitor-name var(--name-duration) ease-in-out infinite;}
+.monitor-company:focus-visible {outline:1px solid #c5dec8;outline-offset:1px;}
+.monitor-scanline {position:absolute;inset:0;pointer-events:none;opacity:.17;background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,#03161a 3px,#03161a 4px);}
+@keyframes monitor-name {0%,16%,100% {transform:translateX(0)} 75%,88% {transform:translateX(var(--name-shift))}}
+.clock-progress {position:absolute;z-index:7;left:57.92%;top:10.48%;width:4.56%;aspect-ratio:1;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at 35% 25%,#eed8b7,#b59a74);color:#273c39;box-shadow:inset 0 0 .35cqw #634e3b66,0 0 .08cqw #aa906c;}
+.clock-progress svg {position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);fill:none;stroke-width:3.2;}
+.clock-track {stroke:#7c64402b;}.clock-ring {stroke:#3e6c60;stroke-linecap:round;transition:stroke-dasharray .3s ease;}
+.clock-number {font-family:ui-monospace,monospace;font-size:1.26cqw;line-height:1.12;font-weight:750;letter-spacing:-.06em;}
+.clock-number small {font-size:.62cqw;letter-spacing:0;margin-left:.05cqw;}
+.clock-caption {font-size:.44cqw;letter-spacing:.09em;margin-top:.12cqw;color:#675640;}
+.clock-interrupted .clock-ring {stroke:#986139;}.clock-interrupted .clock-caption {color:#8c4e28;}
+@media (min-width:641px) {.live-office .research-subject {display:none;} .live-office:not(.status-idle) .source-social {left:66%;top:27%;}}
+@media (max-width:640px) {.monitor-display,.clock-progress {display:none;}}
+@media (prefers-reduced-motion:reduce) {.monitor-company.name-overflow {overflow-x:auto;} .monitor-company.name-overflow span {animation:none;} .clock-ring {transition:none;}}
 .live-office .source-marker { min-width:110px; }
 .live-office .source-marker strong {font-size:13px;}
 .live-office .source-marker small {display:block;font-size:11px;max-width:190px;white-space:normal;}

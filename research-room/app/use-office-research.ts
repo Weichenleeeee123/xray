@@ -35,6 +35,7 @@ export function useOfficeResearch() {
     transport = useRef<typeof fetch>(fetch),
     activeRun = useRef<string | null>(null),
     generation = useRef(0),
+    inputKnown = useRef(false),
     lastInput = useRef<ResearchInput>({
       company_name: '',
       need: '了解这家公司的登记、资质与公开资料',
@@ -81,11 +82,6 @@ export function useOfficeResearch() {
           controller.signal,
         );
         if (token !== generation.current || controller.signal.aborted) return;
-        lastInput.current = {
-          ...lastInput.current,
-          company_name: confirmed.case?.company_name ?? company,
-          need: confirmed.case?.need ?? lastInput.current.need,
-        };
         publish({
           ...stateRef.current,
           connection: 'saved',
@@ -107,15 +103,17 @@ export function useOfficeResearch() {
     [publish],
   );
   const run = useCallback(
-    async (company: string, need?: string, resumeId: string | null = null, preset?: ResearchInput) => {
+    async (company: string, need?: string, resumeId: string | null = null, original?: ResearchInput) => {
       if (!company.trim() && !resumeId) return;
       const token = ++generation.current;
       request.current?.abort();
       const controller = new AbortController();
       request.current = controller;
-      if (!resumeId)
-        lastInput.current = researchInput(company, need, preset);
       activeRun.current = resumeId;
+      if (!resumeId) {
+        inputKnown.current = true;
+        lastInput.current = original ?? researchInput(company, need);
+      }
       director.current = new OfficeDirector();
       setScene(director.current.sample());
       setPaused(false);
@@ -155,12 +153,19 @@ export function useOfficeResearch() {
           if (token !== generation.current || controller.signal.aborted) return;
           activeRun.current = runId;
           rememberRun(runId);
+          let completed: CaseReference | undefined;
           const caseId = await followRun(runId, {
             signal: controller.signal,
             fetchImpl,
             onEvent,
+            onInput: (input) => {
+              if (token !== generation.current) return;
+              lastInput.current = input;
+              inputKnown.current = true;
+            },
+            onComplete: (value) => { completed = value; },
           });
-          candidate = { id: caseId };
+          candidate = completed ?? { id: caseId };
         }
         if (token !== generation.current) return;
         await verifySaved(
@@ -204,7 +209,7 @@ export function useOfficeResearch() {
   const begin = useCallback(
     async (company: string, need?: string, preset?: ResearchInput) => {
       if (['connecting', 'live'].includes(stateRef.current.connection)) return;
-      await run(company, need, null, preset);
+      await run(company, need, null, researchInput(company, need, preset));
     },
     [run],
   );
@@ -222,6 +227,16 @@ export function useOfficeResearch() {
       lastInput.current.company_name,
     );
   }, [verifySaved]);
+  const reconnect = useCallback(async () => {
+    if (activeRun.current) await run('', undefined, activeRun.current);
+  }, [run]);
+  const retry = useCallback(async () => {
+    if (!inputKnown.current) {
+      publish({ ...stateRef.current, error: '这次旧任务没有保存完整需求，请切换公司返回首页，确认需求后重新查询。' });
+      return;
+    }
+    await run(lastInput.current.company_name, lastInput.current.need, null, lastInput.current);
+  }, [run, publish]);
   const reset = useCallback(() => {
     generation.current++;
     request.current?.abort();
@@ -230,6 +245,7 @@ export function useOfficeResearch() {
     setPaused(false);
     activeRun.current = null;
     rememberRun(null);
+    inputKnown.current = false;
     publish(emptyResearch());
   }, [publish]);
   useEffect(() => {
@@ -262,11 +278,9 @@ export function useOfficeResearch() {
     begin,
     reset,
     step,
-    retry: () => begin(lastInput.current.company_name, lastInput.current.need, lastInput.current),
+    retry,
     retrySave,
     canReconnect: !!activeRun.current && state.connection === 'disconnected',
-    reconnect: () => activeRun.current
-      ? run(lastInput.current.company_name, lastInput.current.need, activeRun.current)
-      : Promise.resolve(),
+    reconnect,
   };
 }

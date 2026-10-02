@@ -6,6 +6,8 @@ export type ResearchInput = {
   amount?: number | null;
   material_text?: string | null;
   material_title?: string | null;
+  refresh_sources?: boolean;
+  [key: string]: unknown;
 };
 
 export type DemoCase = {
@@ -24,6 +26,7 @@ export function researchInput(company: string, need: string = '', preset?: Resea
     company_name,
     need: need.trim() || '了解这家公司的登记、资质与公开资料',
     ...(sameCompany ? { material_text: preset?.material_text, material_title: preset?.material_title } : {}),
+    ...(sameCompany && typeof preset?.refresh_sources === 'boolean' ? { refresh_sources: preset.refresh_sources } : {}),
     ...(sameNeed ? { scenario: preset?.scenario, for_whom: preset?.for_whom, amount: preset?.amount } : {}),
   };
 }

@@ -37,6 +37,18 @@ def append(directory: Path, run_id: str, event: dict) -> None:
         file.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 
+def save_input(directory: Path, run_id: str, body: dict) -> None:
+    """Keep the complete original input separately from progress, for deliberate retries."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = path_for(directory, run_id).with_suffix(".input.json")
+    atomic_json(path, body)
+
+
+def read_input(directory: Path, run_id: str) -> dict | None:
+    path = path_for(directory, run_id).with_suffix(".input.json")
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
 def events(directory: Path, run_id: str) -> list[dict] | None:
     path = path_for(directory, run_id)
     if not path.is_file():

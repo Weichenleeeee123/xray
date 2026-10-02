@@ -35,6 +35,23 @@ function harness() {
 const input = { company_name: '测试公司', need: '想合作', material_text: '合同原文' };
 const result = { id: 'new-case', current: 1, versions: [{ no: 1 }], raw: [] };
 
+test('the mounted report returns to the research-room home in the same tab', async () => {
+  const h=harness();
+  h.run(`location.pathname='/xray/'; location.hash='#/check'; location.replace=path=>{globalThis.returnedTo=path};`);
+  await h.run('route()');
+  assert.equal(h.run('returnedTo'),'/');
+});
+
+test('the full-material form stays available at /xray/#/new', async () => {
+  const h = harness();
+  h.run(`location.pathname='/xray/'; location.hash='#/new';
+    location.replace=()=>{throw new Error('Material form must not redirect')};
+    window.scrollTo=()=>{};
+    renderCheck=async()=>{globalThis.materialFormOpened=true};`);
+  await h.run('route()');
+  assert.equal(h.run('materialFormOpened'), true);
+});
+
 test('creation waits for a real streamed case, forwards all material and prevents duplicate submission', async () => {
   const h = harness();
   const pending = h.run(`createCase(${JSON.stringify(input)})`);

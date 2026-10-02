@@ -27,6 +27,7 @@ import {
   researchProgress,
 } from './research-events';
 import { ReportDossier } from './report-dossier';
+import { OfficeInstruments } from './office-instruments';
 import { DemoExamples } from './demo-examples';
 import { useProgressiveImages } from './use-progressive-images';
 import type { DemoCase } from './research-input';
@@ -217,6 +218,7 @@ export default function Home() {
         <div className="door-leaf" aria-hidden="true" />
         <div className="ambient-vignette" aria-hidden="true" />
         <div className="window-breeze" aria-hidden="true" />
+        {!idle && <OfficeInstruments state={state} />}
         {breeze.map((item, i) => (
           <span
             key={i}
@@ -310,7 +312,7 @@ export default function Home() {
         )}
         {state.steps.some(
           (s) =>
-            s.id === 'reviews' && s.phase === 'done' && s.coverage === 'found',
+            (s.id === 'reviews' || s.id === 'opinion') && s.phase === 'done' && s.coverage === 'found',
         ) &&
           !scene.socialHandled &&
           door === 0 && (
@@ -404,6 +406,11 @@ export default function Home() {
                     setSelectedDemo(null);
                   }}
                   placeholder="输入公司全称"
+                  autoComplete="organization"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
+                      event.preventDefault();
+                  }}
                   maxLength={80}
                 />
                 <Button type="submit" disabled={query.trim().length < 2}>

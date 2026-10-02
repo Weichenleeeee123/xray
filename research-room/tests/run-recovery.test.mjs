@@ -79,6 +79,23 @@ test('starting a run needs a run id back', async () => {
   await assert.rejects(startRun({}, bad), /公司名称不能为空/);
 });
 
+test('recovery returns full original input before an error and retains completion version', async () => {
+  const input={company_name:'测试公司',need:'原始个性化需求',material_text:'全部材料\n第二行',material_title:'合同'};
+  const received=[];
+  const b=backend([{status:'error',case_id:null,input:{kind:'create',body:input},events:[begin,{type:'error',message:'处理失败'}],next:2}]);
+  await assert.rejects(followRun(RUN,{onEvent(){},onInput:i=>received.push(i),fetchImpl:b.fetchImpl}),/处理失败/);
+  assert.deepEqual(received,[input]);
+  const done=backend([{status:'complete',case_id:'c1',version:2,events:[begin,{type:'complete',case_id:'c1',version:2}],next:2}]);
+  let candidate;
+  await followRun(RUN,{onEvent(){},onComplete:c=>{candidate=c;},fetchImpl:done.fetchImpl});
+  assert.deepEqual(candidate,{id:'c1',current:2});
+});
+
+test('mismatched recovered task identity is rejected', async () => {
+  const b=backend([{run_id:'b'.repeat(24),status:'complete',case_id:'c1',events:[],next:0}]);
+  await assert.rejects(followRun(RUN,{onEvent(){},fetchImpl:b.fetchImpl}),/任务编号/);
+});
+
 test('a recovered run can confirm and retry its saved report without starting another query', async () => {
   const { confirmSavedCase } = await import('../app/research-events.ts');
   const saved = { id: 'c1', current: 2, versions: [{ no: 2 }], case: { company_name: '测试公司' } };

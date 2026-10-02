@@ -242,7 +242,8 @@ def _stream(first: dict, work: Callable[[], Case]) -> StreamingResponse:
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-def _start_run(first: dict, work: Callable[[], Case], run_id: str | None = None) -> dict:
+def _start_run(first: dict, work: Callable[[], Case], run_id: str | None = None,
+               *, original_input: dict | None = None) -> dict:
     """Launch a case build and retain progress independently of the browser connection."""
     run_id = run_id or uuid4().hex[:24]
     _reserve_run()
@@ -256,9 +257,13 @@ def _start_run(first: dict, work: Callable[[], Case], run_id: str | None = None)
     with _active_lock:  # 先登记再写第一条，免得查询时看到"没在跑、也没结束"
         _active_runs.add(run_id)
     try:
+        if original_input is not None:
+            runs.save_input(directory, run_id, original_input)
         runs.touch(directory, run_id)
         put(first)
     except Exception:
+        with _active_lock:
+            _active_runs.discard(run_id)
         _run_slots.release()
         raise
 
@@ -316,7 +321,8 @@ def _idempotent_run(key: str | None, scope: str, body: BaseModel, start):
 @app.post("/api/runs", status_code=202)
 def create_run(body: CaseIn, idempotency_key: str | None = Header(None, max_length=128)) -> dict:
     return _idempotent_run(idempotency_key, "create", body,
-                           lambda rid: _start_run(progress.begin("create", body.company_name, intake=True), lambda: _create(body), rid))
+                           lambda rid: _start_run(progress.begin("create", body.company_name, intake=True), lambda: _create(body), rid,
+                                                  original_input={"kind": "create", "body": body.model_dump(mode="json")}))
 
 
 @app.post("/api/cases/{case_id}/runs", status_code=202)
@@ -324,7 +330,8 @@ def supplement_run(case_id: str, body: SupplementIn, idempotency_key: str | None
     case = _case(case_id)
     return _idempotent_run(idempotency_key, f"supplement:{case_id}", body, lambda rid:
                           _start_run(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
-                                     lambda: _supplement(case, body), rid))
+                                     lambda: _supplement(case, body), rid,
+                                     original_input={"kind": "supplement", "case_id": case_id, "body": body.model_dump(mode="json")}))
 
 
 @app.get("/api/runs/{run_id}")
@@ -340,6 +347,8 @@ def get_run(run_id: str, after: int = Query(0, ge=0)) -> dict:
         active = runs.active(RUNS_DIR, run_id)
     status = ("complete" if terminal["type"] == "complete" else "error") if terminal else ("running" if active else "interrupted")
     return {"run_id": run_id, "status": status, "case_id": terminal.get("case_id") if terminal else None,
+            "version": terminal.get("version") if terminal else None,
+            "input": runs.read_input(RUNS_DIR, run_id) if after == 0 else None,
             "events": all_events[after:], "next": len(all_events)}
 
 
