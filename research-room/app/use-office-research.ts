@@ -1,21 +1,20 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackendError,
   emptyResearch,
   followRun,
+  startRun,
   readCaseStream,
   reduceEvent,
-  startRun,
-  validateCase,
+  confirmSavedCase,
 } from './research-events';
-import type { ProgressEvent, ResearchState } from './research-events';
+import type { ResearchState, CaseReference } from './research-events';
 import { OfficeDirector } from './office-director';
 import { fixtureFetch, testNames } from './research-fixtures';
 import type { TestName } from './research-fixtures';
 
 const RUN_ID = /^[0-9a-f]{24}$/;
-// 任务编号放在地址栏（?run=…）：刷新、复制链接都能接着看同一次查询，不会重新提交
 function rememberRun(runId: string | null) {
   const url = new URL(location.href);
   if (runId) url.searchParams.set('run', runId);
@@ -31,12 +30,17 @@ export function useOfficeResearch() {
   const stateRef = useRef(state),
     director = useRef(new OfficeDirector()),
     request = useRef<AbortController | null>(null),
+    transport = useRef<typeof fetch>(fetch),
     generation = useRef(0),
     lastInput = useRef({
       company_name: '',
       need: '了解这家公司的登记、资质与公开资料',
     });
   const [scene, setScene] = useState(() => new OfficeDirector().sample());
+  const fetchImpl = useMemo(
+    () => (testMode ? fixtureFetch(testMode) : fetch),
+    [testMode],
+  );
   const idle = state.connection === 'idle';
   const publish = useCallback((next: ResearchState) => {
     stateRef.current = next;
@@ -49,9 +53,54 @@ export function useOfficeResearch() {
     },
     [],
   );
-  // resumeId：刷新后接着看已经在跑（或跑完）的任务；没有就新建一次查询
+  const verifySaved = useCallback(
+    async (
+      candidate: CaseReference,
+      token: number,
+      controller: AbortController,
+      fetchImpl: typeof fetch,
+      company: string,
+    ) => {
+      if (token !== generation.current) return;
+      publish({
+        ...stateRef.current,
+        candidate,
+        verifying: true,
+        saveStatus: undefined,
+        saveError: undefined,
+        error: undefined,
+      });
+      try {
+        const confirmed = await confirmSavedCase(
+          candidate,
+          company,
+          fetchImpl,
+          controller.signal,
+        );
+        if (token !== generation.current || controller.signal.aborted) return;
+        publish({
+          ...stateRef.current,
+          connection: 'saved',
+          verifying: false,
+          result: confirmed,
+          saveStatus: undefined,
+          saveError: undefined,
+        });
+      } catch (error) {
+        if (token !== generation.current || controller.signal.aborted) return;
+        publish({
+          ...stateRef.current,
+          verifying: false,
+          saveStatus: 'unconfirmed',
+          saveError: error instanceof Error ? error.message : '保存暂未确认',
+        });
+      }
+    },
+    [publish],
+  );
   const run = useCallback(
-    async (company: string, need: string | undefined, resumeId: string | null, mode: TestName | null) => {
+    async (company: string, need?: string, resumeId: string | null = null) => {
+      if (!company.trim() && !resumeId) return;
       const token = ++generation.current;
       request.current?.abort();
       const controller = new AbortController();
@@ -69,70 +118,64 @@ export function useOfficeResearch() {
         company: company.trim(),
         connection: 'connecting',
       });
-      const fetchImpl = mode ? fixtureFetch(mode) : fetch;
-      const onEvent = (event: ProgressEvent) => {
-        if (token === generation.current)
-          publish(reduceEvent(stateRef.current, event));
-      };
+      transport.current = fetchImpl;
       try {
-        let caseId: string, current: number | undefined;
-        if (mode) {
-          // 本地测试入口：合成事件走原来的进度流
-          const c = await readCaseStream('/api/cases/stream', lastInput.current, {
-            signal: controller.signal,
-            fetchImpl,
-            onEvent,
-          });
-          caseId = c.id;
-          current = c.current;
+        const onEvent = (event: import('./research-events').ProgressEvent) => {
+          if (token !== generation.current) return;
+          if (resumeId && event.type === 'begin')
+            lastInput.current = {
+              ...lastInput.current,
+              company_name: event.company,
+            };
+          publish(reduceEvent(stateRef.current, event));
+        };
+        let candidate: CaseReference;
+        if (testMode) {
+          candidate = await readCaseStream(
+            '/api/cases/stream',
+            lastInput.current,
+            {
+              signal: controller.signal,
+              fetchImpl,
+              onEvent,
+            },
+          );
         } else {
-          const runId = resumeId ?? (await startRun(lastInput.current, fetchImpl));
-          if (token === generation.current) rememberRun(runId);
-          caseId = await followRun(runId, {
+          const runId =
+            resumeId ?? (await startRun(lastInput.current, fetchImpl));
+          if (token !== generation.current || controller.signal.aborted) return;
+          rememberRun(runId);
+          const caseId = await followRun(runId, {
             signal: controller.signal,
             fetchImpl,
             onEvent,
           });
+          candidate = { id: caseId };
         }
         if (token !== generation.current) return;
-        publish({ ...stateRef.current, verifying: true });
-        const saved = await fetchImpl(
-          '/api/cases/' + encodeURIComponent(caseId),
-          { signal: controller.signal, cache: 'no-store' },
+        await verifySaved(
+          candidate,
+          token,
+          controller,
+          fetchImpl,
+          lastInput.current.company_name,
         );
-        if (!saved.ok)
-          throw new Error('报告已返回，但暂时无法确认保存，请检查案卷列表');
-        const confirmed = validateCase(await saved.json());
-        if (resumeId)
-          lastInput.current = {
-            company_name: confirmed.case?.company_name ?? stateRef.current.company,
-            need: lastInput.current.need,
-          };
-        if (
-          confirmed.id !== caseId ||
-          (current !== undefined && confirmed.current !== current) ||
-          confirmed.case?.company_name !== lastInput.current.company_name
-        )
-          throw new Error('案卷保存校验不一致');
-        if (token !== generation.current) return;
-        publish({
-          ...stateRef.current,
-          connection: 'saved',
-          verifying: false,
-          result: confirmed,
-          error: undefined,
-        });
       } catch (error) {
         if (token !== generation.current || controller.signal.aborted) return;
         publish({
           ...stateRef.current,
           verifying: false,
           connection: error instanceof BackendError ? 'error' : 'disconnected',
+          saveStatus:
+            error instanceof BackendError &&
+            /保存失败|无法保存|保存出错/.test(error.message)
+              ? 'failed'
+              : undefined,
           error: error instanceof Error ? error.message : '研究连接失败',
         });
       }
     },
-    [publish],
+    [publish, fetchImpl, verifySaved, testMode],
   );
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -146,15 +189,28 @@ export function useOfficeResearch() {
     }
     const resume = params.get('run');
     if (resume && RUN_ID.test(resume))
-      queueMicrotask(() => void run('', undefined, resume, null));
+      queueMicrotask(() => void run('', undefined, resume));
   }, [run]);
   const begin = useCallback(
     async (company: string, need?: string) => {
-      if (!company.trim()) return;
-      await run(company, need, null, testMode);
+      await run(company, need);
     },
-    [run, testMode],
+    [run],
   );
+  const retrySave = useCallback(async () => {
+    const candidate = stateRef.current.candidate;
+    if (!candidate || stateRef.current.verifying) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    await verifySaved(
+      candidate,
+      generation.current,
+      controller,
+      transport.current,
+      lastInput.current.company_name,
+    );
+  }, [verifySaved]);
   const reset = useCallback(() => {
     generation.current++;
     request.current?.abort();
@@ -195,5 +251,6 @@ export function useOfficeResearch() {
     reset,
     step,
     retry: () => begin(lastInput.current.company_name, lastInput.current.need),
+    retrySave,
   };
 }

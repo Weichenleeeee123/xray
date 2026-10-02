@@ -49,3 +49,23 @@ test('starting a run needs a run id back', async () => {
   const bad = async () => new Response(JSON.stringify({ detail: '公司名称不能为空' }), { status: 422 });
   await assert.rejects(startRun({}, bad), /公司名称不能为空/);
 });
+
+test('a recovered run can confirm and retry its saved report without starting another query', async () => {
+  const { confirmSavedCase } = await import('../app/research-events.ts');
+  const saved = { id: 'c1', current: 2, versions: [{ no: 2 }], case: { company_name: '测试公司' } };
+  const calls = [];
+  let reads = 0;
+  const fetchImpl = async (url, init) => {
+    calls.push([String(url), init?.method ?? 'GET']);
+    if (String(url).startsWith('/api/runs/'))
+      return new Response(JSON.stringify({ status: 'complete', case_id: saved.id, events: [begin, step('done')], next: 2 }));
+    reads++;
+    if (reads === 1) return new Response('', { status: 503 });
+    return new Response(JSON.stringify(saved));
+  };
+  const id = await followRun(RUN, { onEvent() {}, fetchImpl });
+  await assert.rejects(confirmSavedCase({ id }, '测试公司', fetchImpl), /确认保存/);
+  assert.deepEqual(await confirmSavedCase({ id }, '测试公司', fetchImpl), saved);
+  await assert.rejects(confirmSavedCase({ id }, '其他公司', fetchImpl), /校验不一致/);
+  assert.ok(calls.every(([, method]) => method === 'GET'));
+});

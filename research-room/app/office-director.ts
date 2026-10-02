@@ -87,6 +87,7 @@ export class OfficeDirector {
   returning = false;
   finished = false;
   paperStage = 0;
+  reportStage = 0;
   socialHandled = false;
   action: Action = this.make('idle', '等待研究任务', 'desk', 900, SEAT);
   make(
@@ -142,6 +143,9 @@ export class OfficeDirector {
     if (a.finish === 'left') this.paperStage = 1;
     if (a.finish === 'right') this.paperStage = 2;
     if (a.finish === 'sort') this.paperStage = 3;
+    if (a.id === 'bind-report') this.reportStage = 1;
+    if (a.id === 'push-report') this.reportStage = 2;
+    if (a.id === 'present-report') this.reportStage = 3;
     if (a.id === 'close-door') this.socialHandled = true;
     if (
       a.id === 'research' &&
@@ -267,6 +271,35 @@ export class OfficeDirector {
       return;
     }
     if (this.returning && state.connection === 'saved') {
+      if (this.reportStage < 3) {
+        const next =
+          this.reportStage === 0
+            ? this.make(
+                'bind-report',
+                '合上封面，装订企业研究卷宗',
+                'desk',
+                1000,
+                SEAT,
+              )
+            : this.reportStage === 1
+              ? this.make(
+                  'push-report',
+                  '将卷宗推到桌面中央',
+                  'desk',
+                  800,
+                  SEAT,
+                )
+              : this.make(
+                  'present-report',
+                  '收回翅膀，示意查看报告',
+                  'desk',
+                  800,
+                  SEAT,
+                );
+        this.action = next;
+        this.local = 0;
+        return;
+      }
       this.finished = true;
       this.action = this.make('complete', '报告已保存', 'desk', 1, SEAT);
       this.local = 0;
@@ -308,6 +341,20 @@ export class OfficeDirector {
     const gatheringRight =
       a.id === 'gather-right' ? ease(p) : this.paperStage >= 2 ? 1 : 0;
     const sorting = a.id === 'sort' ? ease(p) : this.paperStage >= 3 ? 1 : 0;
+    const binding =
+      a.id === 'bind-report' ? ease(p) : this.reportStage >= 1 ? 1 : 0;
+    const pushing =
+      a.id === 'push-report' ? ease(p) : this.reportStage >= 2 ? 1 : 0;
+    const presenting =
+      a.id === 'present-report' ? ease(p) : this.reportStage >= 3 ? 1 : 0;
+    const wingReach =
+      a.id === 'bind-report'
+        ? ease(Math.min(1, p * 2))
+        : a.id === 'push-report'
+          ? 1 - pushing * 0.4
+          : a.id === 'present-report'
+            ? 0.6 * (1 - presenting)
+            : 0;
     return {
       phase: a,
       motion,
@@ -319,6 +366,10 @@ export class OfficeDirector {
       gathering,
       gatheringRight,
       sorting,
+      binding,
+      pushing,
+      presenting,
+      wingReach,
       finished: this.finished,
     };
   }

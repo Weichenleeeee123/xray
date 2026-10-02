@@ -9,6 +9,9 @@ export const testNames = [
   'switch',
   'social-found',
   'social-empty',
+  'report-slow',
+  'save-failed',
+  'save-unconfirmed',
 ] as const;
 export type TestName = (typeof testNames)[number];
 const steps = [
@@ -31,16 +34,24 @@ export function fixtureFetch(
   onLog?: (text: string) => void,
 ): typeof fetch {
   let result: Record<string, unknown>;
+  let queries = 0,
+    reads = 0;
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (!init?.method || init.method === 'GET')
+    if (!init?.method || init.method === 'GET') {
+      reads++;
+      if (name === 'save-unconfirmed' && reads === 1)
+        return new Response('测试：暂时无法读回案卷', { status: 503 });
       return new Response(JSON.stringify(result), {
         headers: { 'Content-Type': 'application/json' },
       });
+    }
     if (typeof init.body !== 'string')
       throw new Error('测试接口需要 JSON 字符串');
     const body = JSON.parse(init.body);
+    queries++;
     result = {
-      id: 'fixture' + name,
+      id: 'fixture' + name + '-' + queries,
+      created_at: new Date().toISOString(),
       current: 1,
       case: { company_name: body.company_name },
       versions: [{ no: 1 }],
@@ -72,17 +83,19 @@ export function fixtureFetch(
               : 11000
         : t;
       const duration =
-        name.startsWith('social-') && s.lookup
-          ? 5000
-          : name === 'fast'
-            ? 8
-            : name === 'slow'
-              ? s.lookup
-                ? 5000
-                : 500
-              : parallel
-                ? 1500 + i * 1000
-                : 300;
+        name === 'report-slow' && s.id === 'plain'
+          ? 80000
+          : name.startsWith('social-') && s.lookup
+            ? 5000
+            : name === 'fast'
+              ? 8
+              : name === 'slow'
+                ? s.lookup
+                  ? 5000
+                  : 500
+                : parallel
+                  ? 1500 + i * 1000
+                  : 300;
       events.push([
         start,
         { type: 'step', id: s.id, label: s.label, phase: 'start' },
@@ -120,7 +133,12 @@ export function fixtureFetch(
       t = start + duration + 20;
     }
     const end = Math.max(...events.map((e) => e[0])) + 100;
-    events.push([end, { type: 'case', case: result }]);
+    events.push([
+      end,
+      name === 'save-failed' && queries === 1
+        ? { type: 'error', status: 500, message: '测试事件：报告保存失败' }
+        : { type: 'case', case: result },
+    ]);
     events.sort((a, b) => a[0] - b[0]);
     let timers: ReturnType<typeof setTimeout>[] = [];
     const stream = new ReadableStream<Uint8Array>({

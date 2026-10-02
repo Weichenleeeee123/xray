@@ -11,11 +11,14 @@ export type Step = {
 };
 export type CaseResult = {
   id: string;
+  created_at?: string;
   current: number;
   versions: Array<{ no: number; [key: string]: unknown }>;
   case?: { company_name?: string };
   [key: string]: unknown;
 };
+export type CaseReference = Pick<CaseResult, 'id' | 'created_at'> &
+  Partial<Pick<CaseResult, 'current'>>;
 export type ProgressEvent =
   | {
       type: 'begin';
@@ -42,6 +45,9 @@ export type ResearchState = {
     | 'error'
     | 'saved';
   result?: CaseResult;
+  candidate?: CaseReference;
+  saveStatus?: 'unconfirmed' | 'failed';
+  saveError?: string;
   error?: string;
   verifying: boolean;
 };
@@ -170,10 +176,15 @@ export function stationState(state: ResearchState, id: Station) {
   };
 }
 export function lifecycleLabel(state: ResearchState) {
+  if (state.saveStatus === 'failed') return '报告保存失败';
+  if (state.saveStatus === 'unconfirmed' && !state.verifying)
+    return '报告保存未确认';
   if (state.connection === 'disconnected') return '连接中断 · 进度待确认';
   if (state.connection === 'error') return '研究中断';
   if (state.connection === 'saved') return '报告已保存';
   if (state.verifying) return '报告已返回 · 确认保存中';
+  if (state.steps.some((s) => s.id === 'plain' && s.phase === 'done'))
+    return '报告已生成 · 等待保存确认';
   if (state.steps.some((s) => s.id === 'plain' && s.phase === 'start'))
     return '报告生成中';
   if (state.steps.some((s) => s.id === 'rules' && s.phase === 'start'))
@@ -182,6 +193,89 @@ export function lifecycleLabel(state: ResearchState) {
   if (state.steps.some((s) => s.lookup && s.phase === 'start'))
     return '查询资料中';
   return state.steps.length ? '理解研究需求' : '连接后端中';
+}
+// Backend truth controls availability; the scene clock controls only the physical cover.
+export function reportPresentation(state: ResearchState, scenePhase?: string) {
+  const canOpen = state.connection === 'saved' && !!state.result;
+  const canRetry = !state.verifying && !!state.saveStatus;
+  const plain = state.steps.find((s) => s.id === 'plain');
+  const rules = state.steps.find((s) => s.id === 'rules');
+  let status = 'collecting',
+    label = '正在收集资料';
+  if (canOpen) {
+    status = 'saved';
+    label = '查看报告';
+  } else if (state.verifying) {
+    status = 'verifying';
+    label = '正在确认保存';
+  } else if (state.saveStatus === 'failed') {
+    status = 'failed';
+    label = '保存失败，点击重试';
+  } else if (state.saveStatus === 'unconfirmed') {
+    status = 'unconfirmed';
+    label = '保存未确认，点击重试';
+  } else if (state.connection === 'disconnected') {
+    status = 'interrupted';
+    label = '连接中断，状态待确认';
+  } else if (state.connection === 'error') {
+    status = 'interrupted';
+    label = '生成或保存失败';
+  } else if (plain?.phase === 'done') {
+    status = 'saving';
+    label = '正在保存报告';
+  } else if (plain?.phase === 'start') {
+    status = 'generating';
+    label = '正在生成报告';
+  } else if (
+    (rules && rules.phase !== 'waiting') ||
+    collectionFinished(state)
+  ) {
+    status = 'analyzing';
+    label = '正在整理分析';
+  }
+  return {
+    canOpen,
+    canRetry,
+    status,
+    label,
+    // A saved result may arrive while the actor is still at a source station.
+    // Keep access independent, but place the prop only after bringing papers back.
+    visible:
+      collectionFinished(state) &&
+      [
+        'sit',
+        'report',
+        'bind-report',
+        'push-report',
+        'present-report',
+        'complete',
+      ].includes(scenePhase ?? ''),
+    href: canOpen
+      ? `/xray/#/case/${encodeURIComponent(state.result!.id)}`
+      : undefined,
+  };
+}
+
+export async function confirmSavedCase(
+  candidate: CaseReference,
+  company: string,
+  fetchImpl: typeof fetch = fetch,
+  signal?: AbortSignal,
+) {
+  const response = await fetchImpl(
+    '/api/cases/' + encodeURIComponent(candidate.id),
+    { signal, cache: 'no-store' },
+  );
+  if (!response.ok) throw new Error('报告已返回，但暂时无法读回案卷确认保存');
+  const confirmed = validateCase(await response.json());
+  if (
+    confirmed.id !== candidate.id ||
+    (candidate.current !== undefined &&
+      confirmed.current !== candidate.current) ||
+    confirmed.case?.company_name !== company
+  )
+    throw new Error('案卷保存校验不一致');
+  return confirmed;
 }
 export function validateCase(c: unknown): CaseResult {
   const value = c as CaseResult;
@@ -319,7 +413,9 @@ export async function followRun(
       { signal, cache: 'no-store' },
     );
     if (response.status === 404)
-      throw new BackendError('找不到这次查询，可能后端换了机器或数据被清理，请重新查询');
+      throw new BackendError(
+        '找不到这次查询，可能后端换了机器或数据被清理，请重新查询',
+      );
     if (!response.ok) throw new Error(`进度查询失败（${response.status}）`);
     const page = (await response.json()) as RunPage;
     for (const e of page.events) {

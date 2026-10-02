@@ -23,7 +23,9 @@ import {
   lifecycleLabel,
   collectionFinished,
   coverageLabels,
+  reportPresentation,
 } from './research-events';
+import { ReportDossier } from './report-dossier';
 const icons = {
   enterprise: Building2,
   library: BookOpen,
@@ -57,7 +59,8 @@ export default function Home() {
     [need, setNeed] = useState(''),
     [inspector, setInspector] = useState(false),
     [retryConfirm, setRetryConfirm] = useState(false),
-    [testResult, setTestResult] = useState(false);
+    [testResult, setTestResult] = useState(false),
+    [opening, setOpening] = useState<{ id: string; href: string } | null>(null);
   const {
     state,
     scene,
@@ -70,6 +73,7 @@ export default function Home() {
     reset,
     step,
     retry,
+    retrySave,
   } = useOfficeResearch();
   const idle = state.connection === 'idle',
     status = idle
@@ -108,9 +112,25 @@ export default function Home() {
   const visiblePaperCount = Math.min(10, knownRecords),
     collectionDone = collectionFinished(state),
     life = lifecycleLabel(state);
-  const reportUrl = state.result
-    ? `/xray/#/case/${encodeURIComponent(state.result.id)}`
-    : '/xray/#/cases';
+  const report = reportPresentation(state, phase.id);
+  const openReport = () => {
+    if (report.canOpen && report.href && state.result && !opening)
+      setOpening({ id: state.result.id, href: report.href });
+  };
+  useEffect(() => {
+    if (!opening) return;
+    if (opening.id !== state.result?.id || state.connection !== 'saved') {
+      queueMicrotask(() => setOpening(null));
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (testMode) {
+        setTestResult(true);
+        setOpening(null);
+      } else window.location.assign(opening.href);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [opening, state.result?.id, state.connection, testMode]);
   const submit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     void begin(query, need);
@@ -161,7 +181,7 @@ export default function Home() {
   return (
     <main className="office-page">
       <section
-        className={`office-stage status-${status} breeze-active live-office`}
+        className={`office-stage status-${status} breeze-active live-office ${opening ? 'report-opening' : ''}`}
         aria-label="小企企业研究室"
         style={{ '--door-progress': door } as CSSProperties}
       >
@@ -310,6 +330,19 @@ export default function Home() {
           style={{ opacity: seated > 0.85 ? 1 : 0 }}
           aria-hidden="true"
         />
+        {!idle && (
+          <ReportDossier
+            state={state}
+            scene={scene}
+            opening={!!opening}
+            onOpen={openReport}
+            onRetry={() => {
+              if (state.candidate) void retrySave();
+              else setRetryConfirm(true);
+            }}
+          />
+        )}
+        <div className="report-transition" aria-hidden="true" />
         <div className="scene-brand" aria-label="企er 小企研究室">
           <span>企</span>
           <div>
@@ -381,7 +414,14 @@ export default function Home() {
                 >
                   {paused ? <CirclePlay /> : <CirclePause />}
                 </button>
-                <button type="button" onClick={reset} aria-label="切换公司">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpening(null);
+                    reset();
+                  }}
+                  aria-label="切换公司"
+                >
                   换
                 </button>
               </div>
@@ -396,18 +436,32 @@ export default function Home() {
                 动画：{phase.label}
                 {paused ? '（已暂停，后台继续）' : ''}
               </small>
-              {state.connection === 'saved' &&
-                (testMode ? (
-                  <button onClick={() => setTestResult(true)}>
-                    查看测试结果
-                  </button>
-                ) : (
-                  <a href={reportUrl} target="_blank" rel="noreferrer">
-                    查看报告
-                  </a>
-                ))}
+              {report.canOpen && report.visible && (
+                <span className="dossier-hint">
+                  点击桌面上的发光卷宗，查看报告
+                </span>
+              )}
+              {report.canOpen && !report.visible && (
+                <button
+                  className="report-ready-link"
+                  onClick={openReport}
+                  disabled={!!opening}
+                >
+                  {opening ? '正在打开报告' : '报告已就绪 · 查看报告'}
+                </button>
+              )}
+              {report.canRetry && !report.visible && (
+                <button
+                  onClick={() => {
+                    if (state.candidate) void retrySave();
+                    else setRetryConfirm(true);
+                  }}
+                >
+                  {report.label}
+                </button>
+              )}
             </output>
-            {state.error && (
+            {state.error && !state.saveStatus && (
               <div className="connection-notice" role="alert">
                 <strong>{state.error}</strong>
                 <p>
