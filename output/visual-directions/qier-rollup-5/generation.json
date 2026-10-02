@@ -1,0 +1,66 @@
+{
+  "mode": "built-in imagegen",
+  "sizeIntent": "80x200cm concept; 2:5 ratio",
+  "images": [
+    {
+      "id": "01",
+      "name": "办公室邀请",
+      "prompt": "Design ONE premium flat portrait roll-up exhibition banner for 企er, a Chinese enterprise research assistant. Exact 2:5 portrait aspect ratio (80 x 200 cm concept). Full artwork edge to edge, no physical stand, no perspective mockup. Use reference 1 as the approved small brand icon near the top: suited cream goose holding brass magnifier, preserve identity. Reference 2 supplies warm office aesthetic: navy cabinets, wood, brass lamps. Palette navy #222E39, ivory #F7F0E0, brass #B88B4C. Design 01: \"办公室邀请\". Upper third quiet navy with beautifully typeset LARGE modern sans serif Chinese text, center a vertically composed warm office doorway and desk with the suited goose investigating a paper, lower section a clean ivory text strip. Beautiful editorial illustration, warm professional office, not cyberpunk or generic AI.\nEXACT text: top \"企er\"; subtitle \"有出处的企业研究助手\"; main headline on two lines \"把信任交出去前\" / \"先看清这家公司\"; three short features \"汇集公开记录\" \"对照企业说法\" \"生成研究报告\"; CTA \"来，让小企查一查\"; small footer \"基于公开资料，不作安全担保\". Accurate readable Chinese, strong hierarchy, few words, generous margins. Bottom 12% only background, no essential content (stand clearance). No QR code, no invented URL, no extra text or fake facts. Flat final banner artwork, exceptionally polished.",
+      "source": "C:\\Users\\Weichen Li\\.codex\\generated_images\\01a0fd8f-5417-7ca2-81f2-ab0649d56655\\exec-2ebd1fda-8824-4bdc-b9f3-28df21e8cdee.png",
+      "filename": "01.png",
+      "format": "PNG",
+      "width": 793,
+      "height": 1983,
+      "bytes": 1615963,
+      "sha256": "1a37bfe34bb5e35db4f09a1da3393ea19d7151f4a2be2834f1bae982ec70c249"
+    },
+    {
+      "id": "02",
+      "name": "放大镜主角",
+      "prompt": "Create ONE finished flat portrait Chinese exhibition roll-up banner concept for 企er. Exact width:height 2:5, for 80x200 cm, very tall narrow canvas. Edge-to-edge design, no stand or surrounding room, no perspective mockup. Reference image 1 is approved brand identity: ivory goose in navy suit holding brass magnifier. Place its small recognizable icon by exact wordmark \"企er\" at top, and use same character for any mascot. Reference 2 is office style inspiration only: warm wood, navy archive cabinets and brass lighting. Palette #222E39 navy, #F7F0E0 ivory, #B88B4C brass, #E2BC78 light gold. Modern Chinese sans-serif lettering, accurate readable text, refined professional editorial design, legible at a distance. Top subtitle \"有出处的企业研究助手\". Use given headline. Supporting features unless specifically replaced: \"汇集公开记录\" / \"对照企业说法\" / \"生成研究报告\". Bottom CTA \"来，让小企查一查\". One small footer \"基于公开资料，不作安全担保\". Keep important content above bottom 12% stand-obscured area and inside 7% side margins. Bottom 12% only background. No QR code or invented URL; no extra words, metrics, certification, accusations, safety scores, neon, AI sparkles, ornate serif, grunge. DIFFERENT strong composition as specified: Headline \"查企业\" / \"也查它的说法\". Bold character advertising design: full matte cabinet-navy backdrop, enormous beautifully set ivory Chinese headline in top third, just one brass underline accent. Center is a LARGE closeup of the approved suited goose and its magnifying glass, faithful face, tuft and outfit; character cropped at shoulder, NOT enclosed in an app tile. Brass magnifying-glass circle creates a strong sweeping compositional form. Generous negative space. Clean minimal lower section with three neatly aligned short features, ivory text and thin brass separators. Most striking and minimal of the series; no office room scene.",
+      "source": "C:\\Users\\Weichen Li\\.codex\\generated_images\\01a0fd8f-5417-7ca2-81f2-ab0649d56655\\exec-85703462-37ff-4045-ad71-53be8492f4c5.png",
+      "filename": "02.png",
+      "format": "PNG",
+      "width": 793,
+      "height": 1983,
+      "bytes": 1409516,
+      "sha256": "224a457bfcf3b9bcab7f2fe2494b60b124f580e8a151622291cdb9bd3b4f34be"
+    },
+    {
+      "id": "03",
+      "name": "企业档案封面",
+      "prompt": "Create ONE finished flat portrait Chinese exhibition roll-up banner concept for 企er. Exact width:height 2:5, for 80x200 cm, very tall narrow canvas. Edge-to-edge design, no stand or surrounding room, no perspective mockup. Reference image 1 is approved brand identity: ivory goose in navy suit holding brass magnifier. Place its small recognizable icon by exact wordmark \"企er\" at top, and use same character for any mascot. Reference 2 is office style inspiration only: warm wood, navy archive cabinets and brass lighting. Palette #222E39 navy, #F7F0E0 ivory, #B88B4C brass, #E2BC78 light gold. Modern Chinese sans-serif lettering, accurate readable text, refined professional editorial design, legible at a distance. Top subtitle \"有出处的企业研究助手\". Use given headline. Supporting features unless specifically replaced: \"汇集公开记录\" / \"对照企业说法\" / \"生成研究报告\". Bottom CTA \"来，让小企查一查\". One small footer \"基于公开资料，不作安全担保\". Keep important content above bottom 12% stand-obscured area and inside 7% side margins. Bottom 12% only background. No QR code or invented URL; no extra words, metrics, certification, accusations, safety scores, neon, AI sparkles, ornate serif, grunge. DIFFERENT strong composition as specified: Headline \"每个判断\" / \"都有出处\". Premium editorial case-file cover: dominant warm ivory paper background, deep navy binding stripe down left edge, restrained brass index tab. Very large navy headline high on page. Middle hero: one elegant navy evidence dossier with brass clip, cream source sheets partially visible with only heading \"企业研究报告\"; no fake facts. Small suited goose assistant from reference leaning beside dossier, 20% page width, elegant illustration. Strong asymmetric editorial typography with plenty of blank space, nearly flat style and subtle paper texture. Bottom navy block holds supporting features. The report is the hero, not a giant mascot.",
+      "source": "C:\\Users\\Weichen Li\\.codex\\generated_images\\01a0fd8f-5417-7ca2-81f2-ab0649d56655\\exec-2abf726a-14c4-45d9-a962-db1c55ea2bcf.png",
+      "filename": "03.png",
+      "format": "PNG",
+      "width": 793,
+      "height": 1983,
+      "bytes": 2061847,
+      "sha256": "cf7ed8a1df0e5b7e7071f669c8c100b7afcd34a9196d9df34bdf794a2591489d"
+    },
+    {
+      "id": "04",
+      "name": "证据透镜",
+      "prompt": "Create ONE finished flat portrait Chinese exhibition roll-up banner concept for 企er. Exact width:height 2:5, for 80x200 cm, very tall narrow canvas. Edge-to-edge design, no stand or surrounding room, no perspective mockup. Reference image 1 is approved brand identity: ivory goose in navy suit holding brass magnifier. Place its small recognizable icon by exact wordmark \"企er\" at top, and use same character for any mascot. Reference 2 is office style inspiration only: warm wood, navy archive cabinets and brass lighting. Palette #222E39 navy, #F7F0E0 ivory, #B88B4C brass, #E2BC78 light gold. Modern Chinese sans-serif lettering, accurate readable text, refined professional editorial design, legible at a distance. Top subtitle \"有出处的企业研究助手\". Use given headline. Supporting features unless specifically replaced: \"汇集公开记录\" / \"对照企业说法\" / \"生成研究报告\". Bottom CTA \"来，让小企查一查\". One small footer \"基于公开资料，不作安全担保\". Keep important content above bottom 12% stand-obscured area and inside 7% side margins. Bottom 12% only background. No QR code or invented URL; no extra words, metrics, certification, accusations, safety scores, neon, AI sparkles, ornate serif, grunge. DIFFERENT strong composition as specified: Headline \"信息很多\" / \"先把证据对上\". Distinctive flat geometric editorial graphic. Matte navy backdrop, huge cream heading, one oversize brushed brass magnifying-glass ring fills central area. Two ivory paper panels run across the lens, labeled \"企业说法\" and \"公开记录\". They are compared via aligned short navy horizontal lines, not approved/rated; no ticks or scales. Small familiar suited goose at lower right of lens. Beautiful architectural negative space, layered paper, restrained brass, modern research symbolism. Clear supporting features below in ivory. NO photoreal office and NO holographic or glass UI.",
+      "source": "C:\\Users\\Weichen Li\\.codex\\generated_images\\01a0fd8f-5417-7ca2-81f2-ab0649d56655\\exec-4c995f3e-716e-4ebb-afc9-301f6d2adfee.png",
+      "filename": "04.png",
+      "format": "PNG",
+      "width": 793,
+      "height": 1983,
+      "bytes": 1557392,
+      "sha256": "ed5b4c488fa43aefe1588343920b63391ea49168c66c75b8503759f0fbb5274e"
+    },
+    {
+      "id": "05",
+      "name": "一句需求的旅程",
+      "prompt": "Create ONE finished flat portrait Chinese exhibition roll-up banner concept for 企er. Exact width:height 2:5, for 80x200 cm, very tall narrow canvas. Edge-to-edge design, no stand or surrounding room, no perspective mockup. Reference image 1 is approved brand identity: ivory goose in navy suit holding brass magnifier. Place its small recognizable icon by exact wordmark \"企er\" at top, and use same character for any mascot. Reference 2 is office style inspiration only: warm wood, navy archive cabinets and brass lighting. Palette #222E39 navy, #F7F0E0 ivory, #B88B4C brass, #E2BC78 light gold. Modern Chinese sans-serif lettering, accurate readable text, refined professional editorial design, legible at a distance. Top subtitle \"有出处的企业研究助手\". Use given headline. Supporting features unless specifically replaced: \"汇集公开记录\" / \"对照企业说法\" / \"生成研究报告\". Bottom CTA \"来，让小企查一查\". One small footer \"基于公开资料，不作安全担保\". Keep important content above bottom 12% stand-obscured area and inside 7% side margins. Bottom 12% only background. No QR code or invented URL; no extra words, metrics, certification, accusations, safety scores, neon, AI sparkles, ornate serif, grunge. DIFFERENT strong composition as specified: Headline \"一句需求\" / \"一份有据可查的报告\". Clear sophisticated editorial information poster with three large vertical stages. Ivory upper field, navy lower field, warm brass narrow connecting path. Main heading navy, huge and readable. Middle three stages have large editorial numerals 01 02 03 and exact labels \"说出你的需求\" \"汇集真实记录\" \"读懂研究报告\", each with one small simple warm office-object illustration: note, navy archive drawer, open report. Familiar suited goose guides the final stage. Spacious organized vertical rhythm. No additional generic three feature lines in this variant. Clean confident typography; not a busy UI flowchart.",
+      "source": "C:\\Users\\Weichen Li\\.codex\\generated_images\\01a0fd8f-5417-7ca2-81f2-ab0649d56655\\exec-8d2c3699-2f00-4825-8fe2-7b6c9b01ed2a.png",
+      "filename": "05.png",
+      "format": "PNG",
+      "width": 793,
+      "height": 1983,
+      "bytes": 1651371,
+      "sha256": "b6c2bfbad3548c1f399b7b0e9fd3c44829393a0f01f0e8874d53ce2fcfa266ab"
+    }
+  ]
+}

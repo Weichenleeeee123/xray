@@ -1,0 +1,35 @@
+[
+  {
+    "id": "01",
+    "name": "办公室之门",
+    "source": "C:\\Users\\Weichen Li\\.codex\\generated_images\\01a0fd8f-5417-7ca2-81f2-ab0649d56655\\exec-3016fab4-d361-4217-be6f-d73b5864cada.png",
+    "filename": "01.png",
+    "format": "PNG",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1682935,
+    "sha256": "23826a8a33aef88305ca39c33080fc6669fdef491bf408c31b449399d22b2c17"
+  },
+  {
+    "id": "02",
+    "name": "一份有据的档案",
+    "source": "C:\\Users\\Weichen Li\\.codex\\generated_images\\01a0fd8f-5417-7ca2-81f2-ab0649d56655\\exec-147ec353-ae63-44da-af03-ad9f9cbe5d0c.png",
+    "filename": "02.png",
+    "format": "PNG",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1962422,
+    "sha256": "4bc90594fb9156a6ed3d8dd1ed00e5c7620a7ffed563dd24ab6e24003faddfb0"
+  },
+  {
+    "id": "03",
+    "name": "小企看得更清楚",
+    "source": "C:\\Users\\Weichen Li\\.codex\\generated_images\\01a0fd8f-5417-7ca2-81f2-ab0649d56655\\exec-3fc8d72e-6898-4775-9552-a2ba7a4972ea.png",
+    "filename": "03.png",
+    "format": "PNG",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1373077,
+    "sha256": "937e9d6f80fe1b8b078ccba8ab485fa88f9cab4d88cd48ee3b01efcb731d1b7a"
+  }
+]
