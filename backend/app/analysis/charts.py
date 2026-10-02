@@ -151,11 +151,18 @@ def timeline_chart(company: CompanyProfile | None, web: WebFindings | None, web_
         if company.known("founded") and company.founded:
             ev.append(TimelineEvent(date=company.founded, label="公司成立", ref=reg, item="credit.status"))
         if company.known("penalties"):
-            ev += [TimelineEvent(date=p.date, label=f"行政处罚：{p.reason}", tone="bad", ref=reg, item="credit.penalties")
-                   for p in company.penalties]
-        if company.known("pledges"):
+            ev += [TimelineEvent(date=p.date, label=f"行政处罚：{p.reason or p.org}", tone="bad", ref=reg, item="credit.penalties")
+                   for p in company.penalties if p.date]
+        if company.known("pledges") and company.n("pledges") <= 5:   # 多了只在信号里写条数，不挤时间线
             ev += [TimelineEvent(date=p.date, label=f"股权出质：{p.share}", tone="warn", ref=reg, item="finance.pledges")
-                   for p in company.pledges]
+                   for p in company.pledges if p.date]
+        for field, label in [("dishonest", "列为失信被执行人"), ("restricted", "被限制高消费"), ("abnormal", "列入经营异常名录"),
+                             ("serious_illegal", "列入严重违法失信名单")]:
+            when = re.search(r"\d{4}-\d{2}-\d{2}", company.facts.get(field, ""))
+            if company.known(field) and getattr(company, field) and when:
+                ev.append(TimelineEvent(date=when.group(0), label=label + ("（最近一次）" if field == "restricted" and
+                                                                          company.counts.get(field, 0) > 1 else ""),
+                                        tone="bad", ref=reg, item=f"credit.{field}"))
         for field, label, tone in [("executions", "被执行", "bad"), ("tax_arrears", "欠税公告", "bad"),
                                    ("mortgages", "动产抵押", "warn")]:
             if company.known(field):
@@ -165,8 +172,14 @@ def timeline_chart(company: CompanyProfile | None, web: WebFindings | None, web_
             ev.append(TimelineEvent(date=company.capital_due, label="认缴出资到期", tone="future",
                                     ref=reg, item="finance.paid_capital"))
     if web is not None:
+        penalty_days = [date.fromisoformat(p.date) for p in (company.penalties if company is not None and
+                        company.known("penalties") else []) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.date or "")]
         for h in web.official:
             if not h.date or h.category not in OFFICIAL_TONE or not h.subject:   # 其他提及、只是顺带提到它的，不上线
+                continue
+            # 同一份处罚决定：登记记录里已有、网页日期只差几天（网页发布晚于决定日），不再画一次
+            if h.category == "penalty" and re.fullmatch(r"\d{4}-\d{2}-\d{2}", h.date[:10]) and \
+                    any(abs((date.fromisoformat(h.date[:10]) - d).days) <= 15 for d in penalty_days):
                 continue
             # 法院文书的标题常带当事人姓名，只写类别；处罚决定书标题括号里列的当事人（常有人名）也去掉
             title = re.split(r"[（(_]", h.title)[0][:24]

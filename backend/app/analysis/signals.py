@@ -270,10 +270,14 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
                                 status=Status.none, source="registry"))
     elif company.n("pledges"):
         detail = "；".join(f"{p.date}，{p.pledgor}把 {p.share}押给「{p.pledgee}」" for p in company.pledges) or SHOWN_NONE
+        listed = company.known("listing") and bool(company.listing)
+        if listed:
+            detail = "上市公司股东众多，部分股东把手里的股份出质很常见，不说明公司本身缺钱；要看大股东质押的比例。" +                      (detail if detail != SHOWN_NONE else "")
         items.append(SignalItem(key="pledges", label="股权出质", value=f"{company.n('pledges')} 笔", detail=detail,
-                                status=Status.bad, source="registry"))
+                                status=Status.warn if listed else Status.bad, source="registry"))
     else:
-        items.append(SignalItem(key="pledges", label="股权出质", value="无", status=Status.ok, source="registry"))
+        items.append(SignalItem(key="pledges", label="股权出质", value="无", detail=company.facts.get("pledges"),
+                                status=Status.ok, source="registry"))
     if company.insured is None:
         items.append(SignalItem(key="insured", label="参保人数", value="未公示", detail="企业可选择不公示",
                                 status=Status.none, source="annual_report"))
@@ -290,7 +294,7 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
                                     status=Status.none, source="registry"))
             continue
         n = company.n(key)
-        items.append(SignalItem(key=key, label=label, value=f"{n} 条" if n else "无",
+        items.append(SignalItem(key=key, label=label, value=f"{n} 条" if n else "无", detail=company.facts.get(key),
                                 status=bad if n else Status.ok, source="registry"))
     return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items)
 
@@ -312,7 +316,8 @@ def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings 
         items.append(SignalItem(key="penalties", label="行政处罚", value="没查", detail="这次的数据来源不含这一项",
                                 status=Status.none, source="registry"))
     elif company.n("penalties"):
-        detail = "；".join(f"{p.date} {p.org}：{p.reason}，{p.result}" for p in company.penalties[:5]) or SHOWN_NONE
+        detail = "；".join(f"{p.date or '日期未公示'} {p.org}：{p.reason + '，' if p.reason else ''}{p.result}"
+                           for p in company.penalties[:5]) or SHOWN_NONE
         if company.n("penalties") > min(len(company.penalties), 5):
             detail += f"（共 {company.n('penalties')} 条，这里列了前 {min(len(company.penalties), 5)} 条）"
         items.append(SignalItem(key="penalties", label="行政处罚", value=f"{company.n('penalties')} 条", detail=detail,
@@ -328,12 +333,36 @@ def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings 
                 items.append(SignalItem(key=key, label=label, value="没查", detail="这次的数据来源不含这一项",
                                         status=Status.none, source="registry"))
             continue
-        items.append(SignalItem(key=key, label=label, value=yes if hit else no,
+        n = company.counts.get(key, 0)
+        items.append(SignalItem(key=key, label=label, value=(f"{yes}（{n} 条）" if n > 1 else yes) if hit else no,
+                                detail=company.facts.get(key) if hit else None,
                                 status=Status.bad if hit else Status.ok, source="registry"))
+    if company.risk_scan:
+        items += other_risks_item(company.risk_scan)
     if integrity:
         items.append(integrity)
     items.append(web_item)
     return Signal(key="credit", title="信用", lede=lede, flags=_flags(items), items=items)
+
+
+# 风险扫描里已经单列成条目的因子；其余有记录的合成一行"其他风险记录"
+LISTED_FACTORS = {"行政处罚", "被执行人", "失信信息", "限制高消费", "经营异常", "严重违法", "股权出质", "动产抵押", "欠税公告"}
+# 这些说明欠钱还不上、税务或经营出了问题；裁判文书、开庭这类不分原告被告，只算要留意
+# 只有这些条目一定是它自己出的问题（被执行人、纳税人、破产主体）。司法拍卖、违约事项这类，银行等债权人也会出现在里面，
+# 风险扫描不分角色，只算要留意
+SERIOUS_FACTORS = {"终本案件", "税务非正常户", "税收违法", "破产重整", "清算信息", "惩戒名单", "限制出境", "财产悬赏公告"}
+
+
+def other_risks_item(scan: dict[str, int]) -> list[SignalItem]:
+    hits = {k: v for k, v in scan.items() if v and k not in LISTED_FACTORS}
+    if not hits:
+        return []
+    serious = [k for k in hits if k in SERIOUS_FACTORS]
+    order = serious + [k for k in hits if k not in SERIOUS_FACTORS]
+    return [SignalItem(key="other_risks", label="其他风险记录", value="、".join(f"{k} {hits[k]}" for k in order),
+                       detail="商业数据风险扫描的条数，不分它是哪一方：裁判文书、立案、开庭、司法拍卖里它也可能是原告或债权人，"
+                              "打官司不等于有问题。终本案件指它作为被执行人、法院没查到可执行的财产，先结束这次执行",
+                       status=Status.bad if serious else Status.warn, source="registry")]
 
 
 def web_reputation(web: WebFindings, refs: dict[str, str], lede: str) -> Signal:
