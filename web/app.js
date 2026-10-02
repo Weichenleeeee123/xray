@@ -77,7 +77,19 @@ const srcOf = id => (S.case && S.case.sources[id]) || S.sources.find(s => s.id =
 // 没查到的记录（not_covered）会带上演示数据源的类型；只有真查到了演示数据，才算演示案例
 const rawKind = r => (r.coverage === 'not_covered' && r.kind === 'demo' ? 'none' : r.kind);
 const isDemoCase = () => S.case && S.case.raw.some(r => r.kind === 'demo' && r.coverage === 'found');
-const isId = s => /^(R\d+|A\d+|M\d+|Q\d+|[a-z]+\.[a-z0-9_]+)$/.test(s);
+function parseRef(ref, version) {
+  const m = String(ref).match(/^v:([1-9]\d*):(assertion|missing|question|signal):(.+)$/);
+  if (!m) return { id: ref, version: version == null ? null : Number(version) };
+  return { id: m[2] === 'signal' ? m[3].replace(':', '.') : m[3], version: Number(m[1]) };
+}
+const isId = s => /^(R\d+|A\d+|M\d+|Q\d+|term\.[a-z0-9_]+|[a-z]+\.[a-z0-9_]+)$/.test(parseRef(s).id);
+function chatRef(id, version) {
+  if (/^A\d+$/.test(id)) return `v:${version}:assertion:${id}`;
+  if (/^M\d+$/.test(id)) return `v:${version}:missing:${id}`;
+  if (/^Q\d+$/.test(id)) return `v:${version}:question:${id}`;
+  if (/^[a-z]+\.[a-z0-9_]+$/.test(id)) return `v:${version}:signal:${id.replace('.', ':')}`;
+  return id;
+}
 const versionRaws = v => v.raw_ids.map(rawById).filter(Boolean);
 
 // 名词标注：在一段文字里认出名词，点开看解释。seen 让同一块内容里每个词只标第一次，免得满屏虚线。
@@ -119,9 +131,11 @@ function termPop(el, id) {
   popAt(el, `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}`);
 }
 const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问助手">${S.selected.has(id) ? '已选' : '问'}</button>`;
-const goLink = id => {
-  const t = id.startsWith('term.') && termOf(id.slice(5));
-  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}">${esc(t ? `名词·${t.term}` : id)}</button>`;
+const goLink = (id, version = null) => {
+  const target = parseRef(id, version);
+  const terms = target.version == null ? S.terms : (S.case?.versions.find(v => v.no === target.version)?.terms || S.terms);
+  const t = target.id.startsWith('term.') && terms.find(t => t.id === target.id.slice(5));
+  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}"${target.version == null ? '' : ` data-version="${target.version}"`}>${esc(t ? `名词·${t.term}` : target.id)}</button>`;
 };
 const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(r)}</button>`).join('');
 const selCls = id => (S.selected.has(id) ? ' is-sel' : '');
@@ -347,7 +361,9 @@ async function openCase(id, no) {
     }
     S.selected.clear(); S.opCache = {}; S.tab = 'signals'; S.openRest.clear();
   }
-  S.viewNo = no && S.case.versions.some(v => v.no === no) ? no : S.case.current;
+  const next = no && S.case.versions.some(v => v.no === no) ? no : S.case.current;
+  if (S.viewNo !== next) S.selected.clear();
+  S.viewNo = next;
   renderCase();
 }
 
@@ -842,7 +858,22 @@ function tabFor(id) {
   if (id.includes('.')) return 'signals';
   return null;
 }
-function gotoItem(id) {
+function selectRefVersion(version) {
+  if (version == null || version === ver().no) return true;
+  if (!S.case.versions.some(v => v.no === version)) { toast(`案卷里没有第 ${version} 版`); return false; }
+  S.viewNo = version; S.selected.clear(); S.openRest.clear();
+  history.replaceState(null, '', `#/case/${S.case.id}/v/${version}`);
+  renderCase();
+  return true;
+}
+function gotoItem(ref, version = null, anchorEl = null) {
+  const target = parseRef(ref, version);
+  if (!selectRefVersion(target.version)) return;
+  const id = target.id;
+  if (id.startsWith('term.')) {
+    const anchor = anchorEl?.isConnected ? anchorEl : $('#assist');
+    termPop(anchor, id.slice(5)); return;
+  }
   if (/^R\d+$/.test(id)) { openRaw(id); return; }
   if ($('#rawDlg').open) $('#rawDlg').close();
   if (window.matchMedia('(max-width:1280px)').matches) $('#assist') && $('#assist').classList.remove('open');
@@ -888,16 +919,16 @@ function chatHtml() {
     <p class="small muted">助手不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断。</p></div>`;
   return (chat.length ? '' : intro) + chat.map((m, i) => msgHtml(m, chat[i - 1])).join('') + (S.busy ? '<div class="typing" aria-label="正在回答"><i></i><i></i><i></i></div>' : '');
 }
-function citeText(text) {
-  return esc(text).replace(/\[([A-Za-z0-9_.,，、\s]+)\]/g, (all, inner) => {
+function citeText(text, version) {
+  return esc(text).replace(/\[([A-Za-z0-9_.:,，、\s]+)\]/g, (all, inner) => {
     const ids = inner.split(/[,，、\s]+/).filter(Boolean);
-    return ids.length && ids.every(isId) ? ids.map(goLink).join('') : all;
+    return ids.length && ids.every(isId) ? ids.map(id => goLink(id, version)).join('') : all;
   });
 }
 function msgHtml(m, prev) {
   if (m.role === 'user') {
     return `<div class="msg me"><div class="bubble">${esc(m.text)}</div>
-      ${m.refs && m.refs.length ? `<div class="msg-refs">针对 ${m.refs.map(goLink).join('')}</div>` : ''}</div>`;
+      ${m.refs && m.refs.length ? `<div class="msg-refs">针对 ${m.refs.map(id => goLink(id, m.version)).join('')}</div>` : ''}</div>`;
   }
   const add = m.suggest.filter(s => s.includes('加入案卷'));
   const other = m.suggest.filter(s => !s.includes('加入案卷'));
@@ -908,9 +939,10 @@ function msgHtml(m, prev) {
     ? `模型的回答越界，重写 ${m.rewrites} 次没成功，改用模板回答` : `程序拦下了越界说法，让模型重写了 ${m.rewrites} 次`}</summary>
     被拦下的：${blocked}。这些是推测或定性，记录和规则里没有这样写。</details>` : '';
   return `<div class="msg ai${m.not_found ? ' nf' : ''}${m.mode === 'guard' ? ' guard' : ''}">
-    <div class="ans">${citeText(m.text)}</div>
+    <div class="ans">${citeText(m.text, m.version)}</div>
+    ${(m.citations || []).length ? `<div class="msg-refs">出处 ${m.citations.map(id => goLink(id, m.version)).join('')}</div>` : ''}
     ${m.quotes.length ? `<div class="quotes"><div class="ql">原文（程序逐字核对过）</div>${m.quotes.map(q => `<blockquote>${esc(q.text)} ${/^R\d+$/.test(q.ref)
-      ? `<button type="button" class="cite" data-act="raw" data-ref="${esc(q.ref)}" data-hl="${esc(JSON.stringify([q.text]))}">${esc(q.ref)}</button>` : goLink(q.ref)}</blockquote>`).join('')}</div>` : ''}
+      ? `<button type="button" class="cite" data-act="raw" data-ref="${esc(q.ref)}" data-version="${m.version}" data-hl="${esc(JSON.stringify([q.text]))}">${esc(q.ref)}</button>` : goLink(q.ref, m.version)}</blockquote>`).join('')}</div>` : ''}
     ${other.length ? `<div class="sugg"><span>可以补充：</span>${other.map(s => `<button type="button" class="chip" data-act="supplement" data-kind="material" data-title="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
     <div class="msg-meta">${mode}${m.not_found ? '<span>数据里没有</span>' : ''}${m.dropped ? `<span>丢掉了 ${m.dropped} 条对不上的出处或引文</span>` : ''}${vNote}</div>
@@ -926,17 +958,32 @@ function scrollChat() { const b = $('#asBody'); if (b) b.scrollTop = b.scrollHei
 async function ask(q) {
   q = (q || '').trim();
   if (!q || S.busy || !S.case) return;
-  const id = S.case.id, refs = [...S.selected];
+  const caseData = S.case, id = caseData.id, version = ver().no, selected = [...S.selected];
+  const refs = selected.map(ref => chatRef(ref, version));
   S.busy = true;
-  S.case.chat.push({ role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version: S.case.current, created_at: new Date().toISOString() });
+  const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version, created_at: new Date().toISOString() };
+  caseData.chat.push(message);
+  // 切走再回来可能重新加载了同一案卷；同步当前对象，但不触碰别的案卷。
+  const targets = () => S.case && S.case.id === id && S.case !== caseData ? [caseData, S.case] : [caseData];
+  const sameMessage = (a, b) => a === b || (a.role === b.role && a.version === b.version && a.text === b.text && a.created_at === b.created_at);
   S.selected.clear(); refreshSel(); refreshChat();
   $('#assist').classList.add('open');
   try {
-    const reply = await api(`/api/cases/${encodeURIComponent(id)}/chat`, { method: 'POST', body: { text: q, refs } });
-    if (S.case && S.case.id === id) S.case.chat.push(reply);
+    const reply = await api(`/api/cases/${encodeURIComponent(id)}/chat`, { method: 'POST', body: { text: q, refs, version } });
+    const savedUser = { ...message, created_at: reply.created_at || message.created_at };
+    for (const target of targets()) {
+      const index = target.chat.findIndex(m => sameMessage(m, message) || sameMessage(m, savedUser));
+      if (index === -1) target.chat.push(savedUser);
+      else target.chat[index] = savedUser;
+      if (!target.chat.some(m => sameMessage(m, reply))) target.chat.push(reply);
+    }
   } catch (e) {
-    if (S.case && S.case.id === id) {
-      S.case.chat.pop(); refs.forEach(r => S.selected.add(r)); refreshSel();
+    for (const target of targets()) {
+      const index = target.chat.findIndex(m => sameMessage(m, message));
+      if (index !== -1) target.chat.splice(index, 1);
+    }
+    if (S.case && S.case.id === id && ver().no === version) {
+      selected.forEach(r => S.selected.add(r)); refreshSel();
       const ta = $('#asForm textarea'); if (ta) ta.value = q;
     }
     toast('助手没答上来：' + e.message, true);
@@ -1035,8 +1082,8 @@ document.addEventListener('click', e => {
   }
   const d = el.dataset;
   switch (d.act) {
-    case 'raw': openRaw(d.ref, d.hl ? JSON.parse(d.hl) : []); break;
-    case 'goto': if (d.id.startsWith('term.')) termPop(el, d.id.slice(5)); else gotoItem(d.id); break;
+    case 'raw': if (selectRefVersion(d.version == null ? null : Number(d.version))) openRaw(d.ref, d.hl ? JSON.parse(d.hl) : []); break;
+    case 'goto': gotoItem(d.id, d.version == null ? null : Number(d.version), el); break;
     case 'sel': toggleSel(d.id); break;
     case 'unsel': S.selected.delete(d.id); refreshSel(); break;
     case 'ver': location.hash = `#/case/${S.case.id}/v/${d.no}`; break;

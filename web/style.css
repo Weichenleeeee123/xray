@@ -502,11 +502,17 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
   #L1 .op-wrap[hidden],#L1 .op-wrap{display:block!important;margin:0}
   .onepager{box-shadow:none;border:0;padding:0;background:#fff}
   .op-cols{grid-template-columns:minmax(0,1fr);gap:6px}
-  .op-col li{padding:3px 0;font-size:10.5pt}
+  .op-col li{padding:2px 0;font-size:10.5pt;line-height:1.45}
   .op-col h4{margin-top:6px}
   .headline{font-size:13pt;margin-bottom:8px}
-  .op-next{break-inside:avoid}
-  .op-terms{display:block;break-inside:avoid}
+  .op-next{break-inside:avoid;margin-top:12px;padding:8px 12px}
+  .op-next ol{font-size:10.5pt;line-height:1.45}
+  .op-next li{margin:3px 0}
+  .op-terms{display:block;break-inside:avoid;margin-top:10px;padding-top:6px}
+  .op-terms dl>div{font-size:9pt;line-height:1.4}
+  .op-foot{margin-top:8px;font-size:9pt;line-height:1.4}
+  .op-head .stamp{font-size:9pt}
+  .rf{font-size:9pt}
   .term{border-bottom:0}
   .rf{color:#555}
 }

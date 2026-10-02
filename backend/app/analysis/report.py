@@ -97,13 +97,18 @@ def onepager(*, company_name: str, for_whom: str | None, amount: float | None, s
     headline = _headline(assertions, missing, signals, len(unknown))
     next_steps = [OnePagerLine(text=f"{q.ask}（{q.check_where}）", refs=[q.id, *q.linked]) for q in questions[:3]]
     footer = " ".join(filter(None, [FOOTER, _as_of(sources, used)]))
+    pack_note = "项数为核查条目数；同一文书可在多个来源出现，不代表处罚次数。人工采集非全量，后续整改未核验。" if any(
+        i.key.startswith("official_pack_") for s in signals for i in s.items) else ""
+    if pack_note:
+        footer += " " + pack_note
 
     if audience == "teller":
         subject = f"客户拟交给 {company_name}：{scenario.hand_over}" + (f" {wan(amount)}" if amount else "")
         return OnePager(audience="teller", title="网点提示单", subject=subject,
                         headline=headline + "建议客户先核实下面三件事，再办理。",
                         found=found[:LIMIT], mismatch=mismatch[:LIMIT], unknown=u, next_steps=next_steps,
-                        footer="供柜面参考：依据为公开记录和客户提供的材料，不构成对该公司的法律定性。 " + _as_of(sources, used))
+                        footer="供柜面参考：依据为公开记录和客户提供的材料，不构成对该公司的法律定性。 " + _as_of(sources, used) +
+                               (" " + pack_note if pack_note else ""))
     who = "给自己看" if for_whom in (None, "自己") else f"替{for_whom}看"
     return OnePager(audience="family", title=scenario.onepager_title, subject=f"{who}：{company_name}{money}",
                     headline=headline, found=f, mismatch=m, unknown=u, next_steps=next_steps, footer=footer)

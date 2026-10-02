@@ -124,7 +124,9 @@ def test_assistant_rewrites_overreach_instead_of_downgrading(case, tmp_path):
     fake = FakeLLM([_ans("持牌名单里查不到它 [A1]，钱很可能拿不回来，属于超范围经营"),
                     _ans("持牌名单里查不到它 [A1]；退款写没写进合同还不知道 [A8]。", ["A1"])], tmp_path)
     msg = answer(case, ChatIn(text="钱能拿回来吗"), fake)
-    assert msg.mode == "model" and msg.rewrites == 1 and msg.blocked == ["很可能", "超范围经营"]
+    # A8 is absent in this fixture: use the remaining repair budget, then keep A1.
+    assert msg.mode == "model" and msg.rewrites == 2 and msg.blocked == ["很可能", "超范围经营"]
+    assert msg.dropped > 0 and len(fake.calls) == 3
     assert "很可能" not in msg.text and "A1" in msg.citations
     feedback = fake.calls[1]
     assert feedback[-2]["role"] == "assistant" and "很可能" in feedback[-1]["content"]   # 告诉了模型哪句越界

@@ -43,6 +43,15 @@ MAX_REWRITES = 2
 REWRITE = ("你上一版回答里有这些说法：{bad}。它们是推测或定性，案卷的记录和规则里没有这样写，不能说。"
            "请重写：只说记录里查到了什么、规则的判定是什么（可以用判定原词，如\"与记录不符\"\"不合规承诺\"）、"
            "还不知道什么、下一步做什么。其余要求不变，仍只输出 JSON。")
+GROUNDING_REWRITE = (
+    "上一版回答有事实段或引文未通过出处、逐字引文、数字或规则状态校验，被拒绝的内容尚未向用户展示。"
+    "请根据前面的完整案卷重新回答：出处 id 必须存在于所选版本；quotes.text 必须是对应 content 中"
+    "单个叶子值里的连续原文，不得拼接 JSON 字段名、冒号或多个值，不得引用 note、标题等元数据作为原文。"
+    "回答中的数字必须有对应出处支持，不得补造数字；数字和日期保留来源原格式，不改写日期中的前导零。"
+    "判定和检查状态须与报告的权威规则结果一致。"
+    "保留已通过校验的内容，并修复被拒绝的段落以回答用户原问题；只保留能核对的事实和引文，"
+    "确实没有依据则 not_found=true、segments=[]。其余要求不变，只输出 JSON。"
+)
 HISTORY = 4
 
 # 模板回答：问题里的关键词 → 相关条目
@@ -73,6 +82,7 @@ SYSTEM = """你是企鹅的案卷解释助手。仅使用给定版本报告和�
 不推测后果或风险高低；法律定性只有记录原文写了才能转述并标出处。先说结论，用短句。
 不从记录推断其家底或偿付能力。名词含义只用给定词表，标明 term.<id>，词表不是本公司证据。
 每个关键事实独立成一段，段落必须带本案出处 id；引用原文放 quotes，必须逐字一致。
+引用 RawRecord 时，quotes.text 只取 content 中单个叶子值里的连续原文；不得拼接 JSON 字段名、冒号或不同值，也不得把 note 等元数据当原文。
 原始材料只表示材料如此记载，不代表宣称属实；沿用官方/人工/商业/用户/演示的来源性质。
 选中条目时围绕该条目回答，不能偷换版本。新聊天信息需用户加入案卷才能触发二次分析。
 没依据就 not_found=true，segments 留空。suggest 只写要核对什么，不写额外事实。
@@ -172,6 +182,18 @@ def _rule_states(v: Version) -> dict[str, dict]:
     return states
 
 
+def _number_support(text: str, refs: list[str], valid: dict[str, str]) -> tuple[list[str], dict[str, list[str]]]:
+    """The existing exact-token numeric rule, also used for repair diagnostics."""
+    normalize = lambda n: n.replace(",", "").replace("％", "%")
+    record_refs = [ref for ref in refs if not ref.startswith("term.")]
+    by_ref = {ref: sorted({normalize(n) for n in NUMBERS.findall(valid[ref])})
+              for ref in (record_refs or refs)}
+    evidence_numbers = {number for numbers in by_ref.values() for number in numbers}
+    unsupported = list(dict.fromkeys(normalize(n) for n in NUMBERS.findall(ID_MARK.sub("", text))
+                                     if normalize(n) not in evidence_numbers))
+    return unsupported, by_ref
+
+
 def _supported(text: str, refs: list[str], valid: dict[str, str],
                rule_states: dict[str, dict] | None = None) -> bool:
     plain = ID_MARK.sub("", text)
@@ -208,14 +230,13 @@ def _supported(text: str, refs: list[str], valid: dict[str, str],
         if claimed_statuses and (not actual_statuses or any(
                 claimed_statuses != {status} for status in actual_statuses)):
             return False
-    normalize = lambda n: n.replace(",", "").replace("％", "%")
-    evidence_numbers = {normalize(n) for n in NUMBERS.findall(evidence)}
-    return all(normalize(n) in evidence_numbers for n in NUMBERS.findall(plain))
+    return not _number_support(text, refs, valid)[0]
 
 
 def validate(ans: _ModelAnswer, valid: dict[str, str], *,
              quote_leaves: dict[str, list[str]] | None = None,
-             rule_states: dict[str, dict] | None = None) -> tuple[str, list[str], list[Quote], int]:
+             rule_states: dict[str, dict] | None = None,
+             diagnostics: list[dict] | None = None) -> tuple[str, list[str], list[Quote], int]:
     """Reject unsupported fact segments, not only their invalid footnotes.
 
     Verbatim checks and limited verdict/numeric checks do NOT prove general
@@ -255,6 +276,12 @@ def validate(ans: _ModelAnswer, valid: dict[str, str], *,
         if (not refs or invalid_own_quote or bad_quote_refs.intersection(refs)
                 or not _supported(seg.text, refs, valid, rule_states)):
             dropped += 1
+            if diagnostics is not None and refs:
+                unsupported, by_ref = _number_support(seg.text, refs, valid)
+                if unsupported:
+                    diagnostics.append({"text": seg.text, "reason": "unsupported_numeric_token",
+                                        "unsupported_numbers": unsupported,
+                                        "supported_numbers_by_ref": by_ref})
             continue
         # Every structured segment is one factual unit; references rendered by code.
         rendered = seg.text
@@ -414,8 +441,18 @@ def answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
                 {"role": "user", "content": "<案卷数据>\n" + blob + "\n</案卷数据>"},
                 {"role": "user", "content": (f"选中条目：{'、'.join(refs)}\n" if refs else "") + q.text}]
     blocked: list[str] = []
+    total_dropped = 0
+    safe_partial: ChatMessage | None = None
 
     def fallback(rewrites: int) -> ChatMessage:
+        if safe_partial is not None:
+            # Keep only the previously validated answer and its original provenance.
+            return safe_partial.model_copy(update={"dropped": total_dropped,
+                                                   "rewrites": rewrites, "blocked": list(blocked)})
+        if total_dropped:
+            # A failed repair must not disguise rejected model facts as a success.
+            return ChatMessage(text=UNKNOWN, not_found=True, suggest=UNKNOWN_SUGGEST + suggest_add,
+                               mode="guard", dropped=total_dropped, rewrites=rewrites, blocked=blocked, **base)
         text, cites, not_found, suggest = template_answer(case, v, q)
         return ChatMessage(text=text, citations=cites, not_found=not_found, suggest=suggest + suggest_add,
                            mode="template", rewrites=rewrites, blocked=blocked, **base)
@@ -438,7 +475,10 @@ def answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
             messages = messages + [{"role": "assistant", "content": reply.text},
                                    {"role": "user", "content": REWRITE.format(bad="、".join(f'"{b}"' for b in bad))}]
             continue
-        text, cites, quotes, dropped = validate(out, valid, quote_leaves=leaves, rule_states=_rule_states(v))
+        diagnostics: list[dict] = []
+        text, cites, quotes, dropped = validate(out, valid, quote_leaves=leaves, rule_states=_rule_states(v),
+                                              diagnostics=diagnostics)
+        total_dropped += dropped
         not_found = not bool(text)
         if not_found:
             text = UNKNOWN
@@ -447,10 +487,25 @@ def answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
                    and not overreach(s, data)][:3]
         if not_found:
             suggest = UNKNOWN_SUGGEST
-        return ChatMessage(text=text, citations=cites, quotes=quotes, not_found=not_found,
-                           suggest=suggest + suggest_add, dropped=dropped, mode=reply.mode,
-                           recorded_at=reply.recorded_at if reply.mode == "replay" else None,
-                           rewrites=rewrites, blocked=blocked, **base)
+        result = ChatMessage(text=text, citations=cites, quotes=quotes, not_found=not_found,
+                             suggest=suggest + suggest_add, dropped=total_dropped, mode=reply.mode,
+                             recorded_at=reply.recorded_at if reply.mode == "replay" else None,
+                             rewrites=rewrites, blocked=blocked, **base)
+        if not not_found and safe_partial is None:
+            safe_partial = result
+        if dropped and not out.not_found and rewrites < MAX_REWRITES:
+            feedback = GROUNDING_REWRITE + "\n上一版通过校验的回答：" + (text if not not_found else "（无）")
+            if diagnostics:
+                feedback += ("\n下面逐段列出被拒绝的原句、缺少支持的数字和对应引用中允许的数字词元。"
+                             "例如 9 与 09 不相同；请回看该引用中的完整原日期，按原日期格式重写被拒段，"
+                             "不能继续保留 unsupported_numbers 中的写法。\n程序校验诊断（JSON）："
+                             + json.dumps(diagnostics, ensure_ascii=False))
+            messages = messages + [{"role": "assistant", "content": reply.text},
+                                   {"role": "user", "content": feedback}]
+            continue
+        if (not_found or dropped) and safe_partial is not None:
+            return fallback(rewrites)
+        return result
     return fallback(MAX_REWRITES)
 
 

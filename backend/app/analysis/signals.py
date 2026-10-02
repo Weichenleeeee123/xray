@@ -1,14 +1,16 @@
 """把散在各处的记录归进赛题的四个信号：风险、财务、信用、口碑。"""
 import re
 from datetime import date
+from urllib.parse import urlsplit
 
 from app.analysis.extract import Extraction
 from app.analysis.fmt import money, months_between, wan
 from app.analysis.verify import qualification_review, return_review
 from app.config import LOW_PAID_RATIO, YOUNG_COMPANY_MONTHS
 from app.models import (AmacHit, Assertion, ClaimKind, CompanyProfile, LicenseHit, RegistryHit, Scenario, Signal,
-                        SignalItem, Status, Verdict)
-from app.sources.web import WebFindings, WebHit
+                        RawRecord, SignalItem, Status, Verdict)
+from app.sources.licenses import normalize
+from app.sources.web import OFFICIAL_DOMAINS, WebFindings, WebHit
 
 NO_WEB = "联网搜索没开（没配模型网关，或处于离线模式）"
 
@@ -30,6 +32,42 @@ def _flags(items: list[SignalItem]) -> int:
 def _not_covered(key: str) -> list[SignalItem]:
     return [SignalItem(key=key, label="登记数据", value="没查", detail="还没有这家公司的登记数据",
                        status=Status.none, source="registry")]
+
+
+def official_pack_items(company_name: str, records: list[RawRecord]) -> list[SignalItem]:
+    """只消费服务器人工核验包的结构化文书，不把用户材料或官网网址当作核验。
+
+    collected 类型仍保留。记录仅证明该份历史文书，不代表工商处罚全量查询或当前整改情况。
+    """
+    categories = {"行政处罚决定": "企业处罚结果", "行政监管措施": "措施"}
+    items = []
+    for record in records:
+        if record.kind != "collected" or record.coverage != "found" or not isinstance(record.content, dict):
+            continue
+        data = record.content
+        category = data.get("文书类别")
+        subject = data.get("当事企业")
+        if category not in categories or not isinstance(subject, str) or normalize(subject) != normalize(company_name):
+            continue
+        try:
+            url = urlsplit(record.url or "")
+            hostname = (url.hostname or "").lower()
+            if url.scheme != "https" or not any(hostname == d or hostname.endswith("." + d) for d in OFFICIAL_DOMAINS):
+                continue
+            when = data.get("决定日期")
+            if not isinstance(when, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when):
+                continue
+            date.fromisoformat(when)
+        except ValueError:
+            continue
+        result = data.get(categories[category])
+        if not isinstance(result, str) or not result.strip():
+            continue
+        items.append(SignalItem(key=f"official_pack_{record.id.lower()}", label=f"{category}（人工采集）",
+                                value=f"{when}：{result.strip()}", detail="该份历史文书摘录；不是全量查询，未核验后续整改结果",
+                                status=Status.bad, source=record.source_id, ref=record.id))
+    # 首条进入一页结论时先保留企业处罚结果；警示函另列为监管措施。
+    return sorted(items, key=lambda item: not item.label.startswith("行政处罚决定"))
 
 
 def _hit_item(key: str, label: str, value: str, hit: WebHit, status: Status, refs: dict[str, str],
