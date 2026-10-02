@@ -238,3 +238,50 @@ def test_other_risks_only_red_for_factors_that_are_its_own():
     item = other_risks_item({"终本案件": 2, "裁判文书": 8, "失信信息": 1})[0]
     assert item.status is Status.bad and item.value == "终本案件 2、裁判文书 8"
     assert other_risks_item({"裁判文书": 0, "行政处罚": 3}) == []
+
+
+# ---------- 多个 Key ----------
+
+def test_parse_keys_accepts_bearer_prefix_and_commas():
+    from app.sources.qcc_agent import parse_keys
+    assert parse_keys("Bearer A, B ，bearer C,A") == ["A", "B", "C"]
+
+
+def test_switches_key_only_when_the_key_is_the_problem(tmp_path):
+    seen = []
+    inner = server(TOOLS, [])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        key = request.headers["Authorization"]
+        seen.append(key)
+        if key == "Bearer A":
+            return httpx.Response(401, json={"error": "invalid_token"})
+        if key == "Bearer B":
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {
+                "isError": True, "content": [{"type": "text", "text": "积分不足，请充值"}]}})
+        return inner.handle_request(request)
+
+    c = QccAgentClient("A,B,C", cache_dir=tmp_path, transport=httpx.MockTransport(handler))
+    r = c.fetch(NAME)
+    assert r.profile and c.current == 2 and seen[:3] == ["Bearer A", "Bearer B", "Bearer C"]
+    assert set(seen[3:]) == {"Bearer C"}                       # 换到 C 以后一直用 C，不回头试 A、B
+    assert c.status()["using"] == 3 and "积分" in c.status()["dropped"][2]
+
+
+def test_all_keys_bad_reports_each_reason(tmp_path):
+    c = QccAgentClient("A,B", cache_dir=tmp_path,
+                       transport=httpx.MockTransport(lambda r: httpx.Response(401, json={"error": "invalid_token"})))
+    r = c.fetch(NAME)
+    assert r.profile is None and r.failed and "2 个 Key 都不能用" in r.note and "第 1 个" in r.note
+
+
+def test_not_found_does_not_burn_through_keys(tmp_path):
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers["Authorization"])
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {
+            "isError": True, "content": [{"type": "text", "text": "未找到匹配的企业"}]}})
+
+    r = QccAgentClient("A,B", cache_dir=tmp_path, transport=httpx.MockTransport(handler)).fetch(NAME)
+    assert r.profile is None and seen == ["Bearer A"]

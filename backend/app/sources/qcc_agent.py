@@ -11,7 +11,7 @@
 
 配置（backend/.env）：
     XRAY_COMMERCIAL=qcc_agent
-    QCC_AGENT_KEY=                 平台个人中心的 API Key（不带 "Bearer "）
+    QCC_AGENT_KEY=                 平台个人中心的 API Key；多个用逗号隔开，当前的失效或积分用完自动换下一个
     XRAY_QCC_MAX_POINTS=300        单次运行最多实际花多少积分（缓存命中不算）
 """
 import hashlib
@@ -63,7 +63,19 @@ DEAD = re.compile(r"注销|吊销|撤销|迁出")
 
 
 class QccError(Exception):
-    pass
+    def __init__(self, message: str, switch: bool = False):
+        super().__init__(message)
+        self.switch = switch or bool(SWITCH.search(message))   # 换下一个 Key 再试
+
+
+# 这几类错误是这个 Key 的问题（失效、积分用完、被限流），换个 Key 可能就好；查不到公司之类的不换
+SWITCH = re.compile(r"积分|额度|余额|配额|quota|invalid_token|凭证|token|过期|频率|rate", re.I)
+
+
+def parse_keys(text: str) -> list[str]:
+    """QCC_AGENT_KEY 可以填多个，用逗号隔开；每个前面带不带 "Bearer " 都行。"""
+    keys = [re.sub(r"(?i)^bearer\s+", "", k.strip()) for k in re.split(r"[,，;；\n]", text or "")]
+    return list(dict.fromkeys(k for k in keys if k))
 
 
 def parse_response(text: str) -> dict:
@@ -267,9 +279,9 @@ class QccAgentResult:
 class QccAgentClient:
     def __init__(self, key: str | None = None, *, max_points: int | None = None, cache_dir=None,
                  transport: httpx.BaseTransport | None = None, timeout: float = 30):
-        self.key = (key if key is not None else os.getenv("QCC_AGENT_KEY", "")).strip()
-        if self.key.lower().startswith("bearer "):
-            self.key = self.key[7:].strip()
+        # 多个 Key：一直用当前这个，失效、积分不够或被限流才换下一个（结果有缓存，轮流换不省积分）
+        self.keys = parse_keys(key if key is not None else os.getenv("QCC_AGENT_KEY", ""))
+        self.current, self.dropped = 0, {}   # dropped：第几个 Key → 为什么换掉
         self.max_points = max_points if max_points is not None else int(os.getenv("XRAY_QCC_MAX_POINTS", "300"))
         self.cache_dir = cache_dir or config.CACHE_DIR / "qcc_agent"
         self.transport, self.timeout, self.points = transport, timeout, 0
@@ -277,25 +289,40 @@ class QccAgentClient:
 
     @property
     def configured(self) -> bool:
-        return bool(self.key)
+        return bool(self.keys)
 
     def status(self) -> dict:
         return {"provider": self.provider, "configured": self.configured, "points": self.points,
-                "max_points": self.max_points}
+                "max_points": self.max_points, "keys": len(self.keys), "using": self.current + 1,
+                "dropped": {i + 1: why for i, why in self.dropped.items()}}
 
     def _path(self, name: str, tool: str):
         return self.cache_dir / (hashlib.sha256(f"{normalize(name)}|{tool}".encode()).hexdigest()[:24] + ".json")
 
-    def _post(self, server: str, tool: str, name: str) -> dict:
+    def _post(self, server: str, tool: str, name: str, key: str) -> dict:
         payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                    "params": {"name": tool, "arguments": {"searchKey": name}}}
         with httpx.Client(timeout=self.timeout, transport=self.transport) as c:
             r = c.post(f"{BASE_URL}/{server}/stream", json=payload,
-                       headers={"Authorization": f"Bearer {self.key}", "Accept": "application/json, text/event-stream"})
-        if r.status_code in (401, 403):
-            raise QccError("API Key 无效或没有权限")
+                       headers={"Authorization": f"Bearer {key}", "Accept": "application/json, text/event-stream"})
+        if r.status_code in (401, 402, 403, 429):
+            raise QccError({401: "API Key 无效或过期", 402: "积分不足", 403: "没有权限", 429: "调用太频繁"}[r.status_code],
+                           switch=True)
         r.raise_for_status()
         return parse_response(r.text)
+
+    def _post_any(self, server: str, tool: str, name: str) -> dict:
+        """从当前 Key 开始试；这个 Key 的问题就换下一个，都不行才报错。"""
+        while self.current < len(self.keys):
+            try:
+                return self._post(server, tool, name, self.keys[self.current])
+            except QccError as e:
+                if not e.switch:
+                    raise
+                self.dropped[self.current] = str(e)[:60]
+                self.current += 1
+        raise QccError(f"{len(self.keys)} 个 Key 都不能用（" +
+                       "；".join(f"第 {i + 1} 个：{why}" for i, why in self.dropped.items()) + "）")
 
     def call(self, server: str, tool: str, name: str) -> Call:
         path = self._path(name, tool)
@@ -306,11 +333,11 @@ class QccAgentClient:
         cost = COST.get(tool, 5)
         if self.points + cost > self.max_points:
             return Call(None, f"本次运行已花 {self.points} 积分，到上限了，没有再查", False, when)
-        self.points += cost
         try:
-            data = self._post(server, tool, name)
+            data = self._post_any(server, tool, name)
         except (httpx.HTTPError, ValueError, QccError) as e:
             return Call(None, f"查询失败：{e if isinstance(e, QccError) else type(e).__name__}", False, when)
+        self.points += cost
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"query": name, "tool": tool, "retrieved_at": when, "data": data},
                                    ensure_ascii=False), encoding="utf-8")
