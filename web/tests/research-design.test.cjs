@@ -110,3 +110,51 @@ test('radar names failed lookups and pending material instead of calling them un
  assert.match(svg,/经营资格未见异常（查了 1 项，另有 1 项没查成、1 项待补材料）/);
  assert.match(svg,/data-status="failed"/);
 });
+
+test('the report brief preserves all supplied summary lines and their version-bound references',()=>{
+ const h=harness();
+ h.ctx.refLinks=refs=>refs.map(id=>`<button data-act="goto" data-id="${id}">${id}</button>`).join('');
+ h.ctx.v={onepager:{headline:'核实材料中的主体与付款安排。',mismatch:[{text:'承诺 <保本> 尚无依据',refs:['A2','R1']},{text:'收款人不同',refs:['A7']},{text:'合同缺条款',refs:['M1']}],found:[{text:'已查到登记记录',refs:['credit.status','R2']}],unknown:[{text:'接口没查成',refs:['finance.revenue']} ]},questions:[{id:'Q1',ask:'请提供盖章合同？',check_where:'对照合同主体与登记名称',linked:['A7']} ]};
+ const html=h.run('researchBrief(v)');
+ for(const id of ['A2','R1','A7','M1','credit.status','R2','finance.revenue']) assert.ok(html.includes(`data-id="${id}"`));
+ assert.match(html,/&lt;保本&gt;/);assert.doesNotMatch(html,/<保本>/);
+ assert.match(html,/接口没查成/);assert.match(html,/请提供盖章合同/);
+ assert.match(html,/data-act="question-detail" data-question="0"/);
+ assert.ok(html.indexOf('需要核实')<html.indexOf('查到的记录'));
+});
+
+test('an empty report brief invites evidence and does not imply a clean bill of health',()=>{
+ const h=harness();h.ctx.refLinks=()=>'';
+ h.ctx.v={onepager:{headline:'现有资料不足。',mismatch:[],found:[],unknown:[]},questions:[]};
+ const html=h.run('researchBrief(v)');
+ assert.match(html,/补充材料/);assert.match(html,/未列出待确认项/);
+ assert.doesNotMatch(html,/没有问题|全部正常|安全|question-detail/);
+});
+
+test('the report title discloses fictional evidence even when the topbar is hidden on mobile',()=>{
+ const h=harness();h.ctx.c={id:'case-id',case:{company_name:'公司 <测试>'},versions:[{no:1}],raw:[{id:'R1',kind:'demo',coverage:'found'}]};
+ h.ctx.v={no:1,created_at:'2026-10-03',raw_ids:['R1'],need:'了解 <主体>'};
+ const html=h.run('researchHero(c,v)');
+ assert.match(html,/演示数据 · 公司为虚构/);assert.match(html,/公司 &lt;测试&gt;/);assert.match(html,/了解 &lt;主体&gt;/);
+ h.ctx.v.raw_ids=[];
+ assert.doesNotMatch(h.run('researchHero(c,v)'),/演示数据 · 公司为虚构/,'only the viewed version decides its evidence label');
+});
+
+test('version one has no changes shortcut even when a later version exists',()=>{
+ const h=harness();h.ctx.c={id:'case',case:{company_name:'测试公司'},versions:[{no:1},{no:2}],raw:[]};
+ h.ctx.v={no:1,created_at:'2026-10-03',raw_ids:[],need:'核对资料'};
+ assert.doesNotMatch(h.run('researchHero(c,v)'),/查看本版变化/);
+ h.ctx.v.no=2;
+ assert.match(h.run('researchHero(c,v)'),/查看本版变化/);
+});
+
+test('a historical report without a one-pager still offers its own next question',()=>{
+ const h=harness();
+ h.ctx.document.createElement=()=>({innerHTML:'',querySelector:()=>null,querySelectorAll:()=>[]});
+ h.ctx.glanceHtml=()=>'';
+ h.ctx.v={onepager:null,signals:[],questions:[{ask:'本版要核对合同吗',check_where:'阅读合同原文'}]};
+ const html=h.run('researchOverview(v)');
+ assert.match(html,/本版要核对合同吗/);assert.match(html,/data-act="question-detail"/);
+ h.ctx.v.questions=[];
+ assert.match(h.run('researchOverview(v)'),/data-act="supplement"/);
+});

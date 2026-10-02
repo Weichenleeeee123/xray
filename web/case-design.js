@@ -7,12 +7,13 @@ const researchIcon = (kind = 'arrow') => {
 };
 function researchHeading(n, title, sub) { return `<div class="research-heading"><div><span class="research-eyebrow">${n}</span><h2>${title}</h2></div>${sub ? `<p>${sub}</p>` : ''}</div>`; }
 function researchHero(c,v) {
-  const steps=[['overview','企业概况','六维雷达','基本面 · 资金面 · 风险'],['signals','四个信号','风险 · 财务','信用 · 口碑'],['inquiry','问询与复核','拍照复核',`${(v.questions||[]).length} 个待询问题`],['details','详细信息','时间线 · 股东 · 资本','用户评价']];
-  return `<header class="research-hero">
-    <div class="research-topline"><a href="/" class="back-study">← 回到小企研究室</a><div class="research-actions"><button class="research-button ghost" data-act="print-open" aria-haspopup="dialog" aria-controls="printDlg">${researchIcon('print')}打印</button><button class="research-button ghost" data-act="supplement">＋ 补充信息</button><button class="research-button" data-act="section" data-section="photo">${researchIcon('camera')}拍照 · 二次查询</button></div></div>
-    <div class="hero-title"><span class="research-eyebrow"><i></i> 小企查资料 / 企业研究档案</span><h1>${esc(c.case.company_name)}</h1><div class="hero-meta"><span>案卷 ${esc(c.id.slice(0,8).toUpperCase())}</span><span>${esc(v.created_at.slice(0,10))} 更新</span><span>第 ${v.no} 版</span><button data-act="tab" data-tab="raw">${v.raw_ids.length} 条来源记录 ${researchIcon()}</button></div></div>
-    <nav class="research-flow" aria-label="报告章节导航"><svg class="flow-wire" viewBox="0 0 1200 110" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="flowGradient"><stop stop-color="#dfb477" stop-opacity="0"/><stop offset=".6" stop-color="#dfb477"/><stop offset="1" stop-color="#ddbf9a"/></linearGradient></defs><path class="wire-base" d="M0 26H270Q300 26 300 56Q300 86 330 86H640Q670 86 670 56Q670 26 700 26H920Q950 26 950 56Q950 86 980 86H1200"/><path class="wire-light" pathLength="100" d="M0 26H270Q300 26 300 56Q300 86 330 86H640Q670 86 670 56Q670 26 700 26H920Q950 26 950 56Q950 86 980 86H1200"/></svg>${steps.map(([id,label,desc,detail],i)=>`<button class="flow-stop ${i<2?'flow-primary':'flow-secondary'}" style="--order:${i}" data-act="section" data-section="${id}"><span class="flow-label"><b>0${i+1}</b>${label}<span>↗</span></span><span class="flow-preview"><strong>${id==='inquiry'?researchIcon('camera'):''}${desc}</strong><small>${detail}</small><span class="mini-trace"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></button>`).join('')}</nav>
-    <div class="hero-foot"><button data-act="motion" aria-pressed="false">暂停动效 Ⅱ</button><button data-act="section" data-section="overview">向下阅读 ↓</button></div>
+  const demo=(c.raw || []).some(r=>v.raw_ids.includes(r.id) && r.kind==='demo' && r.coverage==='found');
+  const steps=[['overview','阅读摘要'],['signals','四个信号'],['inquiry','问询与复核'],['details','详细信息']];
+  return `<header class="research-hero report-brief-hero">
+    <div class="research-topline"><a href="/" class="back-study">← 回到小企研究室</a><div class="research-actions"><button class="research-button ghost" data-act="print-open" aria-haspopup="dialog" aria-controls="printDlg">${researchIcon('print')}打印一页结论</button><button class="research-button ghost" data-act="supplement">＋ 补充信息</button><button class="research-button" data-act="section" data-section="photo">${researchIcon('camera')}拍照复核</button></div></div>
+    <div class="hero-title"><span class="research-eyebrow"><i></i> 企业研究档案 <span class="hero-scenario">${esc(v.scenario_label || '企业核验')}</span></span><h1>${esc(c.case.company_name)}</h1><div class="hero-meta"><span>案卷 ${esc(c.id.slice(0,8).toUpperCase())}</span><span>${esc(v.created_at.slice(0,10))} 更新</span><span>第 ${v.no} 版</span>${demo?'<span class="report-demo-note">演示数据 · 公司为虚构</span>':''}<button data-act="tab" data-tab="raw">${v.raw_ids.length} 条来源记录 ${researchIcon()}</button>${v.no>1?`<button data-act="tab" data-tab="changes">查看本版变化 ${researchIcon()}</button>`:''}</div></div>
+    <div class="report-purpose"><span>本次关注</span><p>${esc(v.need || v.scenario_label || '了解这家公司的公开资料')}</p></div>
+    <nav class="report-jumpnav" aria-label="报告章节导航">${steps.map(([id,label],i)=>`<button type="button" data-act="section" data-section="${id}"><span>0${i+1}</span>${label}${researchIcon()}</button>`).join('')}</nav>
   </header>`;
 }
 // Every signal item belongs to exactly one axis, so the radar never drops a backend record.
@@ -48,15 +49,36 @@ function researchRadar(v) {
   const titles = {ok:'未见异常',warn:'有待关注',bad:'有异常记录',miss:'缺应有记录',none:'未覆盖'};
   const label = d => d.failed ? '没查成' : titles[d.status];
   const count = d => d.status==='none' ? (d.open.length ? pendingNote(d.open) : '这一维没有查到数据') : `查了 ${d.checked} 项${d.unchecked?`，另有 ${pendingNote(d.open)}`:''}`;
-  return `<div class="research-radar"><div class="radar-caption"><span>企业六维轮廓</span><span>定性示意 · 不设评分</span></div><svg viewBox="0 0 460 410" role="img" aria-label="六维雷达：${dimensions.map(d=>`${d.label}${label(d)}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="230" y1="205" x2="${pt(i,132)[0]}" y2="${pt(i,132)[1]}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${dots.map((p,i)=>p?`<path d="M230 205L${coords(p)}${dots[(i+1)%6]?'L'+coords(dots[(i+1)%6]):''}Z" fill="#dfb477" fill-opacity=".12" stroke="#dfb477" stroke-width="1.6"/>`:'').join('')}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.failed?'failed':d.status}"><title>${d.label}：${label(d)}，${count(d)}</title><text x="${p[0]}" y="${p[1]-3}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0]}" y="${p[1]+17}" text-anchor="middle" fill="${d.failed?'#e3a76f':d.status==='none'?'#ac9781':d.status==='bad'?'#ed9b89':'#d4b38b'}" font-size="12">${label(d)}</text>${dots[i]?`<circle cx="${dots[i][0]}" cy="${dots[i][1]}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>依据现有记录作定性展示：越靠外越没发现问题，越靠里问题越多。虚线为未覆盖维度，不代表能力低；不用于比较投资表现。</p></div>`;
+  return `<div class="research-radar"><div class="radar-caption"><span>企业六维轮廓</span><span>定性示意 · 不设评分</span></div><svg viewBox="0 0 460 410" role="img" aria-label="六维雷达：${dimensions.map(d=>`${d.label}${label(d)}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="230" y1="205" x2="${pt(i,132)[0]}" y2="${pt(i,132)[1]}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${dots.map((p,i)=>p?`<path d="M230 205L${coords(p)}${dots[(i+1)%6]?'L'+coords(dots[(i+1)%6]):''}Z" fill="#dfb477" fill-opacity=".12" stroke="#dfb477" stroke-width="1.6"/>`:'').join('')}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.failed?'failed':d.status}"><title>${d.label}：${label(d)}，${count(d)}</title><text x="${p[0]}" y="${p[1]-3}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0]}" y="${p[1]+17}" text-anchor="middle" fill="${d.failed?'#e3a76f':d.status==='none'?'#ac9781':d.status==='bad'?'#ed9b89':'#d4b38b'}" font-size="12">${label(d)}</text>${dots[i]?`<circle cx="${dots[i][0]}" cy="${dots[i][1]}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>依据现有记录作定性展示，取各维度最需关注的一项；位置不表示问题数量或企业优劣。虚线表示未覆盖，不用于比较投资表现。</p></div>`;
+}
+// Use the saved version's deterministic one-pager, keeping every selected line and reference.
+// This is a reading layer only: all signal items and source records remain below.
+function researchNext(v) {
+  const question=(v.questions || [])[0];
+  return `<div class="brief-next"><span class="brief-next-label">下一步</span>${question?`<div><p>${esc(question.ask)}</p><small>${esc(question.check_where)}</small></div><button type="button" class="research-button ghost" data-act="question-detail" data-question="0" aria-haspopup="dialog" aria-controls="questionDlg">如何核实 ${researchIcon()}</button>`:`<div><p>补充材料，把公司的说法与记录放在一起核对。</p></div><button type="button" class="research-button ghost" data-act="supplement">补充材料 ${researchIcon()}</button>`}</div>`;
+}
+function researchBrief(v) {
+  const op=v.onepager;
+  if(!op) return '';
+  const seen=new Set();
+  const lineHtml=line=>`<li><p>${termText(line.text,seen)}</p><div class="brief-refs">${refLinks(line.refs)}</div></li>`;
+  const group=(title,lines,kind,empty)=>`<section class="brief-column brief-${kind}"><h3><i aria-hidden="true"></i>${title}</h3>${lines?.length?`<ul>${lines.slice(0,2).map(lineHtml).join('')}</ul>${lines.length>2?`<details class="brief-more"><summary>另有 ${lines.length-2} 项 · 展开阅读</summary><ul>${lines.slice(2).map(lineHtml).join('')}</ul></details>`:''}`:`<p class="brief-empty">${empty}</p>`}</section>`;
+  const columns=`<div class="brief-columns">
+    ${group('需要核实',op.mismatch,'mismatch','当前未列出材料与记录的矛盾；补充材料后可继续核对。')}
+    ${group('查到的记录',op.found,'found','当前摘要尚无可列出的具体记录。')}
+    ${group('仍待确认',op.unknown,'unknown','当前摘要未列出待确认项，请结合下方核查范围阅读。')}
+    </div>`;
+
+  return `<div class="report-brief"><p class="brief-headline">${esc(op.headline)}</p>${researchNext(v)}${columns}<p class="brief-reading-note">摘要摘取关键核查项；每个出处都可回看。完整记录与未覆盖范围见下方四个信号。</p></div>`;
 }
 function researchOverview(v) {
   const html=document.createElement('div'); html.innerHTML=glanceHtml(v);
   const first=html.querySelector('.gl-first')?.outerHTML || '<p>现有记录尚不足以形成结论。</p>';
   html.querySelectorAll('[data-act="sigtile"]').forEach(el=>{el.setAttribute('aria-haspopup','dialog');el.setAttribute('aria-controls','signalDlg');});
   const tiles=html.querySelector('.tiles')?.innerHTML || '';
-  return `<section id="research-overview" class="research-section">${researchHeading('01','企业概况','')}<div class="overview-grid">${researchRadar(v)}<div class="overview-summary"><span class="research-eyebrow">初步结论</span>${first}<div class="overview-note"><span>查询需求</span><p>${esc(v.need || v.scenario_label)}</p></div><button class="research-text-link" data-act="tab" data-tab="raw">查看资料来源 ${researchIcon()}</button></div></div></section>
-    <section id="research-signals" class="research-section">${researchHeading('02','四个信号','')}<div class="research-signals">${tiles}</div></section>`;
+  const brief=researchBrief(v) || `<div class="brief-fallback">${first}${researchNext(v)}</div>`;
+  return `<section id="research-overview" class="research-section">${researchHeading('01','阅读摘要','围绕本次需求，先看重点')}${brief}</section>
+    <section id="research-signals" class="research-section">${researchHeading('02','四个信号','点开任一信号，查看完整记录与核查范围')}<div class="research-signals">${tiles}</div><details class="report-radar-disclosure"><summary><span>企业六维轮廓</span><small>查看定性分布与覆盖范围</small><span aria-hidden="true">＋</span></summary><div class="report-radar-content">${researchRadar(v)}<div class="radar-reading"><h3>怎么看这张图</h3><p>每一维汇总对应的核查记录。实线依据已查项目，虚线表示未覆盖；“没查成”表示查询失败。</p><p>它帮助定位该展开的资料，不是企业评分。各维度的具体记录和未覆盖项，仍以四个信号为准。</p></div></div></details></section>`;
 }
 
 // Preserve every signal item; only long, repetitive record lists have a disclosure.

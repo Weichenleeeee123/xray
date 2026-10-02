@@ -16,6 +16,7 @@ DUP_OF_CLAIM = {"risk.bank_list": "A1", "risk.amac": "A1", "risk.product_code": 
 FACT_KEYS = ["risk.bank_list", "credit.official_web", "credit.status", "finance.paid_capital", "reputation.total",
              "reputation.web_total", "credit.penalties", "finance.insured"]
 FOOTER = "结论来自公开记录和规则，AI 只负责读材料和说人话。这不是安全评分，也不是对这家公司的定性；没查到不等于没有问题。"
+QUIET_GAPS = {"listed", "reference", "not_applicable"}
 
 
 def _item_line(sig: Signal, item: SignalItem) -> OnePagerLine:
@@ -27,12 +28,16 @@ def _claim_line(a: Assertion) -> OnePagerLine:
     return OnePagerLine(text=f"它说的\"{a.kind_label}\"{a.verdict_label}：{a.plain}", refs=[a.id, *a.refs])
 
 
-def _columns(assertions: list[Assertion], missing: list[MissingItem], signals: list[Signal]):
-    """哪里对不上 = 它的说法和记录对照的结果；查到了什么 = 记录本身；还不知道什么 = 没查和核不了的。"""
+def _record_items(assertions: list[Assertion], missing: list[MissingItem], signals: list[Signal]):
     claim_ids = {a.id for a in assertions} | {m.id for m in missing}
     # 用户评价不进这一页：这一页写的是记录，评价是别人说的、没核实
-    items = [(s, i) for s in signals for i in s.items
-             if DUP_OF_CLAIM.get(f"{s.key}.{i.key}") not in claim_ids and i.source != "user_reviews"]
+    return [(s, i) for s in signals for i in s.items
+            if DUP_OF_CLAIM.get(f"{s.key}.{i.key}") not in claim_ids and i.source != "user_reviews"]
+
+
+def _columns(assertions: list[Assertion], missing: list[MissingItem], signals: list[Signal]):
+    """哪里对不上 = 它的说法和记录对照的结果；查到了什么 = 记录本身；还不知道什么 = 没查和核不了的。"""
+    items = _record_items(assertions, missing, signals)
 
     mismatch = [_claim_line(a) for a in assertions if a.color == "red"]
     mismatch += [OnePagerLine(text=f"该写的没写：\"{m.text}\"", refs=[m.id, *m.refs]) for m in missing]
@@ -47,22 +52,50 @@ def _columns(assertions: list[Assertion], missing: list[MissingItem], signals: l
     unknown = [_claim_line(a) for a in assertions if a.color == "grey"]
     unknown += [OnePagerLine(text=f"{i.label}：{i.value}" + (f"（{i.detail}）" if i.detail else ""),
                              refs=[f"{s.key}.{i.key}", *filter(None, [i.ref])])
-                for s, i in items if i.status in (Status.none, Status.miss)]
+                for s, i in items if i.status in (Status.none, Status.miss) and i.gap not in QUIET_GAPS]
     return mismatch, found, unknown
 
 
-def _headline(assertions: list[Assertion], missing: list[MissingItem], signals: list[Signal], unknown: int) -> str:
+def _headline(assertions: list[Assertion], missing: list[MissingItem], signals: list[Signal], unknown: int,
+              sources: dict[str, Source] | None = None) -> str:
     red = sum(a.color == "red" for a in assertions) + len(missing)
     amber = sum(a.color == "amber" for a in assertions)
-    bad = sum(i.status is Status.bad for s in signals for i in s.items
-              if DUP_OF_CLAIM.get(f"{s.key}.{i.key}") not in {a.id for a in assertions} | {m.id for m in missing})
+    # A material-only check (e.g. a job search does not need a banking licence)
+    # cannot establish coverage of external company records.
+    def external(item):
+        if sources is not None:
+            src = sources.get(item.source)
+            return src is not None and src.kind in {"official", "collected", "commercial", "demo", "web"}
+        return item.source not in {"material", "user_reviews"} and not item.source.startswith(("reg_", "param_"))
+
+    items = [i for _, i in _record_items(assertions, missing, signals) if i.gap not in QUIET_GAPS and external(i)]
+    bad = sum(i.status is Status.bad for i in items)
+    warn = sum(i.status in (Status.warn, Status.miss) for i in items)
+    checked = sum(i.status is not Status.none for i in items)
     parts = []
     if assertions or missing:
-        parts.append(f"它的说法里有 {red} 处和记录对不上" + (f"、{amber} 处要留意" if amber else ""))
+        material = []
+        if red:
+            material.append(f"{red} 项需重点核实")
+        if amber:
+            material.append(f"{amber} 项需留意")
+        if material:
+            parts.append("材料核对：" + "、".join(material))
+        elif any(a.color == "grey" for a in assertions):
+            parts.append("材料中的部分说法仍需核实")
+        else:
+            parts.append("已核对的材料说法与现有记录相符")
     else:
-        parts.append("还没有它的说法可以对照")
-    parts.append(f"记录里有 {bad} 项不良情况" if bad else "查到的记录里没有不良情况")
-    parts.append(f"还有 {unknown} 项没查到" + ("，没查不等于没问题" if not bad and not red else ""))
+        parts.append("暂无可对照的公司说法")
+    records = []
+    if bad:
+        records.append(f"{bad} 项异常")
+    if warn:
+        records.append(f"{warn} 项需留意")
+    parts.append("已查记录：" + "、".join(records) if records else
+                 "已核查的记录暂未见异常" if checked else "尚无足够记录判断是否存在异常")
+    if unknown:
+        parts.append(f"另有 {unknown} 项尚待确认")
     return "；".join(parts) + "。"
 
 
@@ -96,7 +129,7 @@ def onepager(*, company_name: str, for_whom: str | None, amount: float | None, s
     m, f, u = _fit(mismatch, found, unknown)
     used = {i.source for s in signals for i in s.items if i.status is not Status.none}
     money = f" · {scenario.hand_over} {wan(amount)}" if amount else ""
-    headline = _headline(assertions, missing, signals, len(unknown))
+    headline = _headline(assertions, missing, signals, len(unknown), sources)
     next_steps = [OnePagerLine(text=f"{q.ask}（{q.check_where}）", refs=[q.id, *q.linked]) for q in questions[:3]]
     footer = " ".join(filter(None, [FOOTER, _as_of(sources, used)]))
     pack_note = "项数为核查条目数；同一文书可在多个来源出现，不代表处罚次数。人工采集非全量，后续整改未核验。" if any(
