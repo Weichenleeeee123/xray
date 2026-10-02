@@ -1,7 +1,6 @@
 'use client';
 import type { CSSProperties, SyntheticEvent } from 'react';
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import {
   BookOpen,
   Building2,
@@ -74,6 +73,8 @@ export default function Home() {
     step,
     retry,
     retrySave,
+    reconnect,
+    canReconnect,
   } = useOfficeResearch();
   const idle = state.connection === 'idle',
     status = idle
@@ -185,13 +186,13 @@ export default function Home() {
         aria-label="小企企业研究室"
         style={{ '--door-progress': door } as CSSProperties}
       >
-        <Image
+        <img
           className="office-background"
-          src="/office-panorama-closed.png"
+          src="/research-assets/office-panorama-closed.png"
           alt="企业研究室全景，包含图书架、企业档案、新闻资料、中央门和研究工位"
-          fill
-          priority
-          sizes="100vw"
+          width={1672}
+          height={941}
+          fetchPriority="high"
         />
         <div className="door-portal" aria-hidden="true" />
         <div className="door-leaf" aria-hidden="true" />
@@ -350,6 +351,10 @@ export default function Home() {
             <small>小企研究室</small>
           </div>
         </div>
+        <nav className="office-nav" aria-label="站点导航">
+          <a href="/xray/#/cases">案卷</a>
+          <a href="/xray/#/me">使用说明</a>
+        </nav>
         {idle && (
           <div className="query-layer visible">
             <form className="home-query" onSubmit={submit}>
@@ -384,6 +389,7 @@ export default function Home() {
                 />
               </label>
               <p>资料覆盖情况来自真实后端，不代表安全评级。</p>
+              <a className="material-query-link" href="/xray/#/new">有合同、宣传单或聊天记录？附带材料查询</a>
             </form>
           </div>
         )}
@@ -467,15 +473,17 @@ export default function Home() {
                 <p>
                   连接中断时，后端可能仍在处理。可先查看已保存案卷，避免重复查询。
                 </p>
-                <a href="/xray/#/cases" target="_blank" rel="noreferrer">
+                <a href="/xray/#/cases">
                   查看已保存案卷
                 </a>
+                {canReconnect && <button onClick={() => void reconnect()}>继续查看本次查询</button>}
                 <button onClick={() => setRetryConfirm(true)}>重新查询</button>
               </div>
             )}
             {inspector && (
               <aside className="live-inspector">
                 <strong>真实任务进度{testMode ? '（测试事件）' : ''}</strong>
+                <button type="button" onClick={() => setInspector(false)} aria-label="关闭任务详情">关闭</button>
                 <p>资料点可并行查询；动作队列不会阻塞后端。</p>
                 <ol>
                   {state.steps.map((s) => (

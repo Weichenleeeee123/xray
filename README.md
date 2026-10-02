@@ -16,7 +16,16 @@
 
 ## 快速开始
 
-需要 Python 3.11 以上（本机用的 3.12）。
+需要 Python 3.11 以上（本机用的 3.12）和 Node 22.13 以上。首次启动或研究室页面更新后，先构建首页：
+
+```powershell
+cd research-room
+npm install
+npm run build:home
+cd ..
+```
+
+构建不会清空已有文件。之后只需运行后端，它会同时提供首页、报告、图片和 API：
 
 ```powershell
 cd backend
@@ -26,20 +35,19 @@ copy .env.example .env      # 填模型网关和企查查的 Key；不填也能�
 .venv\Scripts\python -m uvicorn app.main:app --port 8000
 ```
 
-打开 http://localhost:8000 ，点"演示案例"一键填入。
+打开 http://localhost:8000 即为正式的小企研究室首页。输入公司全称和研究需求，鹅按后端真实阶段移动；点击桌面卷宗或“报告已就绪”进入报告。案卷在 `/xray/#/cases`，说明在 `/xray/#/me`；有材料或要一键填入演示案例时，点击首页“附带材料查询”。原来的报告、问答、评价和版本功能保留。
 
-小企办公室全景动画已接入同一个后端的真实进度流。保持后端运行，另开终端：
+队友继续开发研究室时，可以保持后端运行，另开独立热更新预览（正常使用不需要这个进程）：
 
 ```sh
 cd research-room
-npm ci
 npm run dev -- --port 3000
 ```
 
-打开 http://localhost:3000 。默认后端为 `http://127.0.0.1:8000`；使用其他端口时，可在 `research-room/.env.local` 中设置 `XRAY_BACKEND_URL`。查询后输入框隐藏，五类资料标识按后端事件更新，暂停只控制动画。查询编号记在地址栏（`?run=…`），刷新页面会接着看同一次查询，不会重新提交。报告经保存校验后即可查看。`?animationTest=fast` 等本地测试入口使用合成事件，页面会明确标注。
+打开 http://localhost:3000 。开发预览默认后端为 `http://127.0.0.1:8000`；使用其他端口时，可在 `research-room/.env.local` 中设置 `XRAY_BACKEND_URL`。正式首页通过同源的 `POST /api/runs` 创建任务、`GET /api/runs/{id}` 读取真实阶段，再读回案卷确认保存。查询后输入框隐藏，暂停只控制动画。查询编号记在地址栏（`?run=…`），刷新页面会接着看同一次查询，不会重新提交；断线后可“继续查看本次查询”。`?animationTest=fast` 等本地入口仅供合成事件测试。完整映射见 [首页接入说明](docs/research-home-integration.md)。
 
 - 不配 Key 也能用：规则照常出结论，需求识别退回关键词，小企退回模板回答，工商登记显示"没查"。
-- 测试：`backend` 里跑 `.venv\Scripts\python -m pytest`（329 个，不连网、不扣费）；仓库根目录跑 `node --test web/tests/*.test.cjs`（27 个）。动画前端另有 `node --experimental-strip-types --test research-room/tests/*.test.mjs`（13 个；Node 22.18 以上可省掉这个参数）。
+- 测试：先构建首页，再在 `backend` 里跑 `.venv\Scripts\python -m pytest`（不连网、不扣费，数量以运行结果为准）；仓库根目录跑 `node --test web/tests/*.test.cjs`（27 个）。研究室另有 `node --experimental-strip-types --test research-room/tests/*.test.mjs`（26 个；Node 22.18 以上可省掉这个参数）。
 - 断网演示：`.env` 里设 `XRAY_LLM_MODE=replay`，只用录好的模型响应，界面标"离线回放"。
 
 配置项、接口和数据来源的完整说明见 [backend/README.md](backend/README.md)。
@@ -79,7 +87,7 @@ backend/        FastAPI 后端：规则、数据汇集、报告、小企
   tools/        更新名单、探测网关、浏览器验收的脚本
 web/            前端：原生 JS，不打包，由后端同端口挂载
 demo/           早期的静态演示页，断网时的最后备用（/demo/）
-research-room/  "小企研究室"全景动画前端；通过 /api/cases/stream 接真实进度，报告复用 web/ 页面
+research-room/  正式研究室首页；静态构建由后端根路径提供，按 /api/runs 的真实阶段驱动动画，报告复用 /xray/ 页面
 docs/           文档，先看 docs/README.md
 ```
 

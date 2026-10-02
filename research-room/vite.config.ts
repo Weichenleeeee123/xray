@@ -55,10 +55,10 @@ export default defineConfig(async ({ mode }) => {
         : {}),
       proxy: {
         '/api': { target: backendUrl, changeOrigin: true },
+        '/research-assets': { target: backendUrl, changeOrigin: true },
         '/xray/': {
           target: backendUrl,
           changeOrigin: true,
-          rewrite: (path: string) => path.replace(/^\/xray/, ''),
         },
       },
     },

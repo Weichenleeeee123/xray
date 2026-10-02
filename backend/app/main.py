@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -355,13 +355,28 @@ def demo_case(case: str | None = Query(None, description="A / B / C；不填取�
 # ---------- 静态页面：放在最后，避免盖住 /api ----------
 
 research_assets = config.REPO_DIR / "research-room" / "public"
+home_build = config.REPO_DIR / "research-room" / "home-dist"
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
+def research_home():
+    entry = home_build / "index.html"
+    if entry.is_file():
+        return FileResponse(entry, headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(
+        '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
+        '<title>研究室尚未构建</title><h1>研究室首页尚未构建</h1>'
+        '<p>请在 research-room 目录执行 npm install 和 npm run build:home，然后刷新。</p>'
+        '<p><a href="/xray/#/cases">查看已有案卷</a></p></html>', status_code=503)
+
+
+app.mount("/office", StaticFiles(directory=home_build, check_dir=False), name="office")
 if research_assets.exists():
     app.mount("/research-assets", StaticFiles(directory=research_assets), name="research-assets")
 if config.DEMO_DIR.exists():
     app.mount("/demo", StaticFiles(directory=config.DEMO_DIR, html=True), name="demo")
 if config.WEB_DIR.exists():
+    app.mount("/xray", StaticFiles(directory=config.WEB_DIR, html=True), name="reports")
+    # Keep old direct asset URLs working; the root route above owns the homepage.
     app.mount("/", StaticFiles(directory=config.WEB_DIR, html=True), name="web")
-else:
-    @app.get("/", include_in_schema=False)
-    def root() -> RedirectResponse:
-        return RedirectResponse("/docs")  # 前端 web/ 还没建好时，先给接口文档

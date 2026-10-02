@@ -3,6 +3,35 @@ import assert from 'node:assert/strict';
 import { followRun, startRun, BackendError } from '../app/research-events.ts';
 
 const RUN = 'a'.repeat(24);
+
+test('creating a task forwards cancellation and a stable idempotency key', async () => {
+  const controller = new AbortController();
+  let sent;
+  await startRun({ company_name: '测试公司' }, async (url, init) => {
+    sent = { url, ...init };
+    return new Response(JSON.stringify({ run_id: RUN }), { status: 202 });
+  }, { signal: controller.signal, requestKey: 'home-test-request' });
+  assert.equal(sent.signal, controller.signal);
+  assert.equal(sent.headers['Idempotency-Key'], 'home-test-request');
+});
+
+test('polling removes settled abort listeners and stops before fetching an aborted run', async () => {
+  const controller = new AbortController();
+  let added = 0, removed = 0, reads = 0;
+  const add = controller.signal.addEventListener.bind(controller.signal);
+  const remove = controller.signal.removeEventListener.bind(controller.signal);
+  controller.signal.addEventListener = (...args) => { added++; return add(...args); };
+  controller.signal.removeEventListener = (...args) => { removed++; return remove(...args); };
+  const fetchImpl = async () => {
+    reads++;
+    return new Response(JSON.stringify({ status: reads < 4 ? 'running' : 'complete', case_id: 'c1', events: [], next: 0 }));
+  };
+  await followRun(RUN, { signal: controller.signal, fetchImpl, onEvent() {}, interval: 1 });
+  assert.equal(added, removed);
+  controller.abort();
+  await assert.rejects(followRun(RUN, { signal: controller.signal, fetchImpl, onEvent() {} }), { name: 'AbortError' });
+  assert.equal(reads, 4);
+});
 const begin = { type: 'begin', company: '测试公司', steps: [{ id: 'lists', label: '名单', lookup: true }] };
 const step = (phase) => ({ type: 'step', id: 'lists', label: '名单', phase, ...(phase === 'done' ? { coverage: 'found' } : {}) });
 

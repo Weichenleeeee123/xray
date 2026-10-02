@@ -135,6 +135,16 @@ export class OfficeDirector {
   }
   tick(delta: number, state: ResearchState) {
     if (this.finished) return;
+    if (state.connection === 'disconnected' || state.connection === 'error') return;
+    // Backend processing stages own the desk activity, never an elapsed-time guess.
+    if (this.action.id === 'idle' || this.action.id === 'report') {
+      const running = state.steps.find((s) => !s.lookup && s.phase === 'start');
+      const labels: Record<string, string> = {
+        intake: '读懂研究需求', rules: '对照记录与规则', plain: '撰写研究报告',
+      };
+      this.action.label = running ? labels[running.id] ?? running.label
+        : this.action.id === 'report' ? '等待报告保存确认' : '等待研究任务';
+    }
     this.clock += delta;
     this.local += delta;
     const a = this.action;
@@ -193,7 +203,7 @@ export class OfficeDirector {
     const pending = state.steps.filter(
       (s) => s.lookup && s.phase !== 'waiting' && !this.visited.has(s.id),
     );
-    const first = pending[0];
+    const first = pending.find((s) => s.phase === 'start') ?? pending[0];
     if (first && !this.returning) {
       const station = stations.find((s) =>
         (s.steps as readonly string[]).includes(first.id),

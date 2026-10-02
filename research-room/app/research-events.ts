@@ -14,7 +14,7 @@ export type CaseResult = {
   created_at?: string;
   current: number;
   versions: Array<{ no: number; [key: string]: unknown }>;
-  case?: { company_name?: string };
+  case?: { company_name?: string; need?: string };
   [key: string]: unknown;
 };
 export type CaseReference = Pick<CaseResult, 'id' | 'created_at'> &
@@ -372,11 +372,16 @@ export type RunPage = {
 export async function startRun(
   body: unknown,
   fetchImpl: typeof fetch = fetch,
+  options: { signal?: AbortSignal; requestKey?: string } = {},
 ): Promise<string> {
+  options.signal?.throwIfAborted();
   const response = await fetchImpl('/api/runs', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json',
+      ...(options.requestKey ? { 'Idempotency-Key': options.requestKey } : {}),
+    },
     body: JSON.stringify(body),
+    signal: options.signal,
   });
   const data = (await response.json().catch(() => ({}))) as {
     run_id?: unknown;
@@ -408,6 +413,7 @@ export async function followRun(
 ): Promise<string> {
   let next = 0;
   for (;;) {
+    signal?.throwIfAborted();
     const response = await fetchImpl(
       `/api/runs/${encodeURIComponent(runId)}?after=${next}`,
       { signal, cache: 'no-store' },
@@ -428,12 +434,19 @@ export async function followRun(
     if (page.status === 'error') throw new BackendError('后端研究失败');
     if (page.status === 'interrupted')
       throw new BackendError('后端中途重启过，这次查询没有跑完，请重新查询');
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, interval);
-      signal?.addEventListener('abort', () => {
+    await new Promise<void>((resolve, reject) => {
+      const finish = () => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      };
+      const abort = () => {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
         reject(new DOMException('aborted', 'AbortError'));
-      });
+      };
+      const timer = setTimeout(finish, interval);
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) abort();
     });
   }
 }

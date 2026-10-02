@@ -1584,6 +1584,11 @@ window.addEventListener('scroll', closePop, { passive: true });
 // ---------- 路由与启动 ----------
 
 async function route() {
+  // The research room owns the homepage. The old full-material form remains at #/new.
+  if (!location.hash || /^#\/(?:check)?\/?$/.test(location.hash)) {
+    location.replace('/');
+    return;
+  }
   closePop();
   $$('dialog[open]').forEach(d => d.close());
   const m = location.hash.match(/^#\/case\/([\w-]+)(?:\/v\/(\d+))?/);

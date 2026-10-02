@@ -31,6 +31,7 @@ export function useOfficeResearch() {
     director = useRef(new OfficeDirector()),
     request = useRef<AbortController | null>(null),
     transport = useRef<typeof fetch>(fetch),
+    activeRun = useRef<string | null>(null),
     generation = useRef(0),
     lastInput = useRef({
       company_name: '',
@@ -78,6 +79,10 @@ export function useOfficeResearch() {
           controller.signal,
         );
         if (token !== generation.current || controller.signal.aborted) return;
+        lastInput.current = {
+          company_name: confirmed.case?.company_name ?? company,
+          need: confirmed.case?.need ?? lastInput.current.need,
+        };
         publish({
           ...stateRef.current,
           connection: 'saved',
@@ -110,6 +115,7 @@ export function useOfficeResearch() {
           company_name: company.trim(),
           need: need?.trim() || '了解这家公司的登记、资质与公开资料',
         };
+      activeRun.current = resumeId;
       director.current = new OfficeDirector();
       setScene(director.current.sample());
       setPaused(false);
@@ -142,8 +148,12 @@ export function useOfficeResearch() {
           );
         } else {
           const runId =
-            resumeId ?? (await startRun(lastInput.current, fetchImpl));
+            resumeId ?? (await startRun(lastInput.current, fetchImpl, {
+              signal: controller.signal,
+              requestKey: crypto.randomUUID(),
+            }));
           if (token !== generation.current || controller.signal.aborted) return;
+          activeRun.current = runId;
           rememberRun(runId);
           const caseId = await followRun(runId, {
             signal: controller.signal,
@@ -193,6 +203,7 @@ export function useOfficeResearch() {
   }, [run]);
   const begin = useCallback(
     async (company: string, need?: string) => {
+      if (['connecting', 'live'].includes(stateRef.current.connection)) return;
       await run(company, need);
     },
     [run],
@@ -217,6 +228,7 @@ export function useOfficeResearch() {
     director.current = new OfficeDirector();
     setScene(director.current.sample());
     setPaused(false);
+    activeRun.current = null;
     rememberRun(null);
     publish(emptyResearch());
   }, [publish]);
@@ -252,5 +264,9 @@ export function useOfficeResearch() {
     step,
     retry: () => begin(lastInput.current.company_name, lastInput.current.need),
     retrySave,
+    canReconnect: !!activeRun.current && state.connection === 'disconnected',
+    reconnect: () => activeRun.current
+      ? run(lastInput.current.company_name, lastInput.current.need, activeRun.current)
+      : Promise.resolve(),
   };
 }

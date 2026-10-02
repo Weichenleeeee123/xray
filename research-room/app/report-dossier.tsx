@@ -62,7 +62,7 @@ export function ReportDossier({
           <span className="dossier-cover">
             <img
               className="dossier-art"
-              src="/investigation-dossier.png"
+              src="/research-assets/investigation-dossier.png"
               alt=""
               draggable={false}
             />

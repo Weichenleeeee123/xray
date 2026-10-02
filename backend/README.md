@@ -9,7 +9,8 @@ cd backend
 .venv\Scripts\python -m uvicorn app.main:app --port 8000
 ```
 
-- 前端：http://localhost:8000 （`web/`，原生 JS，不打包，改完刷新即可）
+- 首页：http://localhost:8000 （研究室；首次启动或修改后，在 `research-room/` 执行 `npm install`、`npm run build:home`）
+- 案卷与报告：http://localhost:8000/xray/#/cases （`web/`，原生 JS，改完刷新即可）
 - 接口文档：http://localhost:8000/docs
 - 断网备用的静态演示：http://localhost:8000/demo/
 - 测试：`.venv\Scripts\python -m pytest`，共 329 个，不连网、不需要 Key、不扣企查查积分；前端版本与流式接入测试在仓库根目录跑 `node --test web/tests/*.test.cjs`，共 27 个
