@@ -41,7 +41,7 @@ function pendingNote(list) {   // "2 项没查成、1 项待补材料"，没查�
 }
 const stLabel = i => (isRef(i) ? '只作参考' : (i.status === 'none' && GAP[i.gap]) || STATUS[i.status] || '');
 // 三个分区。顺序就是顶栏顺序，也是第一次用的人该走的顺序
-const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['me', '我的', '状态、名单、名词表、这几条底线']];
+const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['me', '我的', '使用说明、服务与资料覆盖']];
 const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
 const SUP_KIND = {
   material: { label: '新材料', help: '宣传单、合同、聊天记录的文字。可以上传图片、PDF、Word，读出来的文字会填进下面，你可以改。' },
@@ -264,7 +264,8 @@ function shellHtml(main) {
 function qibarHtml() {
   if (S.case && /^#\/case\//.test(location.hash)) return assistHtml();
   const llm = S.health && S.health.llm;
-  const line = llm && llm.configured && llm.mode !== 'off' ? '理解你的顾虑，结合案卷核对事实。' : '模型暂不可用，提供基础核对建议。';
+  const line = !llm ? '模型服务状态暂未读到，请刷新页面再试。'
+    : llm.configured && llm.mode !== 'off' ? '理解你的顾虑，结合案卷核对事实。' : '模型暂不可用，提供基础核对建议。';
   return `<div class="as-head"><div class="as-heading"><h3>小企 <span class="qi-role">报告助手</span></h3><p class="small muted">${esc(line)}</p></div>
     <button type="button" class="as-x" data-act="close-assist" aria-label="收起小企">×</button></div>
   <div class="as-body">
@@ -284,11 +285,14 @@ function qibarHtml() {
 
 // 官方名单那一行（查企页和我的页共用）
 function listLine(h) {
-  if (!h) return '名单没读到，先确认后端在跑。';
   const SHORT = { nfra_insurance: '保险', csrc_futures: '期货', pbc_payment: '支付', amac_managers: '私募' };
-  const lists = [{ title: '银行业', count: h.licensed_count },
-    ...Object.entries(h.official_lists || {}).map(([k, l]) => ({ title: SHORT[k] || l.title, count: l.count }))];
-  return `每家公司都查 ${lists.length} 份官方名单：${lists.map(l => `${esc(l.title)} ${(l.count || 0).toLocaleString()} 家`).join('、')}。要过验证码的网站（企业登记、被执行、裁判文书）我们不绕过，查不到的写"没查"。`;
+  const lists = [];
+  if (h?.licensed_count != null || h?.licensed_as_of) lists.push({ title: '银行业', count: h.licensed_count, as_of: h.licensed_as_of });
+  for (const [key, list] of Object.entries(h?.official_lists || {})) {
+    if (list) lists.push({ title: SHORT[key] || list.title || '官方名单', count: list.count, as_of: list.as_of });
+  }
+  if (!lists.length) return '官方名单资料暂未读到，请刷新页面再试。';
+  return `可按名称核对的官方名单：${lists.map(l => `${esc(l.title)} ${Number.isFinite(l.count) && l.count >= 0 ? `${l.count.toLocaleString('zh-CN')} 家` : '数量暂未读到'}（${l.as_of ? `截至 ${esc(l.as_of)}` : '资料日期未提供'}）`).join('、')}。名单只反映其收录范围和标注日期，不代表对公司或产品的完整核验。`;
 }
 
 // ---------- 分区一：查企 ----------
@@ -359,63 +363,68 @@ function caseRow(c) {
 async function renderMe(request = routeRequest) {
   S.case = null; useTerms(S.terms); renderTop();
   $('#view').innerHTML = '<div class="home"><p class="muted">读取服务状态…</p></div>';
-  let cases = [];
-  const caseRead = api('/api/cases', {signal: request?.signal}).then(value => {cases = value || [];}).catch(() => {});
+  let cases = null;
+  const caseRead = api('/api/cases', {signal: request?.signal}).then(value => {if (Array.isArray(value)) cases = value;}).catch(() => {});
   await Promise.all([startupReady, caseRead]);
   if (!currentRoute(request)) return;
-  S.cases = cases;
-  const h = S.health || {}, llm = h.llm || {}, com = h.commercial || {};
-  const model = !llm.configured || llm.mode === 'off'
-    ? '模型未连接：需求用关键词识别，小企提供基础解释和核对步骤。'
+  if (cases) S.cases = cases;
+  const h = S.health, llm = h?.llm, com = h?.commercial;
+  const model = !llm || (typeof llm.configured !== 'boolean' && !['off', 'replay'].includes(llm.mode))
+    ? '模型服务状态暂未读到，请刷新页面再试。'
     : llm.mode === 'replay'
-      ? `离线回放。只用录好的模型回答（已录 ${llm.cached_replies || 0} 条），界面上会标出录于什么时候。`
-      : `模型在线（${llm.model || ''}）。需求识别、报告短句、小企的回答都走它；数字和措辞由程序逐条核对。`;
-  const commercial = com.configured
-    ? `已接（${com.provider || ''}）。这次演示最多调用 ${com.max_calls || 0} 次，已用 ${com.calls || 0} 次。`
-    : '没接。企业登记、年报这类数据，现在只能靠证据包、人工采集或演示数据顶上。';
+      ? '当前使用已保存的模型回答回放；回放内容不能代表刚刚完成了查询。'
+      : !llm.configured || llm.mode === 'off'
+        ? '当前未启用模型辅助，需求用关键词识别，小企提供基础解释和核对步骤。'
+        : '已启用模型辅助，用于理解需求、整理材料和解释报告；本次是否成功，以实际回答为准。';
+  const commercial = typeof com?.configured !== 'boolean'
+    ? '商业资料服务状态暂未读到，请刷新页面再试。'
+    : com.configured
+      ? '已启用商业资料服务。具体取得了哪些登记、年报等资料，以本次报告的来源和覆盖状态为准。'
+      : '当前未启用商业资料服务；可用的公开记录和已收集资料仍会用于核对，缺少的部分会在报告中说明。';
+  const caseStatus = cases
+    ? cases.length ? `${cases.length} 份，可在「案卷」查看` : '本浏览器还没有案卷'
+    : '<span class="err">案卷列表暂未读到，已保存的案卷不会因此清空。</span> <button class="btn sm" data-act="retry-read">重试读取案卷</button>';
   const terms = S.terms.slice(0, 8);
   $('#view').innerHTML = shellHtml(`
   <div class="home">
     <section class="home-hero">
       <div class="kicker">我的</div>
-      <h1>这一版查得到什么，查不到什么</h1>
-      <p>这里是这套东西的底账：接没接模型、有没有商业数据源、名词怎么解释、材料放在哪，还有几条我们自己守着的规矩。</p>
+      <h1>使用说明</h1>
+      <p>了解当前可用的资料、案卷如何保存，以及阅读报告时需要留意的范围。</p>
     </section>
 
-    <section class="me-sec"><h2>现在是什么状态</h2>
+    <section class="me-sec"><h2>服务与资料覆盖</h2>
       <dl class="kv-me">
-        <dt>模型</dt><dd>${esc(model)}</dd>
-        <dt>商业数据源</dt><dd>${esc(commercial)}</dd>
-        <dt>案卷</dt><dd>${S.cases.length ? `${S.cases.length} 份，在「案卷」里` : '这台上还没有案卷'}</dd>
-        <dt>名单版本</dt><dd>银行名单截至 ${esc(h.licensed_as_of || '—')}；企业登记截至 ${esc(h.registry_as_of || '—')}</dd>
+        <dt>模型辅助</dt><dd>${esc(model)}</dd>
+        <dt>商业资料服务</dt><dd>${esc(commercial)}</dd>
+        <dt>本浏览器案卷</dt><dd>${caseStatus}</dd>
       </dl>
     </section>
 
-    <section class="me-sec"><h2>查什么，不查什么</h2>
+    <section class="me-sec"><h2>来源与日期</h2>
       <p class="me-p">${listLine(h)}</p>
-      <p class="me-p">${(h.evidence_packs || []).length ? `已备好的证据包：${h.evidence_packs.map(esc).join('、')}。` : ''}没接商业数据源的时候，企业登记和年报只能用证据包、人工采集或演示数据顶上；缺的部分写成"没查"，不会写成"没问题"。</p>
+      <p class="me-p">资料的发布日期、记录日期和采集时间可能不同。请点开报告中的原始记录，核对来源、日期和适用范围；旧版报告保留的是当时取得的资料。</p>
+      <p class="me-p">公开资料、第三方数据、你提交的材料和用户评价会标明来源。需要登录或验证码才能取得、且本次未能取得的资料，会如实标注覆盖状态；缺少记录不能说明公司没有问题。</p>
     </section>
 
     <section class="me-sec"><h2>名词解释</h2>
-      <p class="me-p">报告里带虚线的词点一下就有解释，解释来自固定词表。这里是其中几个：</p>
-      ${terms.length ? `<div class="chips">${terms.map(t => `<button type="button" class="chip" data-act="term" data-term="${esc(t.id)}">${esc(t.term)}</button>`).join('')}</div>` : '<p class="muted small">词表没读到。</p>'}
+      <p class="me-p">报告里带虚线的词可以点开解释；模型补充的解释会标注为“AI 解释”，需要结合原文核对。这里是固定词表中的几个：</p>
+      ${terms.length ? `<div class="chips">${terms.map(t => `<button type="button" class="chip" data-act="term" data-term="${esc(t.id)}">${esc(t.term)}</button>`).join('')}</div>` : '<p class="muted small">词表暂未读到，请刷新页面再试。</p>'}
     </section>
 
-    <section class="me-sec"><h2>材料和数据放在哪</h2>
+    <section class="me-sec"><h2>材料和案卷</h2>
       <ul class="me-ul">
-        <li>案卷存在跑后端的那台机器上（backend/data/cases），不进代码仓库。</li>
-        <li>你贴的宣传单、合同、聊天记录只用在这一次判断里，会原样留在案卷的原始数据中，随时能点开核对。</li>
-        <li>要过验证码的网站（企业登记、被执行、裁判文书）不绕过，查不到就写"没查"。</li>
-        <li>模型密钥只在后端的 .env 里，按 gitignore 处理，不进仓库，也不进前端。</li>
+        <li>材料、案卷和聊天仅此浏览器可见，不会自动跨设备同步；清除浏览器数据后不能自动恢复。</li>
+        <li>提交到案卷的材料文字会保留在原始记录中，便于回看核对。补材料、加入对方回复或修改需求会生成新版本，旧版本也会保留。</li>
+        <li>上传材料不会自动变成公开评价。只有你主动发布的评价会公开；发布前请自行检查内容，避免写入个人敏感信息。</li>
       </ul>
     </section>
 
-    <section class="me-sec"><h2>几条我们自己守着的规矩</h2>
+    <section class="me-sec"><h2>怎样使用报告</h2>
       <ul class="me-ul">
-        <li>结论由固定规则推出来，模型不判对错，只负责读材料和说人话。</li>
-        <li>每条结论都能点进原始数据和它的日期。</li>
-        <li>不打安全分，也不给公司定性；"没查"不等于没问题。</li>
-        <li>小企不知道就说没查到，不凭常识补。</li>
+        <li>报告按已取得的资料和核对规则整理线索，模型辅助读材料和解释；来源或识别有误时，仍需回到原文核实。</li>
+        <li>公司资料不能替代对具体产品和合同的核对。不打安全分，也不给公司定性；“没查”“查了没有”和“查询失败”含义不同。</li>
+        <li>用户评价是个人观点，未经核实，不能单凭评价判断一家公司。</li>
         <li>聊天不会悄悄改报告；新情况要明确点"加入案卷"才会重新判断。</li>
         <li>虚构的演示案例全程挂着"演示数据 · 公司为虚构"。</li>
       </ul>

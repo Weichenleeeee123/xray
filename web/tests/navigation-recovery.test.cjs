@@ -10,7 +10,7 @@ function harness(){
   const ctx=vm.createContext({FormData,AbortController,URLSearchParams,console,
     setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout(){},
     location:{hash:'#/case/first',search:'',replace(){}},
-    document:{body:node(),querySelector:s=>{if(!nodes.has(s))nodes.set(s,node());return nodes.get(s);},querySelectorAll:()=>[],addEventListener(){}},
+    document:{body:node(),querySelector:s=>{if(!nodes.has(s))nodes.set(s,node());return nodes.get(s);},querySelectorAll:()=>[],addEventListener:(event,fn)=>{listeners[`document:${event}`]=fn;}},
     window:{addEventListener:(event,fn)=>{listeners[event]=fn;},scrollTo(){}}});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../app.js'),'utf8').replace(/boot\(\);\s*$/,''),ctx);
   const run=code=>vm.runInContext(code,ctx);
@@ -28,6 +28,85 @@ function restoreApi(h){
   const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
   h.run(source.slice(source.indexOf('async function api('),source.indexOf('// ---------- 小工具')));
 }
+
+function serviceHealth(){
+  return {ok:true,licensed_count:4070,licensed_as_of:'2025-06-30',registry_as_of:'1999-01-01',
+    official_lists:{nfra_insurance:{title:'保险机构',count:200,as_of:'2025-03-31'}},
+    llm:{configured:false,mode:'off'},commercial:{configured:false},evidence_packs:[]};
+}
+async function openGuide(h,{health=serviceHealth(),cases=[],failure=false}={}){
+  h.ctx.guideHealth=health;h.ctx.guideCases=cases;
+  h.run(`S.health=guideHealth;location.hash='#/me'`);const work=h.run('route()');
+  h.run(failure?`pending['/api/cases'].reject(new Error('temporary read error'))`:`pending['/api/cases'].resolve(guideCases)`);
+  await work;return h.nodes.get('#view').innerHTML;
+}
+
+test('the usage guide distinguishes a failed case read from an empty browser and keeps its help visible',async()=>{
+  const h=harness();h.run(`S.cases=[{id:'previously-read'}]`);
+  const html=await openGuide(h,{failure:true});
+  assert.match(html,/案卷列表暂未读到/);assert.match(html,/data-act="retry-read"/);
+  assert.doesNotMatch(html,/还没有案卷/);
+  assert.match(html,/服务与资料覆盖/);assert.match(html,/材料和案卷/);
+  assert.equal(h.run('S.cases[0].id'),'previously-read');
+  h.run(`globalThis.retryWork=null;globalThis.readAgain=route;route=()=>retryWork=readAgain()`);
+  h.listeners['document:click']({target:{closest(){return {dataset:{act:'retry-read'}};}}});
+  h.run(`pending['/api/cases'].resolve([{id:'saved'}])`);await h.ctx.retryWork;
+  const recovered=h.nodes.get('#view').innerHTML;
+  assert.match(recovered,/1 份/);assert.doesNotMatch(recovered,/案卷列表暂未读到/);
+});
+
+test('a successful empty guide read describes only the current browser',async()=>{
+  const html=await openGuide(harness());
+  assert.match(html,/本浏览器还没有案卷/);
+  assert.doesNotMatch(html,/案卷列表暂未读到|这台上还没有案卷|data-act="retry-read"/);
+});
+
+test('unavailable service metadata is unknown instead of disabled models and zero official lists',async()=>{
+  for(const health of [null,{}]){
+    const html=await openGuide(harness(),{health});
+    assert.match(html,/模型服务状态暂未读到/);assert.match(html,/商业资料服务状态暂未读到/);
+    assert.match(html,/官方名单资料暂未读到/);assert.match(html,/刷新页面再试/);
+    assert.doesNotMatch(html,/模型未连接|当前未启用模型|当前未启用商业|银行业 0 家|企业登记截至/);
+  }
+});
+
+test('known model modes remain distinct from unavailable metadata and configured does not promise connectivity',async()=>{
+  for(const [llm,wanted] of [
+    [{configured:false,mode:'off'},/当前未启用模型辅助/],
+    [{configured:false,mode:'replay'},/使用已保存的模型回答回放/],
+    [{configured:true,mode:'live',model:'test-model'},/已启用模型辅助/],
+  ]){
+    const html=await openGuide(harness(),{health:{...serviceHealth(),llm}});
+    assert.match(html,wanted);assert.doesNotMatch(html,/模型服务状态暂未读到|模型在线/);
+  }
+});
+
+test('official list coverage preserves each published date and does not invent a missing count',()=>{
+  const h=harness();h.ctx.coverage=serviceHealth();
+  let html=h.run('listLine(coverage)');
+  assert.match(html,/银行业 4,070 家.*2025-06-30/);
+  assert.match(html,/保险 200 家.*2025-03-31/);
+  h.ctx.coverage={official_lists:{nfra_insurance:{title:'保险机构',as_of:'2025-03-31'}}};
+  html=h.run('listLine(coverage)');
+  assert.match(html,/数量暂未读到/);assert.doesNotMatch(html,/0 家/);
+  assert.match(h.run('listLine(null)'),/刷新页面再试/);
+});
+
+test('the usage guide describes private browser cases, retained versions and deliberately public reviews without implementation claims',async()=>{
+  const html=await openGuide(harness());
+  assert.match(html,/<h1>使用说明<\/h1>/);
+  assert.match(html,/材料、案卷和聊天仅此浏览器可见/);
+  assert.match(html,/清除浏览器数据后不能自动恢复/);
+  assert.match(html,/材料文字.*保留/);assert.match(html,/旧版本.*保留/);
+  assert.match(html,/主动发布的评价会公开/);assert.match(html,/发布日期.*记录日期.*采集时间/);
+  assert.doesNotMatch(html,/backend\/data\/cases|\.env|gitignore|只用在这一次判断|1999-01-01|端到端加密|数据不外发|自动脱敏/);
+});
+
+test('the guide assistant also treats missing model metadata as unknown',()=>{
+  const h=harness();h.run(`S.health=null;S.case=null;qiSpriteHtml=()=>''`);
+  const html=h.run('qibarHtml()');
+  assert.match(html,/模型服务状态暂未读到/);assert.doesNotMatch(html,/模型暂不可用/);
+});
 
 test('a saved report starts loading before optional startup metadata finishes',async()=>{
   const h=harness();h.run('boot()');
