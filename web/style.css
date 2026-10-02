@@ -512,6 +512,9 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
 }
 @media (max-width:560px){
   .brand-text span{display:none}
+  .shell-nav{margin-left:0}
+  .snav-b{padding:3px 7px}
+  .top-badges{min-width:0;flex:1 1 auto;flex-wrap:wrap;justify-content:flex-end;gap:2px}
   .ask-card{padding:18px 16px}
   .cc-bar{flex-wrap:wrap}
   .op-head{flex-direction:column;gap:6px}

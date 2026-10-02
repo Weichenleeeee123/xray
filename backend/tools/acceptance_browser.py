@@ -13,6 +13,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -51,7 +52,7 @@ def serve(port: int) -> None:
     uvicorn.run("app.main:app", host="127.0.0.1", port=port, log_level="warning")
 
 
-def run(live: bool) -> None:
+def run(live: bool, commercial: bool = False, seed_cache: Path | None = None) -> None:
     import pdfplumber
     from playwright.sync_api import sync_playwright
     logging.getLogger("pdfminer").setLevel(logging.ERROR)
@@ -59,13 +60,16 @@ def run(live: bool) -> None:
     parent = ROOT / ".tmp"
     parent.mkdir(exist_ok=True)
     out = Path(tempfile.mkdtemp(prefix="browser-acceptance-", dir=parent))
+    if seed_cache is not None:
+        # Copy previous acceptance recordings; never mutate the source cache.
+        shutil.copytree(seed_cache, out / "cache")
     cases = out / "cases"
     cases.mkdir()
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
-    report: dict = {"output": str(out), "live": live, "checks": [], "timings": {}, "warnings": []}
+    report: dict = {"output": str(out), "live": live, "commercial": commercial, "checks": [], "timings": {}, "warnings": []}
     proc, log = None, None
 
     def mark(name: str, **details):
@@ -88,8 +92,8 @@ def run(live: bool) -> None:
 
     def start(mode: str, blocked: bool = False):
         nonlocal proc, log
-        env = dict(os.environ, XRAY_CASES_DIR=str(cases), XRAY_CACHE_DIR=str(out / "cache"),
-                   XRAY_LLM_MODE=mode, XRAY_COMMERCIAL="", PYTHONIOENCODING="utf-8",
+        env = dict(os.environ, XRAY_CASES_DIR=str(cases), XRAY_CACHE_DIR=str(out / "cache"), XRAY_REVIEWS_DIR=str(out / "reviews"),
+                   XRAY_LLM_MODE=mode, XRAY_COMMERCIAL="qcc_agent" if commercial and not blocked else "", PYTHONIOENCODING="utf-8",
                    XRAY_ACCEPTANCE_BLOCK_NETWORK="1" if blocked else "0",
                    XRAY_AMAC_DETAIL="0" if blocked or not live else "1")
         log = (out / f"server-{mode}.log").open("w", encoding="utf-8")
@@ -106,6 +110,8 @@ def run(live: bool) -> None:
                 assert health["llm"]["mode"] == mode
                 if live:
                     assert health["llm"]["configured"], "Live test requires configured gateway"
+                if commercial and not blocked:
+                    assert health["commercial"]["configured"], "Commercial test requires configured QCC keys"
                 return health
             except OSError:
                 time.sleep(0.1)
@@ -129,15 +135,43 @@ def run(live: bool) -> None:
 
             def create(which: str):
                 page.goto(base + "/#/")
+                # Observe the actual consumer: it cancels/releases the stream after
+                # the terminal event, so CDP may no longer retain response.body().
+                page.evaluate("""() => {
+                  window.acceptanceProgress = [];
+                  const read = window.acceptanceOriginalRead ||= ResearchProgress.readCaseStream;
+                  ResearchProgress.readCaseStream = async (url, body, options) => {
+                    const result = await read(url, body, { ...options, onEvent: event => {
+                      acceptanceProgress.push(event); options.onEvent(event);
+                    }});
+                    acceptanceProgress.push({type:'case', case:result});
+                    return result;
+                  };
+                }""")
                 page.locator(f'[data-act="demo-fill"][data-id="{which}"]').click()
                 # Wait for the actual intake request before submitting, as an operator would.
                 page.wait_for_function("!document.querySelector('#intake').classList.contains('busy')")
                 t = time.monotonic()
-                with page.expect_response(lambda r: r.url.endswith("/api/cases") and r.request.method == "POST", timeout=180000) as response:
+                with page.expect_response(lambda r: r.url.endswith("/api/cases/stream") and r.request.method == "POST", timeout=180000) as response:
                     page.locator("#fSubmit").click()
                 assert response.value.ok, response.value.status
-                page.locator("#report").wait_for(timeout=15000)
-                result = response.value.json()
+                if live:
+                    page.locator('.research-wait').screenshot(path=str(out / f'{which}-waiting.png'))
+                page.wait_for_function("S.case && location.hash.includes(S.case.id)", timeout=180000)
+                events = page.evaluate('acceptanceProgress')
+                assert events[0]['type'] == 'begin' and events[-1]['type'] == 'case'
+                planned = [s['id'] for s in events[0]['steps']]
+                sequence = [(e['id'], e['phase']) for e in events if e['type'] == 'step']
+                assert sequence == [(s, p) for s in planned for p in ('start', 'done')], sequence
+                result = events[-1]['case']
+                if commercial:
+                    registry = [e for e in events if e.get('id') == 'registry' and e.get('phase') == 'done']
+                    assert len(registry) == 1 and registry[0].get('coverage') == 'found', registry
+                    with urlopen(base + '/api/health', timeout=5) as health_response:
+                        commercial_status = json.load(health_response)['commercial']
+                    mark(f'qcc_{which}', coverage='found', points=commercial_status['points'],
+                         max_points=commercial_status['max_points'])
+                page.wait_for_function("id => S.case?.id === id && location.hash.includes(id)", arg=result['id'], timeout=180000)
                 assert state()["id"] == result["id"]
                 report["timings"][f"create_{which}"] = round(time.monotonic() - t, 2)
                 mark(f"create_{which}", versions=result["current"], real=which in ("A", "B"))
@@ -179,7 +213,10 @@ def run(live: bool) -> None:
                     report["warnings"].append(f"{label}: expected one A4 page, got {count}")
 
             case_a = create("A")
-            before = json.loads(json.dumps(case_a))
+            # Preserve the server's exact JSON number types. A JS round trip
+            # changes raw numeric 100.0 to 100 and no longer has the same cache key.
+            with urlopen(base + '/api/cases/' + case_a['id'], timeout=5) as snapshot_response:
+                before = json.load(snapshot_response)
             (out / "replay-before-chat.json").write_text(json.dumps(before, ensure_ascii=False), encoding="utf-8")
             assert not page.locator("#topBadges").get_by_text("公司为虚构").count()
             record = next(r for r in case_a["raw"] if r["source_id"] == "jujing_csrc_2024")
@@ -203,10 +240,10 @@ def run(live: bool) -> None:
             for i, expected in ((0, 2), (1, 3)):
                 page.locator('[data-act="supplement"]').first.click()
                 page.locator(f'#supDlg [data-act="sup-fill"][data-i="{i}"]').click()
-                with page.expect_response(lambda r: r.url.endswith("/supplements") and r.request.method == "POST", timeout=180000) as response:
+                with page.expect_response(lambda r: r.url.endswith("/supplements/stream") and r.request.method == "POST", timeout=180000) as response:
                     page.locator("#supGo").click()
                 assert response.value.ok, response.value.status
-                page.wait_for_function(f"S.case.current === {expected}")
+                page.wait_for_function(f"S.case.current === {expected}", timeout=180000)
                 v = state()["versions"][-1]
                 assert v["changes"]
                 mark("supplement", version=expected, changes={k: sum(c["kind"] == k for c in v["changes"]) for k in {c["kind"] for c in v["changes"]}})
@@ -250,6 +287,9 @@ def run(live: bool) -> None:
             overflow = page.evaluate("document.documentElement.scrollWidth > innerWidth")
             mark("mobile_width", horizontal_overflow=overflow)
             if overflow:
+                mark('overflow_elements', elements=page.evaluate("""[...document.querySelectorAll('body *')]
+                  .map(el => ({tag:el.tagName, id:el.id, cls:el.className, right:el.getBoundingClientRect().right}))
+                  .filter(el => el.right > innerWidth + 1).slice(0, 12)"""))
                 report["warnings"].append("Mobile layout has horizontal overflow")
             if page.locator("#assist").evaluate("el => el.classList.contains('open')"):
                 page.locator('[data-act="close-assist"]').click()
@@ -313,9 +353,11 @@ def run(live: bool) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true", help="Call the configured gateway using public demo cases")
+    parser.add_argument("--commercial", action="store_true", help="Explicitly enable paid QCC queries with the configured point cap")
+    parser.add_argument("--seed-cache", type=Path, help="Copy a previous acceptance cache to avoid repeat paid company queries")
     parser.add_argument("--serve", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.serve:
         serve(args.serve)
     else:
-        run(args.live)
+        run(args.live, args.commercial, args.seed_cache)

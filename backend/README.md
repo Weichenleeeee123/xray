@@ -12,7 +12,7 @@ cd backend
 - 前端：http://localhost:8000 （`web/`，原生 JS，不打包，改完刷新即可）
 - 接口文档：http://localhost:8000/docs
 - 断网备用的静态演示：http://localhost:8000/demo/
-- 测试：`.venv\Scripts\python -m pytest`，共 303 个，不连网、不需要 Key、不扣企查查积分；前端版本协议测试在仓库根目录跑 `node --test web/tests/*.test.cjs`，共 14 个
+- 测试：`.venv\Scripts\python -m pytest`，共 304 个，不连网、不需要 Key、不扣企查查积分；前端版本与流式接入测试在仓库根目录跑 `node --test web/tests/*.test.cjs`，共 27 个
 - 新机器：`python -m venv .venv`，再 `.venv\Scripts\python -m pip install -r requirements-b.txt`（包含共享依赖和图片验证所需的 Pillow）。不要复制别人的 `.venv`，解释器路径不能跨机器用
 
 ### 配置（`backend/.env`）
@@ -46,9 +46,11 @@ cd backend
 .venv\Scripts\python tools/acceptance_browser.py
 # 以下命令会调用已配置的真实网关，产生 API 用量：
 .venv\Scripts\python tools/acceptance_browser.py --live
+# 同时验证企查查（会消耗商业查询额度）：
+.venv\Scripts\python tools/acceptance_browser.py --live --commercial
 ```
 
-其他平台需要自行准备 Playwright Chromium。脚本只启动本机临时端口，使用新建的隔离案卷和缓存，不覆盖现有用户数据。默认关闭模型；`--live` 验证真实 A/B 问答、两次补充、旧版引用、A4 PDF、窄屏与静态备用页，然后恢复本次测试自己的提问前快照，在阻断外部 HTTP 的条件下验证同案卷回放和未命中提示。输出在仓库被忽略的 `.tmp/browser-acceptance-*/`，`result.json` 的 `completed` 才是本次结果；失败不可当通过。最新 [本机完整验收记录](../docs/2026-10-02-browser-acceptance.md) 已通过。学校实际网络和三分钟讲稿仍需人工排练，见 [演示操作单](../docs/demo-runbook.md)。
+其他平台需要自行准备 Playwright Chromium。脚本只启动本机临时端口，使用新建的隔离案卷和缓存，不覆盖现有用户数据。默认关闭模型和企查查；`--live` 验证真实 A/B 问答、两次补充、旧版引用、A4 PDF、窄屏与静态备用页，然后恢复本次测试自己的服务端提问前快照，在阻断外部 HTTP 的条件下验证同案卷回放和未命中提示。`--commercial` 显式启用企查查；`--seed-cache <上次验收目录>/cache` 将此前缓存复制到新的隔离目录，避免重复查询。输出在仓库被忽略的 `.tmp/browser-acceptance-*/`，`result.json` 的 `completed` 才是本次结果；失败不可当通过。本轮结果见 [B 合并交接](../docs/backend-b-integration.md)，[旧验收记录](../docs/2026-10-02-browser-acceptance.md) 保留为历史快照。学校实际网络和三分钟讲稿仍需人工排练，见 [演示操作单](../docs/demo-runbook.md)。
 
 ## 接口
 

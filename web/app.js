@@ -450,32 +450,20 @@ async function readFile(file) {
 }
 
 async function createCase(body) {
-  const wrap = $('#formWrap');
-  const keep = wrap.innerHTML;
-  // 只列这次真的会查的：虚构的演示公司不联网搜，没接网关也不搜
-  const h = S.health || {};
-  const llmOn = h.llm && h.llm.configured && h.llm.mode !== 'off';
-  const fictional = S.demos.some(d => !d.real && d.input && d.input.company_name === body.company_name);
-  const names = ['银行业金融机构法人名单', ...Object.values(h.official_lists || {}).map(l => l.title),
-    '企业登记和年报（证据包、商业接口、演示数据，有哪个用哪个）', '投诉记录'];
-  if (llmOn && !fictional) names.push('监管、法院、政府网站上点名它的文件（联网搜索）', '公开报道和投诉（联网搜索）');
-  if (body.material_text) names.push('你给的材料');
-  wrap.innerHTML = `<section class="ask-card collecting" aria-busy="true">
-    <div class="kicker">正在汇集</div>
-    <h2>${esc(body.company_name)}</h2>
-    <p class="small muted">正在查下面这些来源，查完一起出结果：</p>
-    <ul>${names.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
-    ${llmOn ? '<p class="small muted">查完后，规则先出结论，再由 AI 把结论缩成一眼能看懂的短句、补上名词解释（程序会逐条核对）。</p>' : ''}
-    <div class="bar"></div>
-    <p class="small muted" style="margin:10px 0 0">已用 <span class="mono" id="elapsed">0</span> 秒。联网查证的公司大约要 10 秒。</p>
-  </section>`;
-  const t0 = Date.now();
-  const tick = setInterval(() => { const el = $('#elapsed'); if (el) el.textContent = Math.round((Date.now() - t0) / 1000); }, 500);
+  if (S.creating) { toast('已有案卷正在生成，请稍候或到案卷列表查看'); return; }
+  const wrap = $('#formWrap'), keep = wrap.innerHTML;
+  const route = location.hash, formState = S.form;
+  const stillHere = () => wrap.isConnected && location.hash === route && S.form === formState;
+  S.creating = true;
+  const waiting = ResearchProgress.mount(wrap, body.company_name);
   try {
-    const c = await api('/api/cases', { method: 'POST', body });
+    const c = await ResearchProgress.readCaseStream('/api/cases/stream', body, { onEvent: waiting.onEvent });
+    if (!stillHere()) { toast('报告已生成，可以在「案卷」查看'); return; }
     S.case = c; S.viewNo = c.current; S.selected.clear(); S.opCache = {}; S.tab = 'signals'; S.openRest.clear();
+    S.reviews = null; S.rvStars = 0; S.rvRel = null;
     location.hash = `#/case/${c.id}`;
   } catch (e) {
+    if (!stillHere()) { toast('查询连接已结束，请到「案卷」确认结果', true); return; }
     wrap.innerHTML = keep; bindForm();
     const f = $('#caseForm');
     f.company.value = body.company_name; f.need.value = body.need;
@@ -483,7 +471,7 @@ async function createCase(body) {
     f.material_text.value = body.material_text || ''; f.material_title.value = body.material_title || '';
     $('#intake').innerHTML = intakeHtml();
     $('#formErr').textContent = '没生成出来：' + e.message;
-  } finally { clearInterval(tick); }
+  } finally { waiting.stop(); S.creating = false; }
 }
 
 function fillDemo(id) {
@@ -1461,22 +1449,36 @@ function setSupKind(kind) {
 }
 async function submitSupplement(e) {
   e.preventDefault();
+  if (S.supplementBusy) { toast('已有补充信息正在处理，请稍候或到「案卷」查看'); return; }
   const dlg = $('#supDlg'), f = e.target;
   const kind = dlg.dataset.kind, text = f.text.value.trim();
   if (!text) { $('#supErr').textContent = '请填写内容'; return; }
   const body = { kind, text, title: kind === 'need' ? null : (f.title.value.trim() || null), scenario: kind === 'need' ? (dlg.dataset.scen || null) : null };
   const go = $('#supGo');
+  const caseId = S.case.id, route = location.hash;
+  const host = document.createElement('div'), scrollBody = f.querySelector('.dlg-body');
+  scrollBody.append(host);
+  const waiting = ResearchProgress.mount(host, S.case.case.company_name);
+  scrollBody.scrollTop = scrollBody.scrollHeight;
+  S.supplementBusy = true;
   go.disabled = true; go.textContent = '正在重新判断…';
   try {
-    const c = await api(`/api/cases/${encodeURIComponent(S.case.id)}/supplements`, { method: 'POST', body });
+    const c = await ResearchProgress.readCaseStream(`/api/cases/${encodeURIComponent(caseId)}/supplements/stream`, body, { onEvent: waiting.onEvent });
+    if (!S.case || S.case.id !== caseId || location.hash !== route || !f.isConnected || !dlg.open) {
+      toast('新版报告已生成，可以在「案卷」查看'); return;
+    }
     S.case = c; S.opCache = {}; S.tab = 'changes';
+    S.selected.clear(); S.reviews = null;
     dlg.close();
     const target = `#/case/${c.id}/v/${c.current}`;
     if (location.hash === target) { S.viewNo = c.current; renderCase(); } else location.hash = target;
     setTimeout(() => { const t = $('.chg-banner'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
     toast(`已生成第 ${c.current} 版`);
   } catch (err) {
-    $('#supErr').textContent = '没生成出来：' + err.message;
+    if (f.isConnected && dlg.open && S.case?.id === caseId) $('#supErr').textContent = '没生成出来：' + err.message;
+    else toast('补充信息的连接已结束，请到「案卷」确认结果', true);
+  } finally {
+    waiting.stop(); host.remove(); S.supplementBusy = false;
     go.disabled = false; go.textContent = '生成新版报告';
   }
 }

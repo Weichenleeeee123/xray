@@ -1,0 +1,18 @@
+/* Waiting animation reuses the teammate's assets; only real backend events advance it. */
+.research-wait { padding: 16px; border: 1px solid var(--line, #ddd); border-radius: 12px; min-width: 0; }
+.research-scene { position: relative; aspect-ratio: 1.5; overflow: hidden; border-radius: 10px; background: #172337 url('/research-assets/research-room-v2.png') center / cover; }
+.research-avatar { position: absolute; left: 50%; top: 74%; width: 15%; aspect-ratio: 1; transform: translate(-50%, -50%); background: url('/research-assets/goose-actions-v2.png') 0% 50% / 400% 300%; image-rendering: pixelated; transition: left .55s ease, top .55s ease; filter: drop-shadow(2px 3px 2px #172337); animation: research-working 1.4s ease-in-out infinite alternate; }
+.research-current { font-weight: 600; margin-bottom: 4px; }
+.research-results h2 { font-size: 18px; overflow-wrap: anywhere; }
+.research-steps { padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.research-steps li { border: 1px solid #deded8; padding: 10px; border-radius: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.research-steps li.rp-start { border-color: #316b89; }
+.research-steps li.rp-waiting { opacity: .65; }
+.research-steps p { margin: 5px 0 0; font-size: 12px; }
+.rp-stamp { display: inline-block; margin-left: 8px; padding: 1px 5px; border: 1px solid #65717c; border-radius: 3px; color: #43525f; font-size: 11px; }
+.rp-not_covered { border-style: dashed; }
+.rp-failed { border-style: dotted; }
+@keyframes research-working { to { transform: translate(-50%, -53%); } }
+@media (max-width: 560px) { .research-steps { grid-template-columns: 1fr; } .research-wait { padding: 10px; } }
+@media (prefers-reduced-motion: reduce) { .research-avatar { animation: none; transition: none; } }
+@media print { .research-wait { display: none; } }

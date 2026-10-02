@@ -292,6 +292,9 @@ def demo_case(case: str | None = Query(None, description="A / B / C；不填取�
 
 # ---------- 静态页面：放在最后，避免盖住 /api ----------
 
+research_assets = config.REPO_DIR / "research-room" / "public"
+if research_assets.exists():
+    app.mount("/research-assets", StaticFiles(directory=research_assets), name="research-assets")
 if config.DEMO_DIR.exists():
     app.mount("/demo", StaticFiles(directory=config.DEMO_DIR, html=True), name="demo")
 if config.WEB_DIR.exists():

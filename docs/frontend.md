@@ -2,7 +2,7 @@
 
 - 产品范围依据：[黑客松版 PRD](2026-10-02-xray-hackathon-prd.md) 第 2、5、7、8.1 节；当前接口和页面行为以代码为准。
 - 本文取代旧版交接文档（React + 登录 + SSE 那一套），旧方案作废，不要按它做。
-- 现状：`web/` 已实现查企、案卷、我的三个分区，以及报告、评价、小企、网点版和术语弹层。后端已有进度事件流，前端当前仍使用普通建案卷接口；接等待动画时按[进度事件契约](progress-events.md)接入。
+- 现状：`web/` 已实现查企、案卷、我的三个分区，以及报告、评价、小企、网点版和术语弹层。新建案卷和补充材料已接入[真实进度事件流](progress-events.md)，等待结束进入现有报告；`research-room/` 新版独立动画原型保持原样，尚未整体迁入主站。
 
 ## 1 交给前端 Agent 的开工提示词
 
@@ -24,19 +24,42 @@ cd backend && .venv\Scripts\python -m uvicorn app.main:app --port 8000
 | 文件 | 内容 |
 |---|---|
 | `web/index.html` | 外壳：顶栏、`#view`、弹窗、浮层、提示条 |
-| `web/style.css` | 全部样式。视觉沿用 `demo/`：纸面底色、宋体标题、红黄灰绿只表示判定。打印样式在文件末尾 |
+| `web/style.css` | 主站样式。视觉沿用 `demo/`：纸面底色、宋体标题、红黄灰绿只表示判定。打印样式在文件末尾 |
 | `web/app.js` | 路由、渲染、交互，按页面分段 |
+| `web/research-progress.js`、`web/research-progress.css` | 真实进度流解析和等待动画；只表现查询过程，不计算风险或生成另一套报告 |
 
 `demo/` 冻结不动，作为断网时的备用演示。
+
+### 真实进度与等待动画（2026-10-02 联调）
+
+- 主站新建案卷使用 `POST /api/cases/stream`，补充材料使用 `POST /api/cases/{id}/supplements/stream`。请求体不变，旧非流式接口继续兼容；事件协议见 [progress-events.md](progress-events.md)。
+- 流程：输入需求和材料 → 小企调研室等待动画 → 收到 `case` 事件后进入现有报告/版本。“小企调研室”不是另一套报告页。初始页视觉仍交由前端维护。
+- `begin` 决定步骤，`step` 的实际开始/完成事件驱动动画；只显示已用秒数，不按定时器编造进度、百分比或查询条数。查了没有、没查、没查成分别展示。
+- `ResearchProgress.mount(host, company)` 返回 `onEvent` 和 `stop`；`readCaseStream(url, body, {onEvent})` 只在收到完整的最终案卷后返回。断流不自动重发创建请求，提示查看案卷列表；后端可能仍在完成该次查询。
+- 用户切换页面后，旧请求完成不会覆盖当前案卷。错误时保留完整输入；补充材料的进度放在弹窗可滚动正文内，防止移动端挤压表单。
+- 动画直接复用 `research-room/public` 的资源，由后端仅将该目录挂到 `/research-assets/`。无需安装或启动独立 React 原型，也未修改该原型的页面逻辑。
+- 本轮没有改动案卷上下文、引文/数字检查、风险规则或模型选择。密钥仅在后端忽略的 `.env` 配置，不能放进前端或提交 Git。
+
+浏览器验收（在 `backend/`，需安装 `requirements-browser.txt`）：
+
+```powershell
+.venv/Scripts/python.exe -X utf8 tools/acceptance_browser.py
+# 显式启用真实模型与企查查调用，会消耗对应服务额度：
+.venv/Scripts/python.exe -X utf8 tools/acceptance_browser.py --live --commercial
+# 复制此前验收缓存到新的隔离目录，避免重复付费查询公司：
+.venv/Scripts/python.exe -X utf8 tools/acceptance_browser.py --live --commercial --seed-cache <上次验收目录>/cache
+```
+
+验收新建隔离案卷和评价目录，不修改真实用户案卷；检查真实流事件、两次二次分析、历史版本引用、模型回答的指定数字及出处、三份单页打印、手机宽度和断网回放。打印的页数与文字完整性自动核对，版面另行查看。`--live` 单独使用时不调用企查查，`--commercial` 才启用；企查查缓存命中与实时查询需分别解读，积分计数是代码估算而非平台账单。
 
 ## 4 页面
 
 | 路由 | 页面 | 用到的接口 |
 |---|---|---|
-| `#/check`（空地址默认进入） | 查企：公司全称、一句需求（停顿 0.8 秒自动识别场景，可改）、替谁看、金额、可选材料（粘贴或上传）；演示案例一键填入 | `GET /api/health`、`/api/scenarios`、`/api/sources`、`/api/demo/cases`；`POST /api/intake`、`/api/read`、`/api/cases` |
+| `#/check`（空地址默认进入） | 查企：公司全称、一句需求（停顿 0.8 秒自动识别场景，可改）、替谁看、金额、可选材料（粘贴或上传）；演示案例一键填入 | `GET /api/health`、`/api/scenarios`、`/api/sources`、`/api/demo/cases`；`POST /api/intake`、`/api/read`、`/api/cases/stream` |
 | `#/cases` | 案卷：本机查过的公司及版本 | `GET /api/cases` |
 | `#/me` | 我的：模型、商业数据源和名单状态，名词解释与使用底线 | `GET /api/health`、`/api/glossary`、`/api/cases` |
-| `#/case/<id>` | 最新版报告，含评价页和小企 | `GET /api/cases/{id}`、`/api/cases/{id}/onepager`、`/api/reviews`；`POST /api/cases/{id}/chat`、`/api/cases/{id}/supplements`、`/api/reviews`、`/api/cases/{id}/reviews` |
+| `#/case/<id>` | 最新版报告，含评价页和小企 | `GET /api/cases/{id}`、`/api/cases/{id}/onepager`、`/api/reviews`；`POST /api/cases/{id}/chat`、`/api/cases/{id}/supplements/stream`、`/api/reviews`、`/api/cases/{id}/reviews` |
 | `#/case/<id>/v/<n>` | 第 n 版报告；不是最新版时顶部有提示 | 同上 |
 
 报告页的原则是"先给答案，细节按需展开"。从上到下：
@@ -71,7 +94,7 @@ cd backend && .venv\Scripts\python -m uvicorn app.main:app --port 8000
 | 不打分、不定性 | 界面文案里没有安全分，也没有"安全""诈骗"之类的词；判定原词全部来自后端 | — |
 | 对话不改报告 | 助手只回答；用户说了新情况，回答下面出现"加入案卷，重新判断"，点了才走二次分析 | `msgHtml`、`openSupplement` |
 | 助手不越界 | 回答里的出处和逐字引文能点开；程序丢掉的出处数量、离线回放的录制时间都显示出来。模型推测后果或下定性时，后端让它重写（最多 2 次），界面折叠显示"程序拦下了越界说法，让模型重写了 N 次"和被拦下的原话 | `msgHtml`（`dropped`、`recorded_at`、`rewrites`、`blocked`） |
-| 不显示假进度 | 当前生成报告时列出这次会查的来源，只显示已用秒数，不画百分比；接入后端事件流后按真实事件更新 | `createCase`；[进度事件契约](progress-events.md) |
+| 不显示假进度 | 新建和补充材料按后端实际事件展示步骤与覆盖结果，只显示已用秒数，不画百分比 | `ResearchProgress`；[进度事件契约](progress-events.md) |
 
 ## 6 约定
 
