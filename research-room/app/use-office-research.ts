@@ -9,10 +9,12 @@ import {
   reduceEvent,
   confirmSavedCase,
 } from './research-events';
-import type { ResearchState, CaseReference, ResearchInput } from './research-events';
+import type { ResearchState, CaseReference } from './research-events';
 import { OfficeDirector } from './office-director';
 import { fixtureFetch, testNames } from './research-fixtures';
 import type { TestName } from './research-fixtures';
+import { researchInput } from './research-input';
+import type { ResearchInput } from './research-input';
 
 const RUN_ID = /^[0-9a-f]{24}$/;
 function rememberRun(runId: string | null) {
@@ -110,10 +112,7 @@ export function useOfficeResearch() {
       activeRun.current = resumeId;
       if (!resumeId) {
         inputKnown.current = true;
-        lastInput.current = original ?? {
-          company_name: company.trim(),
-          need: need?.trim() || '了解这家公司的登记、资质与公开资料',
-        };
+        lastInput.current = original ?? researchInput(company, need);
       }
       director.current = new OfficeDirector();
       setScene(director.current.sample());
@@ -208,9 +207,9 @@ export function useOfficeResearch() {
       queueMicrotask(() => void run('', undefined, resume));
   }, [run]);
   const begin = useCallback(
-    async (company: string, need?: string) => {
+    async (company: string, need?: string, preset?: ResearchInput) => {
       if (['connecting', 'live'].includes(stateRef.current.connection)) return;
-      await run(company, need);
+      await run(company, need, null, researchInput(company, need, preset));
     },
     [run],
   );
