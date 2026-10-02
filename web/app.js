@@ -242,7 +242,7 @@ function renderTop() {
   if (llm) {
     if (!llm.configured || llm.mode === 'off') b += '<span class="tb off" title="没接模型：需求识别用关键词，小企用模板回答">未接模型</span>';
     else if (llm.mode === 'replay') b += '<span class="tb replay" title="断网演示：只用录好的模型响应">离线回放</span>';
-    else b += `<span class="tb live" title="${esc(llm.model || '')}">模型在线</span>`;
+    else b += `<span class="tb live" title="${esc(llm.model || '')}；本版来源与单次回答模式另行标注">模型服务已配置</span>`;
   }
   if (onCase && isDemoCase()) b += '<span class="tb demo" title="这家公司和它的记录都是编的，只用来演示">演示数据 · 公司为虚构</span>';
   $('#topBadges').innerHTML = b;
@@ -654,6 +654,7 @@ function caseHead(c, v) {
       </div>
     </div>
     <h1>${esc(c.case.company_name)}</h1>
+    ${prebuiltNoticeHtml(v)}
     ${v.need ? `<p class="need">“${esc(v.need)}”</p>` : ''}
     <div class="meta-line">
       <span>${esc(v.scenario_label)}</span>
@@ -812,7 +813,7 @@ function glanceHtml(v, includeSignals = true) {
     ${q ? `<div class="gl-next"><span class="kicker">下一步，先问对方</span><p>${termText(q.ask, seen)}</p>
       <span class="small muted">${termText(q.check_where, seen)}</span>
       ${v.questions.length > 1 ? ` <button type="button" class="linkish small" data-act="tab" data-tab="questions">全部 ${v.questions.length} 个问题 →</button>` : ''}</div>` : ''}
-    ${ai ? '<p class="gl-ai">短句由 AI 按规则结论缩写，程序核对过数字和措辞；点任一行看完整原句和出处。</p>' : ''}`;
+    ${ai ? `<p class="gl-ai">${prebuiltInfo(v) ? '快照生成时，' : ''}短句由 AI 按规则结论缩写，程序核对过数字和措辞；点任一行看完整原句和出处。</p>` : ''}`;
 }
 const currentOp = v => (S.audience === 'family' && v.onepager) || S.opCache[`${v.no}:${S.audience}`] || null;
 async function loadOnepager(v) {
@@ -837,7 +838,7 @@ function opBody(op, v) {
   const noClaims = !v.assertions.length;
   const body = `<div class="op-head"><div><h3>${esc(op.title)}</h3><p>${esc(op.subject)}</p></div>
       <div class="stamp">案卷 ${esc(S.case.id)} · 第 ${v.no} 版<br>${esc(fmtTime(v.created_at))}${isDemoCase() ? '<br><b class="demo-mark">演示数据 · 公司为虚构</b>' : ''}</div></div>
-    <p class="headline">${esc(op.headline)}</p>
+    ${prebuiltNoticeHtml(v)}<p class="headline">${esc(op.headline)}</p>
     <div class="op-cols">
       ${col('哪里对不上', op.mismatch, 'mismatch', noClaims ? '还没有它的说法可以对照。' : '它的说法和记录没有对不上的地方。')}
       ${col('查到了什么', op.found, 'found', '还没查到具体记录。')}

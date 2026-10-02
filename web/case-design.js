@@ -6,13 +6,22 @@ const researchIcon = (kind = 'arrow') => {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.arrow}"/></svg>`;
 };
 function researchHeading(n, title, sub) { return `<div class="research-heading"><div><span class="research-eyebrow">${n}</span><h2>${title}</h2></div>${sub ? `<p>${sub}</p>` : ''}</div>`; }
+function prebuiltInfo(v) {
+  if (v.prebuilt && typeof v.prebuilt === 'object') return v.prebuilt;
+  return (v.notes || []).some(n => typeof n === 'string' && n.startsWith('预制示例')) ? {built_at:null} : null;
+}
+function prebuiltNoticeHtml(v) {
+  const source=prebuiltInfo(v);
+  if (!source) return '';
+  return `<aside class="report-provenance" aria-label="本版资料来源"><strong>预制示例快照</strong><p>本次未重新联网查询，报告沿用预先生成的资料与结论。${source.built_at ? `预制包生成时间：${esc(source.built_at)}。` : '生成时间未记录。'}各条资料的日期与覆盖范围见出处。</p></aside>`;
+}
 function researchHero(c,v) {
   const demo=(c.raw || []).some(r=>v.raw_ids.includes(r.id) && r.kind==='demo' && r.coverage==='found');
   const steps=[['overview','阅读摘要'],['signals','四个信号'],['inquiry','问询与复核'],['details','详细信息']];
   return `<header class="research-hero report-brief-hero">
     <div class="research-topline"><a href="/" class="back-study">← 回到小企研究室</a><div class="research-actions"><button class="research-button ghost" data-act="print-open" aria-haspopup="dialog" aria-controls="printDlg">${researchIcon('print')}打印一页结论</button><button class="research-button ghost" data-act="supplement">＋ 补充信息</button><button class="research-button" data-act="section" data-section="photo">${researchIcon('camera')}拍照复核</button></div></div>
     <div class="hero-title"><span class="research-eyebrow"><i></i> 企业研究档案 <span class="hero-scenario">${esc(v.scenario_label || '企业核验')}</span></span><h1>${esc(c.case.company_name)}</h1><div class="hero-meta"><span>案卷 ${esc(c.id.slice(0,8).toUpperCase())}</span><span>${esc(v.created_at.slice(0,10))} 更新</span><span>第 ${v.no} 版</span>${demo?'<span class="report-demo-note">演示数据 · 公司为虚构</span>':''}<button data-act="tab" data-tab="raw">${v.raw_ids.length} 条来源记录 ${researchIcon()}</button>${v.no>1?`<button data-act="tab" data-tab="changes">查看本版变化 ${researchIcon()}</button>`:''}</div></div>
-    <div class="report-purpose"><span>本次关注</span><p>${esc(v.need || v.scenario_label || '了解这家公司的公开资料')}</p></div>
+    ${prebuiltNoticeHtml(v)}<div class="report-purpose"><span>本次关注</span><p>${esc(v.need || v.scenario_label || '了解这家公司的公开资料')}</p></div>
     <nav class="report-jumpnav" aria-label="报告章节导航">${steps.map(([id,label],i)=>`<button type="button" data-act="section" data-section="${id}"><span>0${i+1}</span>${label}${researchIcon()}</button>`).join('')}</nav>
   </header>`;
 }

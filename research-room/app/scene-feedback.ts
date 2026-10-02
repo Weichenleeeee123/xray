@@ -1,4 +1,5 @@
 import type { ResearchState } from './research-events';
+import { researchProvenance } from './research-events.ts';
 
 // Presentation only: neither elapsed animation time nor returned prose proves saving.
 export function sceneNotice(state: ResearchState) {
@@ -9,8 +10,8 @@ export function sceneNotice(state: ResearchState) {
   if (state.connection === 'disconnected') return { kind: 'attention', label: '连接中断，进度待确认', key: 'disconnected' };
   if (state.connection === 'error') return { kind: 'attention', label: '调研暂未完成', key: 'error' };
   if (state.connection === 'saved' && state.result)
-    return { kind: 'complete', label: '报告已完成', key: `saved:${state.result.id}:${state.result.current}` };
-  return { kind: 'running', label: '报告生成中', key: 'running' };
+    return { kind: 'complete', label: researchProvenance(state) ? '快照已保存' : '报告已完成', key: `saved:${state.result.id}:${state.result.current}` };
+  return { kind: 'running', label: researchProvenance(state) ? '预制示例回放中' : '报告生成中', key: 'running' };
 }
 
 // Keep the legal suffix together without abbreviating or dropping any character.

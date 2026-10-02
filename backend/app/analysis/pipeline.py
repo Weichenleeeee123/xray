@@ -305,6 +305,12 @@ def resolve(case: Case, body: ResolveIn) -> Case:
     cur = prev.model_copy(deep=True)
     cur.no, cur.created_at, cur.trigger = prev.no + 1, now(), "resolve"
     cur.trigger_label, cur.need = TRIGGER_LABELS["resolve"], prev.need
+    if prev.prebuilt is not None or any(n.startswith("预制示例") for n in prev.notes):
+        # 新版是人工复核，整版不再是预制；原版本及快照说明保持可追溯。
+        cur.notes = [f"所依据快照的说明：{n}" if n.startswith("预制示例") else n for n in cur.notes]
+        stamp = f"预制包生成时间：{prev.prebuilt.built_at}。" if prev.prebuilt and prev.prebuilt.built_at else ""
+        cur.notes.insert(0, f"基于预制快照的人工复核：沿用第 {prev.no} 版资料，本版未重新联网查询。{stamp}")
+    cur.prebuilt = None
     hit = None
     for j in cur.judgments:
         if j.id != body.judgment_id:

@@ -439,9 +439,16 @@ class JudgmentChange(BaseModel):
     plain: str = ""
 
 
+class PrebuiltProvenance(BaseModel):
+    """本版直接取自服务端预制包；缺少此字段不代表本版实时查询过。"""
+    demo_id: str | None = None
+    built_at: str | None = None          # 预制包生成时间，不是各来源的数据截止时间
+
+
 class Version(BaseModel):
     no: int
     created_at: str
+    prebuilt: PrebuiltProvenance | None = None
     trigger: Literal["initial", "material", "reply", "need", "resolve", "reviews"]
     trigger_label: str
     need: str

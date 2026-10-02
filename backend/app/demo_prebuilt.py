@@ -16,7 +16,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app import config, progress
-from app.models import Case, CaseIn, SupplementIn
+from app.models import Case, CaseIn, PrebuiltProvenance, SupplementIn
 from app.sources.licenses import normalize
 
 DIR = Path(os.getenv("XRAY_DEMO_PREBUILT_DIR", config.DATA_DIR / "demo_prebuilt"))
@@ -69,10 +69,12 @@ def for_create(body: CaseIn) -> dict | None:
 
 def for_supplement(case: Case, body: SupplementIn) -> tuple[dict, int] | None:
     """案卷正是预制的那一串、而且这条补充就是下一条预备好的补充，返回 (包, 下一阶段序号)。"""
-    if body.refresh_sources or not case.versions:
+    if body.refresh_sources or not case.versions or case.versions[-1].prebuilt is None:
         return None
     k = len(case.versions)
     for bundle in _bundles():
+        if case.versions[-1].prebuilt.demo_id != bundle.get("demo_id"):
+            continue
         stages = bundle["stages"]
         if k >= len(stages) or case.versions[-1].created_at != stages[k - 1]["case"]["versions"][-1]["created_at"]:
             continue
@@ -97,19 +99,52 @@ def replay(events: list[dict], cap: float = REPLAY_CAP) -> None:
         progress.emit({k: v for k, v in event.items() if k != "t"})
 
 
+def _provenance(bundle: dict) -> PrebuiltProvenance:
+    # 只从服务端预制包取白名单字段，不转发输入或录制事件里的任意元数据。
+    return PrebuiltProvenance(demo_id=bundle.get("demo_id"), built_at=bundle.get("built_at"))
+
+
+def _replay_stage(stage: dict, provenance: PrebuiltProvenance) -> None:
+    # 在任何回放等待和 step 前说明来源；保存案卷仍是当前请求真实执行的操作。
+    progress.emit({"type": "prebuilt", **provenance.model_dump()})
+    replay(stage.get("events") or [])
+
+
 def start_case(bundle: dict, owner: str | None) -> Case:
     """第一版：回放研究过程，交出一份新案卷（新编号，属于当前浏览器）。"""
     stage = bundle["stages"][0]
-    replay(stage.get("events") or [])
     case = Case.model_validate(stage["case"])
+    provenance = _provenance(bundle)
+    for version in case.versions:
+        version.prebuilt = provenance.model_copy()
     case.id, case.owner_id, case.revision, case.chat = uuid4().hex[:12], owner, 0, []
+    _replay_stage(stage, provenance)
     return case
 
 
 def next_case(case: Case, bundle: dict, k: int) -> Case:
-    """补充后的下一版：同一份案卷（编号、归属、对话都不变），换成预制的第 k 阶段。"""
+    """只追加预制下一版及新增原始记录，保留已保存的版本、出处和对话。"""
     stage = bundle["stages"][k]
-    replay(stage.get("events") or [])
     built = Case.model_validate(stage["case"])
+    if k != len(case.versions) or len(built.versions) != k + 1 or built.current != k + 1:
+        raise ValueError("预制阶段与当前版本历史不一致")
+    old_raw = {record.id: record for record in case.raw}
+    added = []
+    seen = set()
+    for record in built.raw:
+        if record.id in seen or (record.id in old_raw and old_raw[record.id] != record):
+            raise ValueError("预制包的原始记录与已保存出处冲突")
+        seen.add(record.id)
+        if record.id not in old_raw:
+            added.append(record)
+    version = built.versions[-1]
+    if version.no != k + 1 or not set(version.raw_ids) <= old_raw.keys() | seen:
+        raise ValueError("预制版本的原始记录引用不完整")
+    provenance = _provenance(bundle)
+    version.prebuilt = provenance
+    built.versions = [v.model_copy(deep=True) for v in case.versions] + [version]
+    built.raw = [r.model_copy(deep=True) for r in case.raw] + added
     built.id, built.owner_id, built.revision, built.chat = case.id, case.owner_id, case.revision, case.chat
+    built.created_at = case.created_at
+    _replay_stage(stage, provenance)
     return built

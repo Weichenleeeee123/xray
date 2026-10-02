@@ -126,6 +126,14 @@ button {
 }
 .office-layout > .query-layer.visible { pointer-events: none; }
 .office-layout > .query-layer.visible .home-query { pointer-events: auto; }
+.prebuilt-notice {position:absolute;z-index:38;top:12px;left:50%;transform:translateX(-50%);width:min(520px,50%);display:grid;gap:3px;padding:10px 16px;border:1px solid #b88b4c88;border-radius:9px;background:#f7f0e0f5;color:#29333a;text-align:center;font-size:13px;line-height:1.5;box-shadow:0 4px 18px #1114;}
+.prebuilt-notice strong {font-size:14px;color:#70501e;}
+.prebuilt-notice small {font-size:11px;}
+@media(max-width:640px) {
+ .prebuilt-notice {top:calc(100% + 14px);left:12px;transform:none;width:calc(100% - 24px);font-size:12px;padding:10px;}
+ .live-office:not(.status-idle):has(.prebuilt-notice) .live-status {top:calc(100% + 114px);}
+ .office-page:has(.live-office:not(.status-idle) .prebuilt-notice) {padding-bottom:400px;}
+}
 
 .office-background {
   position: absolute;

@@ -2,6 +2,7 @@
 import type { ResearchInput } from './research-input';
 export type { ResearchInput } from './research-input';
 export type Coverage = 'found' | 'not_found' | 'not_covered' | 'failed';
+export type PrebuiltProvenance = { demo_id: string | null; built_at: string | null };
 export type Step = {
   id: string;
   label: string;
@@ -22,6 +23,7 @@ export type CaseResult = {
 export type CaseReference = Pick<CaseResult, 'id' | 'created_at'> &
   Partial<Pick<CaseResult, 'current'>>;
 export type ProgressEvent =
+  | ({ type: 'prebuilt' } & PrebuiltProvenance)
   | {
       type: 'begin';
       company: string;
@@ -37,6 +39,7 @@ export type ProgressEvent =
       text?: string;
     };
 export type ResearchState = {
+  prebuilt?: PrebuiltProvenance;
   steps: Step[];
   company: string;
   connection:
@@ -98,10 +101,22 @@ export const coverageLabels: Record<Coverage, string> = {
   not_covered: '未查询',
   failed: '查询失败',
 };
+// A saved version is authoritative; old bundles carried the same fact in notes.
+export function researchProvenance(state: ResearchState): PrebuiltProvenance | null {
+  const version = state.result?.versions.find(v => v.no === state.result?.current);
+  if (version) {
+    if (version.prebuilt && typeof version.prebuilt === 'object') return version.prebuilt as PrebuiltProvenance;
+    if (Array.isArray(version.notes) && version.notes.some(n => typeof n === 'string' && n.startsWith('预制示例')))
+      return { demo_id: null, built_at: null };
+    return null;
+  }
+  return state.prebuilt ?? null;
+}
 export function reduceEvent(
   state: ResearchState,
   event: ProgressEvent,
 ): ResearchState {
+  if (event.type === 'prebuilt') return { ...state, prebuilt: { demo_id: event.demo_id, built_at: event.built_at } };
   if (event.type === 'begin')
     return {
       ...state,
@@ -139,6 +154,7 @@ function completedProcessing(state: ResearchState) {
   return { completed, total, percent: saved ? 100 : Math.floor(completed / total * 100) };
 }
 export function stationState(state: ResearchState, id: Station) {
+  const prebuilt = researchProvenance(state);
   const definition = stations.find((s) => s.id === id)!;
   const tasks = state.steps.filter((s) =>
     (definition.steps as readonly string[]).includes(s.id),
@@ -163,8 +179,8 @@ export function stationState(state: ResearchState, id: Station) {
   const skipped = complete && outcomes.length === 1 && outcomes[0] === 'not_covered';
   const progress = active ? 'active' : running && interrupted ? 'unknown'
     : complete ? failed ? 'failed' : skipped ? 'skipped' : 'done' : 'waiting';
-  const label = active ? '查询中' : running && interrupted ? '状态待确认'
-    : complete ? failed ? '已结束 · 部分失败' : skipped ? '已跳过' : '已完成'
+  const label = active ? prebuilt ? '回放中' : '查询中' : running && interrupted ? '状态待确认'
+    : complete ? failed ? '已结束 · 部分失败' : skipped ? '已跳过' : prebuilt ? '当时已完成' : '已完成'
     : !tasks.length ? state.steps.length ? '未安排' : '等待任务'
     : done.length ? `等待后续查询（${done.length}/${tasks.length}）` : '等待查询';
   const resultLabel = outcomes.map(c =>
@@ -189,6 +205,7 @@ export function stationState(state: ResearchState, id: Station) {
   };
 }
 export function researchProgress(state: ResearchState) {
+  const prebuilt = researchProvenance(state);
   const interrupted = ['disconnected', 'error'].includes(state.connection);
   const groups = [
     { id: 'intake', title: '理解需求', tasks: state.steps.filter(s => s.id === 'intake') },
@@ -202,7 +219,7 @@ export function researchProgress(state: ResearchState) {
     const status = done === group.tasks.length && done > 0 ? 'done'
       : active ? interrupted ? 'unknown' : 'active' : 'waiting';
     return { id: group.id, title: group.title, status,
-      label: status === 'done' ? '已完成' : status === 'active' ? '进行中' : status === 'unknown' ? '待确认' : '等待',
+      label: status === 'done' ? prebuilt ? '当时已完成' : '已完成' : status === 'active' ? prebuilt ? '回放中' : '进行中' : status === 'unknown' ? '待确认' : '等待',
       detail: group.id === 'collect' ? `${done}/${group.tasks.length}` : '',
     };
   });
@@ -211,10 +228,10 @@ export function researchProgress(state: ResearchState) {
   stages.push({id:'save',title:'保存报告',status:state.connection === 'saved' ? 'done' : uncertainSave ? 'unknown' : saving ? 'active' : 'waiting',
     label:state.connection === 'saved' ? '已完成' : uncertainSave ? '待确认' : saving ? '进行中' : '等待',detail:''});
   const running = state.steps.filter(s => s.phase === 'start');
-  const current = state.connection === 'saved' ? '研究已完成，可以查看报告'
+  const current = state.connection === 'saved' ? prebuilt ? '快照已保存，可以查看报告' : '研究已完成，可以查看报告'
     : interrupted || state.saveStatus ? lifecycleLabel(state)
     : state.verifying ? '正在确认报告已保存'
-    : running.length ? `正在${running.every(s => s.lookup) ? '查询' : '处理'}：${running.map(s => s.label).join('、')}`
+    : running.length ? `正在${prebuilt ? '回放' : running.every(s => s.lookup) ? '查询' : '处理'}：${running.map(s => s.label).join('、')}`
     : lifecycleLabel(state);
   return { stages, current, ...completedProcessing(state) };
 }
@@ -224,8 +241,9 @@ export function lifecycleLabel(state: ResearchState) {
     return '报告保存未确认';
   if (state.connection === 'disconnected') return '连接中断 · 进度待确认';
   if (state.connection === 'error') return '研究中断';
-  if (state.connection === 'saved') return '报告已保存';
+  if (state.connection === 'saved') return researchProvenance(state) ? '快照已保存' : '报告已保存';
   if (state.verifying) return '报告已返回 · 确认保存中';
+  if (researchProvenance(state)) return '预制示例 · 回放中';
   if (state.steps.some((s) => s.id === 'plain' && s.phase === 'done'))
     return '报告已生成 · 等待保存确认';
   if (state.steps.some((s) => s.id === 'plain' && s.phase === 'start'))
@@ -276,6 +294,7 @@ export function reportPresentation(state: ResearchState, scenePhase?: string) {
     status = 'analyzing';
     label = '正在整理分析';
   }
+  if (researchProvenance(state) && ['collecting', 'analyzing', 'generating'].includes(status)) label = '正在回放预制示例';
   return {
     canOpen,
     canRetry,
@@ -373,7 +392,7 @@ export async function readCaseStream(
     const e = JSON.parse(line);
     if (e.type === 'error') throw new BackendError(e.message || '后端研究失败');
     if (e.type === 'case') return validateCase(e.case);
-    if (!['begin', 'step'].includes(e.type))
+    if (!['begin', 'step', 'prebuilt'].includes(e.type))
       throw new Error('收到未知进度事件');
     onEvent(e);
     return null;
@@ -484,7 +503,7 @@ export async function followRun(
       onInput?.(input);
     }
     for (const e of page.events) {
-      if (e.type === 'begin' || e.type === 'step') onEvent(e as ProgressEvent);
+      if (e.type === 'begin' || e.type === 'step' || e.type === 'prebuilt') onEvent(e as ProgressEvent);
       if (e.type === 'error')
         throw new BackendError(String(e.message || '后端研究失败'));
     }

@@ -16,6 +16,15 @@ function harness(){
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../case-design.js'),'utf8'),ctx);
  return {ctx,run:code=>vm.runInContext(code,ctx)};
 }
+test('snapshot notice uses version provenance, escapes source metadata and supports old bundles',()=>{
+ const h=harness();
+ h.ctx.v={prebuilt:{demo_id:'B',built_at:'2026-10-02 <script>x</script>'},notes:[]};
+ const html=h.run('prebuiltNoticeHtml(v)');
+ assert.match(html,/预制示例快照/);assert.match(html,/本次未重新联网查询/);assert.match(html,/预制包生成时间/);assert.doesNotMatch(html,/<script>/);
+ h.ctx.v={notes:['预制示例：之前生成，不重新联网查询。']};assert.match(h.run('prebuiltNoticeHtml(v)'),/生成时间未记录/);
+ h.ctx.v={notes:['基于预制快照的人工复核：沿用第 1 版资料。']};assert.equal(h.run('prebuiltNoticeHtml(v)'),'');
+ h.ctx.v={notes:[]};assert.equal(h.run('prebuiltNoticeHtml(v)'),'');
+});
 test('dated repeated records keep every entry and the qualifying explanation',()=>{
  const h=harness();h.ctx.detail='质押不说明公司缺钱；需看比例。'+Array.from({length:19},(_,i)=>`2016-09-08，公司${i}把 ${i}.5押给「银行」`).join('；');
  const parts=JSON.parse(h.run('JSON.stringify(researchDetailParts(detail))'));
