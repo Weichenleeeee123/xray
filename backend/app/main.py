@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 from collections.abc import Callable
+from contextvars import copy_context
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, Header
@@ -22,7 +23,8 @@ from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import config, progress, runs
+from app import config, deployment, privacy, progress, runs
+from app.models import PublicCase, PublicChatMessage
 from app.analysis.pipeline import NoNewReviews, load_services, new_case, refresh_reviews, resolve, supplement
 from app.analysis.report import onepager
 from app.assistant import answer
@@ -73,7 +75,8 @@ def _launch(work):
         finally:
             with _workers_lock:
                 _workers.discard(threading.current_thread())
-    worker = threading.Thread(target=wrapped, daemon=True)
+    context = copy_context()
+    worker = threading.Thread(target=lambda: context.run(wrapped), daemon=True)
     with _workers_lock:
         _workers.add(worker)
     worker.start()
@@ -105,12 +108,14 @@ def _inline(work):
     finally:
         _run_slots.release()
 # 前端由本服务同源提供；放开跨域只是方便有人单独起前端调试
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=privacy.allowed_origins(), allow_credentials=True,
+                   allow_methods=["GET", "POST"], allow_headers=["Content-Type", "Idempotency-Key"])
+app.add_middleware(privacy.GuestPrivacyMiddleware)
 
 
 def _case(case_id: str) -> Case:
     case = store.get(case_id)
-    if case is None:
+    if case is None or case.owner_id != privacy.identity():
         raise HTTPException(status_code=404, detail="案卷不存在")
     return case
 
@@ -122,7 +127,13 @@ def health() -> dict:
     return {"ok": True, "licensed_count": len(svc.licenses), "licensed_as_of": svc.licenses.meta["as_of"],
             "registry_as_of": svc.registry.as_of, "official_lists": lists, "evidence_packs": svc.packs.names(),
             "commercial": svc.commercial.status() if svc.commercial else {"configured": False},
-            "llm": llm.status()}
+            "llm": llm.status(), "deployment": deployment.status()}
+
+
+@app.get("/api/session")
+def guest_session() -> dict:
+    return {"private": True, "identity": "browser_guest", "cross_device": False,
+            "notice": "材料、案卷和聊天仅此浏览器可见；清除浏览器数据后不能自动恢复。只有主动提交的评价会公开。"}
 
 
 @app.get("/api/sources")
@@ -176,7 +187,9 @@ def _create(body: CaseIn) -> Case:
     info = _intake(body.need, body.scenario, body.company_name)
     token = FORCE_REFRESH.set(body.refresh_sources)
     try:
-        return store.save(finish_version(new_case(body, info, svc), llm))
+        case = finish_version(new_case(body, info, svc), llm)
+        case.owner_id = privacy.identity()
+        return store.save(case)
     finally:
         FORCE_REFRESH.reset(token)
 
@@ -214,7 +227,7 @@ def _stream(first: dict, work: Callable[[], Case]) -> StreamingResponse:
         try:
             with progress.reporting(put):
                 case = work()
-            put({"type": "case", "case": case.model_dump(mode="json")})
+            put({"type": "case", "case": PublicCase.model_validate(case.model_dump()).model_dump(mode="json")})
         except HTTPException as e:
             put({"type": "error", "status": e.status_code, "message": str(e.detail)})
         except ConflictError as e:
@@ -259,6 +272,7 @@ def _start_run(first: dict, work: Callable[[], Case], run_id: str | None = None,
     try:
         if original_input is not None:
             runs.save_input(directory, run_id, original_input)
+        runs.set_owner(directory, run_id, privacy.identity())
         runs.touch(directory, run_id)
         put(first)
     except Exception:
@@ -299,7 +313,7 @@ def _start_run(first: dict, work: Callable[[], Case], run_id: str | None = None,
 def _idempotent_run(key: str | None, scope: str, body: BaseModel, start):
     if not key:
         return start(None)
-    digest = hashlib.sha256((scope + "|" + key).encode()).hexdigest()
+    digest = hashlib.sha256((privacy.identity() + "|" + scope + "|" + key).encode()).hexdigest()
     fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
     path = RUNS_DIR / "requests" / f"{digest}.json"
     with locked(path):
@@ -309,6 +323,7 @@ def _idempotent_run(key: str | None, scope: str, body: BaseModel, start):
                 raise ConflictError("相同 Idempotency-Key 的请求内容不同")
             return saved["result"]
         result = {"run_id": uuid4().hex[:24], "status": "running"}
+        runs.set_owner(RUNS_DIR, result["run_id"], privacy.identity())
         runs.append(RUNS_DIR, result["run_id"], {"type": "queued"})
         atomic_json(path, {"fingerprint": fingerprint, "result": result})
         try:
@@ -336,6 +351,8 @@ def supplement_run(case_id: str, body: SupplementIn, idempotency_key: str | None
 
 @app.get("/api/runs/{run_id}")
 def get_run(run_id: str, after: int = Query(0, ge=0)) -> dict:
+    if not runs.owned_by(RUNS_DIR, run_id, privacy.identity()):
+        raise HTTPException(status_code=404, detail="研究任务不存在或不属于此浏览器")
     try:
         all_events = runs.events(RUNS_DIR, run_id)
     except ValueError:
@@ -352,7 +369,7 @@ def get_run(run_id: str, after: int = Query(0, ge=0)) -> dict:
             "events": all_events[after:], "next": len(all_events)}
 
 
-@app.post("/api/cases")
+@app.post("/api/cases", response_model=PublicCase)
 def create_case(body: CaseIn) -> Case:
     return _inline(lambda: _create(body))
 
@@ -365,7 +382,7 @@ def create_case_stream(body: CaseIn) -> StreamingResponse:
 
 @app.get("/api/cases")
 def list_cases(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)) -> list[CaseSummary]:
-    return store.list(limit=limit, offset=offset)
+    return store.list(limit=limit, offset=offset, owner_id=privacy.identity())
 
 
 @app.get("/api/cases/{case_id}/versions/{version_no}")
@@ -378,12 +395,12 @@ def get_version(case_id: str, version_no: int):
             "raw": [r for r in case.raw if r.id in version.raw_ids], "sources": version.sources or case.sources}
 
 
-@app.get("/api/cases/{case_id}")
+@app.get("/api/cases/{case_id}", response_model=PublicCase)
 def get_case(case_id: str) -> Case:
     return _case(case_id)
 
 
-@app.post("/api/cases/{case_id}/supplements")
+@app.post("/api/cases/{case_id}/supplements", response_model=PublicCase)
 def add_supplement(case_id: str, body: SupplementIn) -> Case:
     return _inline(lambda: _supplement(_case(case_id), body))
 
@@ -396,7 +413,7 @@ def add_supplement_stream(case_id: str, body: SupplementIn) -> StreamingResponse
                    lambda: _supplement(case, body))
 
 
-@app.post("/api/cases/{case_id}/resolve")
+@app.post("/api/cases/{case_id}/resolve", response_model=PublicCase)
 def resolve_judgment(case_id: str, body: ResolveIn) -> Case:
     """人对某条判断下结论（已澄清 / 已撤回 / 继续查）。出一版新案卷，旧版留着。"""
     case = _case(case_id)
@@ -406,7 +423,7 @@ def resolve_judgment(case_id: str, body: ResolveIn) -> Case:
         raise HTTPException(status_code=404, detail=f"案卷里没有这条判断：{body.judgment_id}") from None
 
 
-@app.post("/api/cases/{case_id}/reviews")
+@app.post("/api/cases/{case_id}/reviews", response_model=PublicCase)
 def refresh_case_reviews(case_id: str) -> Case:
     """把这家公司最新的用户评价放进案卷，出一版新报告。评价没变就不出。"""
     case = _case(case_id)
@@ -421,24 +438,69 @@ def refresh_case_reviews(case_id: str) -> Case:
 @app.get("/api/reviews")
 def list_reviews(company: str = Query(..., min_length=2, max_length=80),
                  author: str | None = Query(None, description="浏览器的匿名编号，用来标出哪条是自己写的")) -> ReviewList:
-    return svc.reviews.listing(company.strip(), author)
+    return svc.reviews.listing(company.strip(), privacy.OWNER.get())
 
 
 @app.post("/api/reviews")
 def add_review(body: ReviewIn) -> ReviewList:
     try:
-        return svc.reviews.add(body)
+        return svc.reviews.add(body.model_copy(update={"author": privacy.identity()}))
     except DuplicateReview:
         raise HTTPException(status_code=409, detail="你已经给这家公司写过一条评价了") from None
 
 
-@app.post("/api/cases/{case_id}/chat")
-def chat(case_id: str, body: ChatIn) -> ChatMessage:
+@app.post("/api/cases/{case_id}/chat", response_model=PublicChatMessage)
+def chat(case_id: str, body: ChatIn, idempotency_key: str | None = Header(None, min_length=1, max_length=128)) -> ChatMessage:
     case = _case(case_id)
-    reply = answer(case, body, llm, version_no=body.version)
-    store.append_chat(case_id, [ChatMessage(role="user", text=body.text, refs=body.refs, version=reply.version,
-                                           created_at=reply.created_at), reply])
-    return reply
+    path = _chat_request_path(case_id, idempotency_key) if idempotency_key else None
+    fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
+    if path:
+        with locked(path):
+            if path.exists():
+                saved = json.loads(path.read_text(encoding="utf-8"))
+                if saved["fingerprint"] != fingerprint:
+                    raise HTTPException(status_code=409, detail="同一问答请求标识不能用于不同问题")
+                previous = next((m for m in case.chat if m.role == "assistant" and m.request_id == idempotency_key), None)
+                if previous:
+                    return previous
+                raise HTTPException(status_code=409, detail="这条提问已提交，请恢复结果；不要重复发送。")
+            atomic_json(path, {"fingerprint": fingerprint, "status": "running", "started": time.time()})
+    try:
+        reply = answer(case, body, llm, version_no=body.version)
+        reply.request_id = idempotency_key
+        store.append_chat(case_id, [ChatMessage(role="user", text=body.text, refs=body.refs, version=reply.version,
+                                               request_id=idempotency_key, created_at=reply.created_at), reply])
+        if path:
+            atomic_json(path, {"fingerprint": fingerprint, "status": "complete", "started": time.time()})
+        return reply
+    except Exception:
+        if path:
+            atomic_json(path, {"fingerprint": fingerprint, "status": "failed", "started": time.time()})
+        raise
+
+
+def _chat_request_path(case_id: str, key: str) -> Path:
+    digest = hashlib.sha256(f"{privacy.identity()}|{case_id}|{key}".encode()).hexdigest()
+    return store.dir / "chat-requests" / f"{digest}.json"
+
+
+@app.get("/api/cases/{case_id}/chat/requests/{request_key}")
+def chat_request_status(case_id: str, request_key: str) -> dict:
+    case = _case(case_id)
+    if not 1 <= len(request_key) <= 128:
+        raise HTTPException(status_code=404, detail="没有这条提问")
+    path = _chat_request_path(case_id, request_key)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="没有这条提问")
+    # Reading the case first recovers the save-before-response interruption window.
+    previous = next((m for m in case.chat if m.role == "assistant" and m.request_id == request_key), None)
+    if previous:
+        return {"status": "complete", "reply": PublicChatMessage.model_validate(previous.model_dump()).model_dump()}
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    status = saved["status"]
+    if status == "running" and time.time() - saved["started"] > config.CHAT_TIMEOUT + config.LLM_TIMEOUT + 30:
+        status = "interrupted"
+    return {"status": status, "reply": None}
 
 
 @app.get("/api/cases/{case_id}/onepager")

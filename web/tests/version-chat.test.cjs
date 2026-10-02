@@ -7,7 +7,7 @@ const path = require('node:path');
 function harness() {
   const listeners = {};
   const node = { classList: { add() {}, remove() {}, contains() { return false; } }, hidden: true, open: false, close() {}, scrollIntoView() {}, offsetWidth: 1 };
-  const ctx = vm.createContext({ console, FormData, CSS: { escape: s => s }, history: { replaceState() {} }, location: { hash: '#/case/c/v/1' },
+  const ctx = vm.createContext({ console, FormData, AbortController, CSS: { escape: s => s }, history: { replaceState() {} }, location: { hash: '#/case/c/v/1' },
     setTimeout: () => 0, clearTimeout() {}, document: { querySelector: () => node, querySelectorAll: () => [], addEventListener: (k, f) => { listeners[k] = f; } },
     window: { addEventListener() {}, matchMedia: () => ({ matches: false }) } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8').replace(/boot\(\);\s*$/, ''), ctx);
@@ -40,15 +40,43 @@ test('asks about viewed version, including unselected questions and typed refere
   assert.equal(h.run('sent.version'), 1);
 });
 
-test('renders historical text, user refs, quotes, structured citations and terms with their version', () => {
+test('answer has one source entry without raw quotes or internal diagnostics', () => {
   const h = harness();
-  const html = h.run(`msgHtml({role:'assistant',version:1,text:'解释 [A2] [v:1:signal:risk:bank_list]',citations:['Q1','term.capital'],quotes:[{text:'原文',ref:'R3'}],suggest:[]})`);
-  assert.match(html, /data-id="A2" data-version="1"/);
-  assert.match(html, /data-id="v:1:signal:risk:bank_list" data-version="1"/);
-  assert.match(html, /data-id="Q1" data-version="1"/);
-  assert.match(html, /data-id="term.capital" data-version="1"/);
-  assert.match(html, /data-ref="R3" data-version="1"/);
+  const html = h.run(`msgHtml({role:'assistant',version:1,text:'解释 [A2] [v:1:signal:risk:bank_list]',citations:['Q1','term.capital'],quotes:[{text:'隐藏的原始引文',ref:'R3'}],suggest:[],rewrites:2,dropped:8,blocked:['禁止展示的内部信息']},null,3)`);
+  assert.match(html, /data-act="chat-sources" data-index="3"/);
+  assert.equal((html.match(/原文出处 ↗/g) || []).length, 1);
+  assert.doesNotMatch(html, /隐藏的原始引文|禁止展示的内部信息|重写|丢掉|\[A2\]|data-act="goto"/);
   assert.match(h.run(`msgHtml({role:'user',version:1,text:'问',refs:['A2']})`), /data-id="A2" data-version="1"/);
+});
+
+test('source detail resolves report facts to original records from the answer version', () => {
+  const h = harness();
+  h.run(`S.case.raw=[{id:'R3',source_id:'registry',title:'旧版登记资料',kind:'official',content:'原文'}];
+    S.case.versions[0].raw_ids=['R3'];S.case.versions[0].assertions=[{id:'A2',refs:['R3']}];
+    S.case.versions[1].raw_ids=[];S.viewNo=2;`);
+  const html = h.run(`chatSourcesHtml({version:1,text:'解释 [A2]',citations:['A2'],quotes:[{ref:'R3',text:'原文'}]})`);
+  assert.match(html, /旧版登记资料/);
+  assert.match(html, /data-ref="R3" data-version="1"/);
+  assert.match(html, /<mark>原文<\/mark>/);
+  assert.equal(h.run('S.viewNo'), 2, 'viewing the source list must not silently replace the current report');
+});
+
+test('uncited empathy has no fake source button; source highlight escapes markup', () => {
+  const h = harness();
+  assert.doesNotMatch(h.run(`msgHtml({role:'assistant',version:1,text:'我们可以慢慢弄清楚。'})`), /chat-sources/);
+  const html = h.run(`contentHtml({详情:'<script>原文</script>'},['原文'])`);
+  assert.match(html, /<mark>原文<\/mark>/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.equal(h.run(`markText('原文原文',['原文','原文原文'])`), '<mark>原文原文</mark>');
+});
+
+test('source fallback uses a readable report label and keeps its versioned navigation', () => {
+  const h = harness();
+  h.run(`S.case.versions[0].signals=[{key:'risk',items:[{key:'promise',label:'收益承诺'}]}]`);
+  const html = h.run(`chatSourcesHtml({version:1,text:'解释',citations:['risk.promise']})`);
+  assert.match(html, /查看报告条目：收益承诺/);
+  assert.match(html, /data-id="risk.promise" data-version="1"/);
+  assert.doesNotMatch(html, />risk\.promise</);
 });
 
 test('historical citation click selects its version before locating item', () => {
@@ -151,4 +179,20 @@ test('failed same-case reload removes only its cloned optimistic message', async
   h.run(`S.case={...S.case,chat:[{...S.case.chat[0]}, {role:'user',text:'重复问题',version:1,created_at:'earlier'}]}; rejectRequest(new Error('断网'));`);
   await pending;
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(S.case.chat.map(m=>m.created_at))')), ['earlier']);
+});
+
+test('retry after uncertain failure reuses request identity and can stop waiting', async () => {
+  const h = harness();
+  h.run(`globalThis.keys=[];api=async(url,opts)=>{keys.push(opts.headers['Idempotency-Key']);throw new Error('connection lost')};`);
+  await h.run(`ask('需要核对')`);
+  await h.run(`ask('需要核对')`);
+  assert.equal(h.run('keys[0]'), h.run('keys[1]'));
+  assert.equal(h.run('S.busy'), false);
+  h.run(`api=(url,opts)=>new Promise((resolve,reject)=>opts.signal.addEventListener('abort',()=>reject(new Error('cancelled'))));`);
+  const pending = h.run(`ask('需要核对')`);
+  h.run(`S.chatAbort.abort('cancelled')`);
+  await pending;
+  assert.equal(h.run('S.busy'), false);
+  assert.equal(h.run('S.case.chat.length'), 0);
+  assert.ok(h.run(`pendingChat('c')`));
 });

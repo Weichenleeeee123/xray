@@ -433,7 +433,7 @@ export default function Home() {
                 setNeed(demo.input.need);
                 setSelectedDemo(demo);
               }} onRemove={() => setSelectedDemo(null)} />
-              <p>资料覆盖情况来自真实后端，不代表安全评级。</p>
+              <p>资料覆盖情况不代表安全评级。材料与案卷仅此浏览器可见；主动提交的评价才会公开。</p>
             </form>
           </div>
         )}

@@ -412,6 +412,13 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
 .msg.ai.nf{border-style:dashed}
 .msg.ai.guard{border-color:var(--red)}
 .ans{white-space:pre-wrap;word-break:break-word}
+.chat-source-footer{margin-top:12px;justify-content:flex-end}
+.chat-source-footer button{font:inherit;color:var(--ink-2);text-underline-offset:3px}
+.chat-next{margin:10px 0 0;padding-left:1.4em;line-height:1.8;font-size:13px}
+.chat-source{padding:14px 0;border-bottom:1px solid var(--line)}
+.chat-source h4{margin:0 0 8px}
+.chat-source blockquote{margin:10px 0;padding:8px 12px;border-left:2px solid var(--amber);white-space:pre-wrap;overflow-wrap:anywhere}
+.chat-source .linkish{margin:8px 16px 0 0;display:inline-block}
 .cite{display:inline-block;font-family:var(--mono);font-size:10.5px;background:var(--paper-lo);border:1px solid var(--rule-2);padding:0 5px;border-radius:2px;color:var(--blue);margin:0 1px;line-height:1.5;vertical-align:1px}
 .cite:hover{border-color:var(--blue)}
 .cite.term-cite{font-family:var(--sans);color:var(--ink-2);border-style:dotted}

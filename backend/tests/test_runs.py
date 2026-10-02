@@ -83,13 +83,12 @@ def test_failed_run_retains_complete_input_without_repeating_it_in_progress(tmp_
     assert client.get(f"/api/runs/{created['run_id']}?after=1").json()["input"] is None
 
 
-def test_legacy_journal_without_saved_input_remains_readable(tmp_path, monkeypatch):
+def test_legacy_journal_without_owner_is_hidden_but_preserved(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "RUNS_DIR", tmp_path)
     run_id = "b" * 24
     main.runs.append(tmp_path, run_id, {"type": "begin", "company": DEMO_COMPANY, "steps": []})
-    result = client.get(f"/api/runs/{run_id}").json()
-    assert result["status"] == "interrupted"
-    assert result["input"] is None
+    assert client.get(f"/api/runs/{run_id}").status_code == 404
+    assert main.runs.events(tmp_path, run_id)[0]["type"] == "begin"
 
 
 def test_supplement_keeps_case_identity_and_full_original_material(tmp_path, monkeypatch):

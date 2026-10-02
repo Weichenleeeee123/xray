@@ -78,10 +78,14 @@ class CaseStore:
                     judgment["state"] = "needs_check"
         return Case.model_validate(data)
 
-    def list(self, limit: int | None = None, offset: int = 0) -> list[CaseSummary]:
+    def list(self, limit: int | None = None, offset: int = 0, *, owner_id: str | None = None) -> list[CaseSummary]:
         out = []
         for path in self.dir.glob("*.json"):
             try:
+                if owner_id is not None:
+                    private_case = self.get(path.stem)
+                    if private_case is None or private_case.owner_id != owner_id:
+                        continue
                 stat = path.stat()
                 try:
                     entry = json.loads((self.dir / "summaries" / path.name).read_text(encoding="utf-8"))

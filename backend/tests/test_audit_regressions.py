@@ -254,6 +254,7 @@ def test_run_state_visible_outside_owner_memory(tmp_path, monkeypatch):
     import app.main as main
     from app.store import CaseStore
     monkeypatch.setattr(main,'RUNS_DIR',tmp_path/'runs')
+    monkeypatch.setattr(main.privacy, 'identity', lambda: 'test-owner')
     entered,release=threading.Event(),threading.Event()
     c=make_case(DEMO_COMPANY)
     def work(): entered.set();release.wait(3);return c
@@ -282,7 +283,9 @@ def test_fact_selection_renders_server_text(tmp_path):
     payload = json.dumps({'segments': [{'fact_id': 'credit.status', 'text': '这家公司已经停止营业。'}]})
     result = answer(c, ChatIn(text='登记状态'), FakeLLM([payload], tmp_path))
     assert '已经停止营业' not in result.text
-    assert citable(c, c.versions[-1])['credit.status'] in result.text
+    item = next(i for s in c.versions[-1].signals if s.key == 'credit' for i in s.items if i.key == 'status')
+    assert all(part in result.text for part in (item.label, item.value, item.detail))
+    assert result.citations == ['credit.status']
 
 
 def test_run_idempotency_and_payload_conflict(tmp_path, monkeypatch):
@@ -379,9 +382,11 @@ def test_expired_lease_is_interrupted(tmp_path, monkeypatch):
     import app.main as main
     from app import runs
     monkeypatch.setattr(main, 'RUNS_DIR', tmp_path)
+    monkeypatch.setattr(main.privacy, 'identity', lambda: 'test-owner')
     rid = 'a' * 24
     runs.append(tmp_path, rid, {'type': 'begin'})
     runs.touch(tmp_path, rid, finished=True)
+    runs.set_owner(tmp_path, rid, 'test-owner')
     assert main.get_run(rid, after=0)['status'] == 'interrupted'
 
 
