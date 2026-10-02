@@ -1,46 +1,31 @@
 'use client';
 
-import type { CSSProperties, FormEvent } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties, SyntheticEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
-  Archive,
+  ArrowRight,
   BookOpen,
   Building2,
+  CheckCircle2,
   Check,
   CirclePause,
   CirclePlay,
-  Clock3,
   Database,
-  FileCheck2,
-  FileStack,
-  Keyboard,
   MessageCircle,
   Newspaper,
-  RefreshCcw,
+  RotateCcw,
   Search,
-  Send,
   Sparkles,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress';
 
 type ResearchStatus = 'idle' | 'running' | 'paused' | 'complete';
-type WalkFacing = 'right' | 'left' | 'back' | 'front';
-type ActionPose =
-  | 'magnify'
-  | 'redpen'
-  | 'readbook'
-  | 'organize'
-  | 'typeback'
-  | 'typeside'
-  | 'sitdesk'
-  | 'lookpapers'
-  | 'maintalk'
-  | 'close';
-type GuestPose = 'guestknock' | 'guesttalk';
+type WalkPose = 'back' | 'front' | 'right' | 'left';
+type ActionPose = 'desk' | 'research' | 'door';
+type Point = { x: number; y: number };
 
 type Phase = {
   id: string;
@@ -49,13 +34,11 @@ type Phase = {
   label: string;
   detail: string;
   mode: 'walk' | 'action';
-  visual: WalkFacing | ActionPose;
-  x: number;
-  y: number;
-  step: number;
+  visual: WalkPose | ActionPose;
+  from: Point;
+  to: Point;
+  route?: Point[];
   papers: number;
-  guest?: GuestPose;
-  knock?: boolean;
 };
 
 type WebMcpContext = {
@@ -66,7 +49,7 @@ type WebMcpContext = {
       description: string;
       inputSchema: object;
       annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
-      execute: (input: unknown) => unknown | Promise<unknown>;
+      execute: (input: unknown) => unknown;
     },
     options?: { signal?: AbortSignal },
   ) => void | Promise<void>;
@@ -79,93 +62,131 @@ declare global {
 }
 
 const DURATION = 30_000;
+const DESK = { x: 50, y: 75 };
+const DESK_LEFT = { x: 25, y: 69 };
+const DESK_RIGHT = { x: 74, y: 69 };
+const ARCHIVE = { x: 23, y: 34 };
+const LIBRARY = { x: 12, y: 56 };
+const NEWS = { x: 70, y: 32 };
+const DATA = { x: 76.5, y: 57 };
+const DOOR = { x: 49, y: 31 };
+const walkPoses: WalkPose[] = ['back', 'right', 'front', 'left'];
 
 const phases: Phase[] = [
-  { id: 'to-company', start: 0, end: 1_800, label: '前往企业档案区', detail: '先核对公司身份与基础档案', mode: 'walk', visual: 'back', x: 25, y: 34, step: 0, papers: 0 },
-  { id: 'company', start: 1_800, end: 3_200, label: '核验工商档案', detail: '放大镜检查登记、股权与高管线索', mode: 'action', visual: 'magnify', x: 25, y: 34, step: 0, papers: 0 },
-  { id: 'company-return', start: 3_200, end: 4_600, label: '带回企业档案', detail: '第一份资料正在送回工位', mode: 'walk', visual: 'front', x: 50, y: 74, step: 0, papers: 0 },
-  { id: 'to-library', start: 4_600, end: 6_000, label: '前往公司图书架', detail: '继续翻阅年报与行业目录', mode: 'walk', visual: 'left', x: 13, y: 60, step: 1, papers: 1 },
-  { id: 'library', start: 6_000, end: 7_600, label: '翻阅参考书籍', detail: '查找业务沿革与行业背景', mode: 'action', visual: 'readbook', x: 13, y: 60, step: 1, papers: 1 },
-  { id: 'library-return', start: 7_600, end: 9_000, label: '带回书籍线索', detail: '第二份资料正在送回工位', mode: 'walk', visual: 'right', x: 50, y: 74, step: 1, papers: 1 },
-  { id: 'to-news', start: 9_000, end: 10_400, label: '前往新闻资料区', detail: '查找公告、报道与事件记录', mode: 'walk', visual: 'back', x: 77, y: 33, step: 2, papers: 2 },
-  { id: 'news', start: 10_400, end: 11_900, label: '圈画关键报道', detail: '用红笔标出事件、时间与风险词', mode: 'action', visual: 'redpen', x: 77, y: 33, step: 2, papers: 2 },
-  { id: 'news-return', start: 11_900, end: 13_300, label: '带回新闻资料', detail: '第三份资料正在送回工位', mode: 'walk', visual: 'front', x: 50, y: 74, step: 2, papers: 2 },
-  { id: 'to-data', start: 13_300, end: 14_700, label: '前往数据终端', detail: '准备交叉核验经营数据', mode: 'walk', visual: 'right', x: 83, y: 66, step: 3, papers: 3 },
-  { id: 'data', start: 14_700, end: 16_200, label: '核验经营信号', detail: '检查收入、利润、行业与市场变化', mode: 'action', visual: 'magnify', x: 83, y: 66, step: 3, papers: 3 },
-  { id: 'data-return', start: 16_200, end: 17_600, label: '带回数据证据', detail: '第四份资料正在送回工位', mode: 'walk', visual: 'left', x: 50, y: 74, step: 3, papers: 3 },
-  { id: 'knock', start: 17_600, end: 18_600, label: '门外传来敲门声', detail: '一位社会观察员带来了舆情线索', mode: 'action', visual: 'lookpapers', x: 50, y: 74, step: 4, papers: 4, guest: 'guestknock', knock: true },
-  { id: 'to-door', start: 18_600, end: 20_100, label: '前去开门', detail: '小企放下资料，走向门口', mode: 'walk', visual: 'back', x: 46, y: 32, step: 4, papers: 4, guest: 'guestknock', knock: true },
-  { id: 'conversation', start: 20_100, end: 22_000, label: '核对社会舆情', detail: '两只鹅正在确认来源与事件影响', mode: 'action', visual: 'maintalk', x: 45, y: 34, step: 4, papers: 4, guest: 'guesttalk' },
-  { id: 'close-door', start: 22_000, end: 22_800, label: '结束访谈并关门', detail: '舆情线索已经记录', mode: 'action', visual: 'close', x: 49, y: 32, step: 4, papers: 4 },
-  { id: 'social-return', start: 22_800, end: 24_400, label: '带回舆情记录', detail: '第五份资料正在送回工位', mode: 'walk', visual: 'front', x: 50, y: 74, step: 4, papers: 4 },
-  { id: 'organize', start: 24_400, end: 25_800, label: '整理全部资料', detail: '用翅膀把散落证据按主题归档', mode: 'action', visual: 'organize', x: 50, y: 74, step: 5, papers: 5 },
-  { id: 'type-back', start: 25_800, end: 27_300, label: '坐在工位撰写', detail: '小企背对使用者开始输入报告', mode: 'action', visual: 'typeback', x: 50, y: 74, step: 6, papers: 5 },
-  { id: 'sit-desk', start: 27_300, end: 28_200, label: '坐上桌沿复核', detail: '重新查看一份关键证据', mode: 'action', visual: 'sitdesk', x: 50, y: 74, step: 6, papers: 5 },
-  { id: 'look-papers', start: 28_200, end: 29_000, label: '查看旁边资料', detail: '核对纸面记录与屏幕结论', mode: 'action', visual: 'lookpapers', x: 50, y: 74, step: 6, papers: 5 },
-  { id: 'type-side', start: 29_000, end: 30_000, label: '完成研究报告', detail: '补齐结论、依据与风险提示', mode: 'action', visual: 'typeside', x: 50, y: 74, step: 6, papers: 5 },
+  { id: 'brief', start: 0, end: 1_300, label: '建立研究任务', detail: '小企先在工位确认公司名称与研究范围', mode: 'action', visual: 'desk', from: DESK, to: DESK, papers: 0 },
+  { id: 'desk-exit', start: 1_300, end: 2_100, label: '离开工位', detail: '小企推开椅子，从桌子左侧起身', mode: 'action', visual: 'desk', from: DESK, to: DESK_LEFT, route: [DESK, { x: 40, y: 73 }, { x: 32, y: 70 }, DESK_LEFT], papers: 0 },
+  { id: 'walk-archive', start: 2_100, end: 4_300, label: '前往企业档案区', detail: '从桌外通道步行到主体档案柜', mode: 'walk', visual: 'back', from: DESK_LEFT, to: ARCHIVE, route: [DESK_LEFT, { x: 23, y: 52 }, ARCHIVE], papers: 0 },
+  { id: 'archive', start: 4_300, end: 6_100, label: '查阅企业档案', detail: '逐项确认股权、高管与历史变更', mode: 'action', visual: 'research', from: ARCHIVE, to: ARCHIVE, papers: 0 },
+  { id: 'walk-library', start: 6_100, end: 7_300, label: '前往窗下图书架', detail: '沿左侧通道走向年报与行业目录', mode: 'walk', visual: 'front', from: ARCHIVE, to: LIBRARY, route: [ARCHIVE, { x: 18, y: 44 }, { x: 14, y: 52 }, LIBRARY], papers: 1 },
+  { id: 'library', start: 7_300, end: 9_200, label: '翻阅书籍资料', detail: '取书、翻页、摘录，再把书放回原位', mode: 'action', visual: 'research', from: LIBRARY, to: LIBRARY, papers: 1 },
+  { id: 'walk-news', start: 9_200, end: 13_000, label: '前往新闻资料架', detail: '沿空旷通道穿过办公室，不横跨任何工位', mode: 'walk', visual: 'right', from: LIBRARY, to: NEWS, route: [LIBRARY, { x: 18, y: 48 }, { x: 39, y: 42 }, { x: 57, y: 42 }, { x: 66, y: 38 }, NEWS], papers: 2 },
+  { id: 'news', start: 13_000, end: 14_600, label: '比对新闻摘要', detail: '圈出公告时间、媒体事件和潜在风险词', mode: 'action', visual: 'research', from: NEWS, to: NEWS, papers: 2 },
+  { id: 'walk-data', start: 14_600, end: 15_700, label: '前往数据终端', detail: '从桌外侧接近终端，不穿过显示器和座椅', mode: 'walk', visual: 'front', from: NEWS, to: DATA, route: [NEWS, { x: 72, y: 42 }, { x: 75, y: 50 }, DATA], papers: 3 },
+  { id: 'data', start: 15_700, end: 17_200, label: '核验经营数据', detail: '检查收入、利润、行业与市场变化', mode: 'action', visual: 'research', from: DATA, to: DATA, papers: 3 },
+  { id: 'knock', start: 17_200, end: 18_000, label: '门外传来敲门声', detail: '一位社会观察员带来了新的舆情线索', mode: 'action', visual: 'research', from: DATA, to: DATA, papers: 4 },
+  { id: 'walk-door', start: 18_000, end: 20_300, label: '去开门', detail: '小企转身背对使用者，沿中央通道走向门口', mode: 'walk', visual: 'back', from: DATA, to: DOOR, route: [DATA, { x: 69, y: 48 }, { x: 59, y: 40 }, { x: 53, y: 34 }, DOOR], papers: 4 },
+  { id: 'open-door', start: 20_300, end: 21_300, label: '打开办公室门', detail: '抓住原门把手，让门沿原门框打开', mode: 'action', visual: 'door', from: DOOR, to: DOOR, papers: 4 },
+  { id: 'talk', start: 21_300, end: 23_100, label: '核对社会舆情', detail: '小企留在门内，与门外访客确认来源和影响', mode: 'action', visual: 'door', from: { x: 48.5, y: 31 }, to: { x: 48.5, y: 31 }, papers: 4 },
+  { id: 'close-door', start: 23_100, end: 23_900, label: '结束访谈并关门', detail: '舆情记录已经带回研究室', mode: 'action', visual: 'door', from: DOOR, to: DOOR, papers: 5 },
+  { id: 'walk-desk', start: 23_900, end: 26_200, label: '回到工位', detail: '绕过右侧桌角，在桌外停步', mode: 'walk', visual: 'front', from: DOOR, to: DESK_RIGHT, route: [DOOR, { x: 49, y: 43 }, { x: 61, y: 50 }, { x: 72, y: 58 }, DESK_RIGHT], papers: 5 },
+  { id: 'desk-sit', start: 26_200, end: 27_200, label: '坐回原来的椅子', detail: '小企从桌侧进入工位并调整坐姿', mode: 'action', visual: 'desk', from: DESK_RIGHT, to: DESK, route: [DESK_RIGHT, { x: 65, y: 73 }, { x: 57, y: 76 }, DESK], papers: 5 },
+  { id: 'report', start: 27_200, end: 30_000, label: '撰写研究报告', detail: '在原工位阅读、整理、输入并完成报告', mode: 'action', visual: 'desk', from: DESK, to: DESK, papers: 5 },
 ];
 
-const idlePhase: Phase = { id: 'idle', start: 0, end: 0, label: '等待研究任务', detail: '输入公司名称，让小企出发', mode: 'action', visual: 'lookpapers', x: 50, y: 74, step: -1, papers: 0 };
-const completePhase: Phase = { ...idlePhase, id: 'complete', label: '报告已经生成', detail: '全部证据与风险提示均已整理', visual: 'typeside', step: 6, papers: 5 };
-
-const steps = [
-  { title: '企业档案', caption: '登记 · 股权 · 高管', icon: Building2, doneAt: 4_600 },
-  { title: '图书资料', caption: '年报 · 目录 · 沿革', icon: BookOpen, doneAt: 9_000 },
-  { title: '新闻资料', caption: '公告 · 媒体 · 事件', icon: Newspaper, doneAt: 13_300 },
-  { title: '经营数据', caption: '财务 · 行业 · 市场', icon: Database, doneAt: 17_600 },
-  { title: '社会舆情', caption: '访谈 · 口碑 · 反馈', icon: MessageCircle, doneAt: 24_400 },
-  { title: '资料归纳', caption: '整理 · 复核 · 串联', icon: FileStack, doneAt: 25_800 },
-  { title: '研究报告', caption: '结论 · 依据 · 风险', icon: FileCheck2, doneAt: 30_000 },
+const sourceMarkers = [
+  { title: '企业资料', caption: '主体 · 股权 · 高管', icon: Building2, readyAt: 6_100, activeIds: ['walk-archive', 'archive'], className: 'source-enterprise' },
+  { title: '图书年报', caption: '年报 · 行业 · 沿革', icon: BookOpen, readyAt: 9_200, activeIds: ['walk-library', 'library'], className: 'source-library' },
+  { title: '新闻摘要', caption: '公告 · 媒体 · 事件', icon: Newspaper, readyAt: 14_600, activeIds: ['walk-news', 'news'], className: 'source-news' },
+  { title: '经营数据', caption: '财务 · 行业 · 市场', icon: Database, readyAt: 17_200, activeIds: ['walk-data', 'data'], className: 'source-data' },
+  { title: '社会舆情', caption: '访谈 · 口碑 · 反馈', icon: MessageCircle, readyAt: 23_900, activeIds: ['knock', 'walk-door', 'open-door', 'talk', 'close-door'], className: 'source-social' },
 ];
 
-const logs = [
-  { at: 200, time: '00:00', text: '任务建立，小企从工位出发。' },
-  { at: 1_900, time: '00:02', text: '开始核验主体、股权与高管线索。' },
-  { at: 4_600, time: '00:05', text: '第一份企业档案已放回桌面。' },
-  { at: 6_100, time: '00:06', text: '翻阅年报与行业参考书籍。' },
-  { at: 9_000, time: '00:09', text: '第二份书籍线索已放回桌面。' },
-  { at: 10_500, time: '00:11', text: '红笔标出关键报道与事件。' },
-  { at: 13_300, time: '00:13', text: '第三份新闻资料已放回桌面。' },
-  { at: 14_800, time: '00:15', text: '数据终端开始交叉核验经营指标。' },
-  { at: 17_600, time: '00:18', text: '第四份数据证据已放回桌面。' },
-  { at: 18_000, time: '00:18', text: '门外传来敲门声，社会观察员到访。' },
-  { at: 20_200, time: '00:20', text: '开始核对舆情来源与事件影响。' },
-  { at: 24_400, time: '00:24', text: '第五份舆情记录已带回工位。' },
-  { at: 25_800, time: '00:26', text: '所有纸面证据完成主题归档。' },
-  { at: 29_000, time: '00:29', text: '结论与风险提示进入最终校对。' },
-  { at: 29_900, time: '00:30', text: '企业研究报告生成完毕。' },
+const settledPapers = [
+  { level: 1, x: 42.5, y: 74.2, rotate: -7, frame: 0 },
+  { level: 1, x: 57.8, y: 74.8, rotate: 8, frame: 1 },
+  { level: 2, x: 62.3, y: 83.2, rotate: -13, frame: 2 },
+  { level: 2, x: 36.7, y: 82.5, rotate: 15, frame: 3 },
+  { level: 3, x: 68.7, y: 90.2, rotate: 9, frame: 0 },
+  { level: 3, x: 31.8, y: 90.8, rotate: -18, frame: 1 },
+  { level: 4, x: 58.2, y: 91.5, rotate: 17, frame: 2 },
+  { level: 4, x: 43.3, y: 94.1, rotate: -8, frame: 3 },
+  { level: 5, x: 64.4, y: 95.2, rotate: -4, frame: 0 },
+  { level: 5, x: 35.1, y: 95.4, rotate: 11, frame: 2 },
 ];
 
-const sourceCards = [
-  { title: '企业档案', detail: '12 条主体线索', readyAt: 4_600, icon: Building2 },
-  { title: '图书与年报', detail: '8 本参考资料', readyAt: 9_000, icon: BookOpen },
-  { title: '新闻与公告', detail: '27 篇公开资料', readyAt: 13_300, icon: Newspaper },
-  { title: '经营指标', detail: '18 项交叉校验', readyAt: 17_600, icon: Database },
-  { title: '社会舆情', detail: '6 条访谈线索', readyAt: 24_400, icon: MessageCircle },
+const breezeItems = [
+  { kind: 'leaf', frame: 0, x: 4.5, y: 28, delay: 0 },
+  { kind: 'leaf', frame: 1, x: 7.5, y: 37, delay: 420 },
+  { kind: 'leaf', frame: 2, x: 10, y: 44, delay: 830 },
+  { kind: 'paper', frame: 1, x: 17, y: 54, delay: 160 },
+  { kind: 'paper', frame: 3, x: 24, y: 65, delay: 760 },
 ];
 
-const actionPoses: ActionPose[] = ['magnify', 'redpen', 'readbook', 'organize', 'typeback', 'typeside', 'sitdesk', 'lookpapers', 'maintalk', 'close'];
-const guestPoses: GuestPose[] = ['guestknock', 'guesttalk'];
-const paperSpots = [
-  { level: 1, left: 52, top: 69, rotate: -8 }, { level: 1, left: 57, top: 72, rotate: 5 }, { level: 1, left: 47, top: 72, rotate: -2 },
-  { level: 2, left: 60, top: 77, rotate: 16 }, { level: 2, left: 42, top: 79, rotate: -13 }, { level: 2, left: 55, top: 82, rotate: 7 },
-  { level: 3, left: 38, top: 85, rotate: 18 }, { level: 3, left: 64, top: 85, rotate: -9 }, { level: 3, left: 48, top: 88, rotate: -17 },
-  { level: 4, left: 58, top: 89, rotate: 12 }, { level: 4, left: 44, top: 93, rotate: 6 }, { level: 4, left: 68, top: 91, rotate: -15 },
-  { level: 5, left: 34, top: 91, rotate: -5 }, { level: 5, left: 53, top: 95, rotate: 19 }, { level: 5, left: 62, top: 95, rotate: -3 },
-];
-
-function phaseFor(elapsed: number, status: ResearchStatus) {
-  if (status === 'idle') return idlePhase;
-  if (status === 'complete') return completePhase;
+function phaseAt(elapsed: number) {
   return phases.find((phase) => elapsed >= phase.start && elapsed < phase.end) ?? phases.at(-1)!;
 }
 
+function easeInOut(value: number) {
+  const clamped = Math.max(0, Math.min(1, value));
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+function walkStateFor(phase: Phase, elapsed: number) {
+  if (!phase.route) return { position: phase.to, facing: 'back' as WalkPose };
+  const points = phase.route;
+  const segments = points.slice(0, -1).map((point, index) => {
+    const next = points[index + 1];
+    const screenDx = (next.x - point.x) * 1.776833;
+    const dy = next.y - point.y;
+    return { from: point, to: next, length: Math.hypot(screenDx, dy), screenDx, dy };
+  });
+  const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+  const routeProgress = easeInOut((elapsed - phase.start) / (phase.end - phase.start));
+  let remaining = totalLength * routeProgress;
+  const segment = segments.find((candidate) => {
+    if (remaining <= candidate.length) return true;
+    remaining -= candidate.length;
+    return false;
+  }) ?? segments.at(-1)!;
+  const segmentProgress = segment.length ? Math.min(1, remaining / segment.length) : 1;
+  const facing: WalkPose = Math.abs(segment.screenDx) > Math.abs(segment.dy)
+    ? segment.screenDx >= 0 ? 'right' : 'left'
+    : segment.dy >= 0 ? 'front' : 'back';
+  return {
+    position: {
+      x: segment.from.x + (segment.to.x - segment.from.x) * segmentProgress,
+      y: segment.from.y + (segment.to.y - segment.from.y) * segmentProgress,
+    },
+    facing,
+  };
+}
+
+function doorProgressFor(elapsed: number, status: ResearchStatus) {
+  if (status === 'idle' || status === 'complete') return 0;
+  if (elapsed < 20_300) return 0;
+  if (elapsed < 21_300) return easeInOut((elapsed - 20_300) / 1_000);
+  if (elapsed < 23_100) return 1;
+  if (elapsed < 23_900) return 1 - easeInOut((elapsed - 23_100) / 800);
+  return 0;
+}
+
 export default function Home() {
-  const [companyName, setCompanyName] = useState('宁德时代');
-  const [activeCompany, setActiveCompany] = useState('宁德时代');
+  const [query, setQuery] = useState('');
+  const [activeQuery, setActiveQuery] = useState('');
   const [status, setStatus] = useState<ResearchStatus>('idle');
   const [elapsed, setElapsed] = useState(0);
-  const [speed, setSpeed] = useState<1 | 2>(1);
+  const elapsedRef = useRef(0);
+
+  const beginResearch = (nextQuery: string) => {
+    const normalized = nextQuery.trim();
+    if (!normalized) return false;
+    setQuery(normalized);
+    setActiveQuery(normalized);
+    elapsedRef.current = 0;
+    setElapsed(0);
+    setStatus('running');
+    return true;
+  };
 
   useEffect(() => {
     const context = document.modelContext;
@@ -175,134 +196,235 @@ export default function Home() {
       void Promise.resolve(context.registerTool({
         name: 'start_company_research',
         title: '开始企业研究',
-        description: '输入公司名称，启动小企约 30 秒的可视化资料收集、访谈与报告生成流程。',
-        inputSchema: { type: 'object', properties: { company: { type: 'string', minLength: 1, maxLength: 80 } }, required: ['company'], additionalProperties: false },
+        description: '输入公司名称，关闭首页输入框，并启动小企在办公室内约 30 秒的连续资料收集与报告撰写动画。',
+        inputSchema: {
+          type: 'object',
+          properties: { company: { type: 'string', minLength: 1, maxLength: 80 } },
+          required: ['company'],
+          additionalProperties: false,
+        },
         annotations: { readOnlyHint: false, untrustedContentHint: false },
         execute(input) {
           if (!input || typeof input !== 'object') throw new Error('输入必须是对象');
           const company = (input as { company?: unknown }).company;
-          if (typeof company !== 'string' || !company.trim() || company.trim().length > 80) throw new Error('company 必须是 1 至 80 个字符的公司名称');
-          const normalized = company.trim();
-          setCompanyName(normalized);
-          setActiveCompany(normalized);
-          setElapsed(0);
-          setStatus('running');
-          return { status: 'running', company: normalized, durationSeconds: 30 };
+          if (typeof company !== 'string' || !company.trim() || company.trim().length > 80) {
+            throw new Error('company 必须是 1 至 80 个字符的公司名称');
+          }
+          beginResearch(company);
+          return { status: 'running', company: company.trim(), durationSeconds: 30 };
         },
       }, { signal: lifecycle.signal })).catch(() => undefined);
     } catch {
-      // The visible form remains available in browsers without WebMCP.
+      // The visible search form remains available when WebMCP is unsupported.
     }
     return () => lifecycle.abort();
   }, []);
 
   useEffect(() => {
     if (status !== 'running') return;
-    const timer = window.setInterval(() => setElapsed((current) => Math.min(DURATION, current + 100 * speed)), 100);
-    return () => window.clearInterval(timer);
-  }, [speed, status]);
+    let animationFrame = 0;
+    let previous = performance.now();
+    const tick = (now: number) => {
+      const delta = Math.min(42, now - previous);
+      previous = now;
+      const nextElapsed = Math.min(DURATION, elapsedRef.current + delta);
+      elapsedRef.current = nextElapsed;
+      setElapsed(nextElapsed);
+      if (nextElapsed >= DURATION) {
+        setStatus('complete');
+        return;
+      }
+      animationFrame = requestAnimationFrame(tick);
+    };
+    animationFrame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [status]);
 
-  useEffect(() => {
-    if (elapsed >= DURATION && status === 'running') setStatus('complete');
-  }, [elapsed, status]);
-
-  const currentPhase = phaseFor(elapsed, status);
+  const phase = status === 'idle'
+    ? { ...phases[0], id: 'idle', label: '等待查询', detail: '输入公司名称或研究问题，让小企开始工作' }
+    : status === 'complete'
+      ? { ...phases.at(-1)!, id: 'complete', label: '研究报告已生成', detail: '公开资料、经营信号与社会舆情已经整理完成' }
+      : phaseAt(elapsed);
+  const walkState = walkStateFor(phase, elapsed);
+  const actorPosition = status === 'idle' || status === 'complete' ? DESK : walkState.position;
+  const actorFacing = phase.mode === 'walk' ? walkState.facing : 'back';
   const progress = status === 'idle' ? 0 : Math.min(100, (elapsed / DURATION) * 100);
-  const visibleLogs = useMemo(() => logs.filter((entry) => entry.at <= elapsed), [elapsed]);
-  const secondsLeft = Math.max(0, Math.ceil((DURATION - elapsed) / 1000));
-  const moveDuration = Math.max(320, currentPhase.end - currentPhase.start);
+  const doorProgress = doorProgressFor(elapsed, status);
+  const showGuest = status !== 'idle' && elapsed >= 20_950 && elapsed < 23_450;
+  const knocking = status !== 'idle' && elapsed >= 17_200 && elapsed < 20_000;
+  const paperLevel = status === 'complete' ? 5 : phase.papers;
+  const actorStyle = { '--actor-x': `${actorPosition.x}%`, '--actor-y': `${actorPosition.y}%` } as CSSProperties;
+  const doorStyle = { '--door-progress': doorProgress } as CSSProperties;
 
-  const startResearch = (event?: FormEvent) => {
-    event?.preventDefault();
-    const nextCompany = companyName.trim();
-    if (!nextCompany) return;
-    setActiveCompany(nextCompany);
+  const visiblePaperCount = settledPapers.filter((paper) => paper.level <= paperLevel).length;
+
+  const submit = (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    beginResearch(query);
+  };
+
+  const restart = () => {
+    if (!activeQuery) return;
+    elapsedRef.current = 0;
     setElapsed(0);
     setStatus('running');
   };
 
-  const restart = () => { setElapsed(0); setStatus('running'); };
-  const togglePause = () => setStatus((current) => current === 'running' ? 'paused' : current === 'paused' ? 'running' : current);
+  const resetSearch = () => {
+    elapsedRef.current = 0;
+    setElapsed(0);
+    setStatus('idle');
+  };
+
+  const togglePause = () => {
+    setStatus((current) => current === 'running' ? 'paused' : current === 'paused' ? 'running' : current);
+  };
 
   return (
-    <main className="research-app">
-      <header className="app-header">
-        <a className="brand" href="#top" aria-label="企er 企业研究首页"><span className="brand-pixel">企</span><span><strong>企er</strong><small>企业研究工作台</small></span></a>
-        <div className="header-badges"><span className="demo-pill"><i /> 交互演示</span><span className="duration-pill"><Clock3 /> 约 30 秒</span></div>
-      </header>
+    <main className="office-page">
+      <section
+        className={`office-stage status-${status} breeze-active`}
+        aria-label="小企企业研究室"
+        style={doorStyle}
+      >
+        <Image
+          className="office-background"
+          src="/office-panorama-closed.png"
+          alt="企业研究室全景，包含图书架、企业档案、新闻资料、中央门和研究工位"
+          fill
+          priority
+          sizes="100vw"
+        />
 
-      <section className="query-shell" id="top">
-        <div><span className="query-kicker"><Sparkles /> 小企研究员</span><h1>输入一家公司，看小企如何把线索带回工位。</h1></div>
-        <form className="query-form" onSubmit={startResearch}>
-          <label htmlFor="company-search">查询公司</label>
-          <div className="query-input-wrap"><Search aria-hidden="true" /><Input id="company-search" value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder="例如：宁德时代" disabled={status === 'running' || status === 'paused'} /></div>
-          <Button className="start-button" size="lg" type="submit"><Send data-icon="inline-start" />{status === 'idle' ? '开始调研' : '重新调研'}</Button>
-        </form>
-      </section>
+        <div className="door-portal" aria-hidden="true" />
+        <div className="door-leaf" aria-hidden="true" />
 
-      <section className="dashboard-grid" aria-label="小企企业研究工作台">
-        <aside className="panel task-panel">
-          <div className="panel-title"><span><Archive /> 任务执行流</span><small>{Math.round(progress)}%</small></div>
-          <ol className="task-list">
-            {steps.map((step, index) => {
-              const done = elapsed >= step.doneAt || status === 'complete';
-              const active = currentPhase.step === index && !done && status !== 'idle';
-              const Icon = step.icon;
-              return <li className={`${done ? 'done' : ''} ${active ? 'active' : ''}`} key={step.title}><span className="task-icon">{done ? <Check /> : <Icon />}</span><span><strong>{step.title}</strong><small>{step.caption}</small></span><i>{done ? '完成' : active ? '进行中' : '等待'}</i></li>;
-            })}
-          </ol>
-          <div className="task-summary"><span>当前任务</span><strong>{activeCompany} · 企业深度研究</strong><small>公开资料演示 · 不构成投资建议</small></div>
-        </aside>
+        <div className="ambient-vignette" aria-hidden="true" />
+        <div className="window-breeze" aria-hidden="true" />
 
-        <section className="panel studio-panel" aria-labelledby="studio-title">
-          <div className="studio-head"><div><span className="panel-kicker">LIVE RESEARCH</span><h2 id="studio-title">小企研究室</h2></div><div className={`live-status ${status}`}><i />{status === 'idle' && '等待任务'}{status === 'running' && '执行中'}{status === 'paused' && '已暂停'}{status === 'complete' && '报告完成'}</div></div>
+        {breezeItems.map((item, index) => (
+          <span
+            aria-hidden="true"
+            className={`motion-sprite breeze-sprite ${item.kind} frame-${item.frame}`}
+            key={`${item.kind}-${index}`}
+            style={{ '--item-x': `${item.x}%`, '--item-y': `${item.y}%`, '--item-delay': `${item.delay}ms` } as CSSProperties}
+          />
+        ))}
 
-          <div className={`research-stage ${status === 'paused' ? 'stage-paused' : ''}`} aria-live="polite">
-            <Image className="room-art" src="/research-room-v2.png" alt="像素风企业研究室，包含企业档案、图书架、新闻资料、数据终端和小企工位" fill priority sizes="(max-width: 1100px) 100vw, 64vw" />
-            <div className="stage-vignette" aria-hidden="true" />
-            <span className="station-tag station-company"><Building2 /> 企业档案</span>
-            <span className="station-tag station-library"><BookOpen /> 图书资料</span>
-            <span className="station-tag station-news"><Newspaper /> 新闻资料</span>
-            <span className="station-tag station-social"><MessageCircle /> 社会舆情</span>
-            <span className="station-tag station-data"><Database /> 数据终端</span>
-            <span className="station-tag station-desk"><Keyboard /> 小企工位</span>
+        {settledPapers.map((paper, index) => (
+          <span
+            aria-hidden="true"
+            className={`motion-sprite evidence-paper frame-${paper.frame} ${paper.level <= paperLevel ? 'visible' : ''}`}
+            key={`paper-${index}`}
+            style={{ '--paper-x': `${paper.x}%`, '--paper-y': `${paper.y}%`, '--paper-rotate': `${paper.rotate}deg`, '--paper-delay': `${(index % 2) * 90}ms` } as CSSProperties}
+          />
+        ))}
 
-            {paperSpots.map((paper, index) => <span className={`loose-paper ${currentPhase.papers >= paper.level ? 'visible' : ''}`} key={index} style={{ '--paper-left': `${paper.left}%`, '--paper-top': `${paper.top}%`, '--paper-rotate': `${paper.rotate}deg`, '--paper-delay': `${(index % 3) * 70}ms` } as CSSProperties}><i /><b /></span>)}
+        <ol className={`source-markers ${status === 'idle' ? 'idle' : ''}`} aria-label="企业资料来源">
+          {sourceMarkers.map((source) => {
+            const done = status === 'complete' || (status !== 'idle' && elapsed >= source.readyAt);
+            const active = status !== 'idle' && status !== 'complete' && source.activeIds.includes(phase.id);
+            const Icon = source.icon;
+            return (
+              <li
+                className={`source-marker ${source.className} ${active ? 'active' : ''} ${done ? 'done' : ''}`}
+                key={source.title}
+                aria-current={active ? 'step' : undefined}
+              >
+                <span><Icon aria-hidden="true" /></span>
+                <div><strong>{source.title}</strong><small>{done ? '资料已收集' : active ? '小企正在查找' : source.caption}</small></div>
+                {done ? <Check aria-hidden="true" /> : <i aria-hidden="true" />}
+              </li>
+            );
+          })}
+        </ol>
 
-            {currentPhase.guest && (
-              <div className="guest-character" role="img" aria-label="前来提供社会舆情线索的访客鹅">
-                {guestPoses.map((pose) => <span aria-hidden="true" className={`action-sprite action-${pose} ${currentPhase.guest === pose ? 'active' : ''}`} key={pose} />)}
+        {showGuest && (
+          <figure className="visitor-goose" aria-label="站在门外提供社会舆情线索的访客鹅">
+            <span className="visitor-sprite" aria-hidden="true" />
+          </figure>
+        )}
+
+        {knocking && (
+          <div className="knock-effect" aria-label="门外传来敲门声">
+            <span /><span /><span /><strong>咚 · 咚</strong>
+          </div>
+        )}
+
+        <figure
+          className={`xiaoqi-actor mode-${phase.mode} visual-${phase.visual}`}
+          style={actorStyle}
+          aria-label={`穿西装的小企正在${phase.label}`}
+        >
+          {walkPoses.map((pose) => (
+            <span className={`walk-cycle walk-${pose} ${phase.mode === 'walk' && actorFacing === pose ? 'active' : ''}`} key={pose} aria-hidden="true" />
+          ))}
+          <span className={`action-cycle action-${phase.mode === 'action' ? phase.visual : 'desk'} ${phase.mode === 'action' ? 'active' : ''}`} aria-hidden="true" />
+        </figure>
+
+        <div className="desk-foreground" aria-hidden="true" />
+
+        <div className="scene-brand" aria-label="企er 小企研究室">
+          <span>企</span>
+          <div><strong>企er</strong><small>小企研究室</small></div>
+        </div>
+
+        <div className={`query-layer ${status === 'idle' ? 'visible' : 'hidden'}`} aria-hidden={status !== 'idle'}>
+          <form className="home-query" onSubmit={submit}>
+            <span className="query-kicker"><Sparkles /> 查企业</span>
+            <h1>想先查哪家公司？</h1>
+            <label className="sr-only" htmlFor="company-query">输入公司名称或你想了解的问题</label>
+            <div className="prompt-bar">
+              <Search aria-hidden="true" />
+              <Input
+                id="company-query"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="输入公司名称或你想了解的问题"
+                autoComplete="off"
+                disabled={status !== 'idle'}
+              />
+              <Button type="submit" disabled={!query.trim() || status !== 'idle'}>
+                开始查询 <ArrowRight data-icon="inline-end" />
+              </Button>
+            </div>
+            <p>小企会在办公室内查阅档案、书籍、新闻、数据与社会舆情。</p>
+          </form>
+        </div>
+
+        {status !== 'idle' && (
+          <>
+            <div className="research-hud">
+              <div className="research-subject"><i /> <span>{activeQuery}</span></div>
+              <div className="research-controls">
+                <button type="button" onClick={togglePause} disabled={status === 'complete'} aria-label={status === 'paused' ? '继续动画' : '暂停动画'}>
+                  {status === 'paused' ? <CirclePlay /> : <CirclePause />}
+                </button>
+                <button type="button" onClick={restart} disabled={!activeQuery} aria-label="重新播放"><RotateCcw /></button>
               </div>
-            )}
-
-            {currentPhase.knock && <div className="knock-effect" aria-label="敲门声"><span /><span /><span /><strong>咚 · 咚</strong></div>}
-
-            <div className="goose-character" style={{ '--goose-x': `${currentPhase.x}%`, '--goose-y': `${currentPhase.y}%`, '--move-duration': `${moveDuration}ms` } as CSSProperties} role="img" aria-label={`穿西装的小企正在${currentPhase.label}`}>
-              <span className="action-bubble"><strong>{currentPhase.label}</strong><small>{currentPhase.detail}</small></span>
-              <span aria-hidden="true" className={`walk-sprite walk-${currentPhase.mode === 'walk' ? currentPhase.visual : 'right'} ${currentPhase.mode === 'walk' ? 'active' : ''}`} />
-              {actionPoses.map((pose) => <span aria-hidden="true" className={`action-sprite action-${pose} ${currentPhase.mode === 'action' && currentPhase.visual === pose ? 'active' : ''}`} key={pose} />)}
             </div>
 
-            {status === 'complete' && <div className="report-toast"><FileCheck2 /><span><strong>{activeCompany} 研究报告已生成</strong><small>五类证据、结论与风险提示均已整理</small></span></div>}
-          </div>
+            <div className="phase-caption">
+              <div className="phase-copy" aria-live="polite" aria-atomic="true"><strong>{phase.label}</strong><small>{phase.detail}</small></div>
+              <div className="phase-meta"><span>{visiblePaperCount} 份资料</span><b aria-hidden="true">{Math.round(progress)}%</b></div>
+              <progress
+                className="progress-track"
+                aria-label="企业研究进度"
+                max={100}
+                value={progress}
+              />
+            </div>
+          </>
+        )}
 
-          <div className="studio-progress">
-            <Progress value={progress} className="research-progress"><ProgressLabel>{currentPhase.label}</ProgressLabel><ProgressValue>{Math.round(progress)}%</ProgressValue></Progress>
-            <div className="studio-controls"><span className="time-left">{status === 'complete' ? '完成' : `${secondsLeft}s`}</span><div className="speed-switch" aria-label="播放速度">{[1, 2].map((option) => <button aria-pressed={speed === option} className={speed === option ? 'selected' : ''} key={option} onClick={() => setSpeed(option as 1 | 2)} type="button">{option}×</button>)}</div><Button className="icon-control" variant="outline" size="icon" onClick={togglePause} disabled={status === 'idle' || status === 'complete'} aria-label={status === 'paused' ? '继续研究' : '暂停研究'}>{status === 'paused' ? <CirclePlay /> : <CirclePause />}</Button><Button className="icon-control" variant="outline" size="icon" onClick={restart} aria-label="重新播放"><RefreshCcw /></Button></div>
-          </div>
-        </section>
-
-        <aside className="right-column">
-          <section className="panel evidence-panel">
-            <div className="panel-title"><span><Search /> 已收集证据</span><small>{sourceCards.filter((source) => elapsed >= source.readyAt).length}/5</small></div>
-            <div className="source-list">{sourceCards.map((source) => { const ready = elapsed >= source.readyAt || status === 'complete'; const Icon = source.icon; return <article className={ready ? 'ready' : ''} key={source.title}><span><Icon /></span><div><strong>{source.title}</strong><small>{ready ? source.detail : '等待小企带回'}</small></div>{ready ? <Check /> : <i />}</article>; })}</div>
-            <div className={`report-preview ${status === 'complete' ? 'revealed' : ''}`}><span className="report-label"><FileCheck2 /> 报告摘要</span>{status === 'complete' ? <><h3>{activeCompany} 的证据链已整理完成</h3><p>主体档案、书籍年报、新闻事件、经营指标与社会舆情已完成交叉核验，并将不确定信息单独标记。</p></> : <p>小企完成访谈、回到工位并连续复核后，这里会出现报告摘要。</p>}</div>
-          </section>
-          <section className="panel log-panel"><div className="panel-title"><span><Clock3 /> 实时日志</span><small>{visibleLogs.length}</small></div><div className="log-list" aria-live="polite">{visibleLogs.length ? visibleLogs.slice(-6).reverse().map((entry) => <div key={`${entry.at}-${entry.text}`}><time>{entry.time}</time><p>{entry.text}</p></div>) : <div className="empty-log">开始任务后，小企的每一步都会记录在这里。</div>}</div></section>
-        </aside>
+        {status === 'complete' && (
+          <output className="complete-card">
+            <CheckCircle2 />
+            <div><strong>{activeQuery} 研究报告已生成</strong><small>所有证据已经回到工位并完成整理</small></div>
+            <button type="button" onClick={resetSearch}>查另一家公司</button>
+          </output>
+        )}
       </section>
-
-      <footer className="app-footer"><span>企er · 可视化企业研究过程</span><span>演示数据仅用于交互原型</span></footer>
     </main>
   );
 }
