@@ -1,8 +1,10 @@
 """模型侧：录音回放、JSON 重试、助手的出处校验（验收 7）、需求识别退回关键词。不连网。"""
+import io
 import json
 
 import httpx
 import pytest
+from PIL import Image
 
 from app import llm as llm_mod
 from app.assistant import answer
@@ -16,7 +18,8 @@ class FakeLLM(LLM):
     """按顺序吐出准备好的回答，不连网。"""
 
     def __init__(self, replies: list[str], tmp_path):
-        super().__init__(base_url="http://fake", api_key="k", model="m", mode="live", cache_dir=tmp_path)
+        super().__init__(base_url="http://fake", api_key="k", model="m", vision_model="vision-test",
+                         mode="live", cache_dir=tmp_path)
         self.replies, self.calls = list(replies), []
 
     def _call(self, model, messages, json_out, temperature):
@@ -137,7 +140,7 @@ def test_assistant_downgrades_only_after_rewrites_run_out(case, tmp_path):
 
 def test_intake_uses_model_but_rejects_unknown_scenario(tmp_path):
     good = FakeLLM(['{"scenario": "prepaid", "focus": ["会不会突然关门跑路"], "for_whom": "妈妈", "amount": 5000}'], tmp_path)
-    got = run_intake("我妈想办张养生馆的卡", good)
+    got = run_intake("我妈想花5000元办张养生馆的卡", good)
     assert got.method == "model" and got.scenario == "prepaid" and got.amount == 5000
     bad = FakeLLM(['{"scenario": "lottery", "focus": []}'], tmp_path)
     assert run_intake("我妈想存 20 万理财", bad).method == "keywords"
@@ -148,7 +151,9 @@ def test_vision_failure_asks_for_manual_paste(tmp_path):
     from app.readers import read_upload
     r = read_upload("flyer.jpg", b"\xff\xd8\xff", FakeLLM([], tmp_path))
     assert r.method == "failed" and "手动录入" in r.note
-    r = read_upload("flyer.jpg", b"\xff\xd8\xff", FakeLLM(["保本保息\n年化 9%"], tmp_path))
+    image = io.BytesIO()
+    Image.new("RGB", (16, 16), "white").save(image, format="JPEG")
+    r = read_upload("flyer.jpg", image.getvalue(), FakeLLM(["保本保息\n年化 9%"], tmp_path))
     assert r.method == "vision" and "年化" in r.text
 
 

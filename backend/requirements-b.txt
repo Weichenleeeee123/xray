@@ -1,0 +1,3 @@
+-r requirements.txt
+# Material content validation; pdfplumber currently depends on Pillow too.
+Pillow>=10

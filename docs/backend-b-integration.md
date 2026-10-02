@@ -1,0 +1,133 @@
+# 企鹅后端 B 接入说明
+
+B 的模型调用、材料读取、案卷问答和需求识别已在现有 FastAPI 接口下通过本地测试。本次还集成了上游主线的共享模型、规则、数据与前端更新；B 的增强继续通过既有接口接入。下面说明如何运行、前端怎样引用旧版报告，以及哪些增强仍需要 A 显式接入。
+
+## 运行与配置
+
+B 开发基线为 Git 提交 `34a3406`，本地实现提交为 `59fdf2d`，交付快照已集成上游主线 `6f16f2d`（包含共享名词解释、报告短句和本版术语）。发布分支为 `codex/penguin-backend-b`；通过 GitHub 连接发布时提交元数据可能不同，本地历史保留备份。使用 Python 3.11 以上，本机测试环境为 Python 3.12.14。
+
+在仓库的 `backend` 目录执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-b.txt
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+其他机器先创建自己的虚拟环境。不要复制本机 `.venv`，其解释器路径不可跨机器复用。`requirements-b.txt` 包含共享 `requirements.txt` 和图片验证所需的 Pillow，新机器应使用上述 B 依赖入口。将 `.env.example` 的配置写入本机 `backend/.env`，不要提交 Key。当前文本与视觉模型均为 `qwen3.8-max`，`TOKENDANCE_JSON_MODE=1`、`TOKENDANCE_ENABLE_THINKING=0`。思考开关未设置也默认关闭；`1` 开启，显式留空遵循提供方默认值，修改后需重启。探针命令和真实测试状态见 [Tokendance 能力验证](tokendance.md)。
+
+代码在 [PR #1](https://github.com/Weichenleeeee123/xray/pull/1) 交接，未直接合入 main，也未进行公网部署。更新本机凭据后，2026-10-02 06:18（中国时间）已跑通当前模型的真实接口验收。完整案卷默认长思考曾触发 45 秒超时，现通过请求顶层 `enable_thinking=false` 修复；保留原超时、完整上下文及全部服务端校验，没有切换模型。05:34 的鉴权失败是历史结果，不再是当前阻塞。
+
+## 已接入的接口
+
+| HTTP 接口 | B 的服务入口 | 行为 |
+| --- | --- | --- |
+| POST `/api/intake` | `run_intake(need, llm, scenario=None, company=None)` | 模型识别场景与关注点；失败退回 A 的关键词规则；金额和替谁看以需求原文中的确定性识别为准 |
+| POST `/api/read` | `read_upload(filename, data, llm)` | 图片先验证实际文件内容，再发视觉模型；文本、PDF、DOCX 本地读取；失败提示手动录入 |
+| POST `/api/cases/{id}/chat` | `answer(case, q, llm, *, version_no=None, max_context_chars=120000)` | 只读指定版本及其原始数据；回答经引用校验；由现有 A 路由保存聊天，不生成新版报告 |
+| GET `/api/health` | `llm.status()` | 显示配置是否完整、模式、模型、网关主机和录制数量，不返回 Key |
+
+新建案卷和修改需求的既有路径也会调用 `run_intake`，不必另造接口。没有配置模型时，规则分析、材料本地解析、模板问答仍可运行；这不代表真实模型已接通。
+
+现有共享 Intake 只区分 keywords/model/user，没有单独的 replay 字段；因此需求识别的回放仍映射为 method=model。A 若要在需求预览里明确标注回放时间，需要扩展该契约。问答和详细 OCR 结果已保留回放模式与时间。
+
+## 助手引用约定
+
+当前版继续支持原接口格式：
+
+```json
+{"text":"为什么这条重要？","refs":["A1"]}
+```
+
+为了避免看 v1、却问到 v2，前端在查看旧报告时应传带版本的引用：
+
+```json
+{"text":"为什么这条重要？","refs":["v:1:assertion:A1"]}
+```
+
+可用格式：
+
+- `v:1:assertion:A1`：第 1 版说法。
+- `v:1:signal:risk:bank_list`：第 1 版风险卡里的持牌名单条目。
+- `v:1:missing:M1`、`v:1:question:Q1`：第 1 版缺项或待问问题。
+- `raw:R9` 或 `R9`：当前所选版本使用的原始记录。
+
+一个问题只能引用一个版本；混用版本、版本不存在、条目不存在，均返回 `mode="guard"` 和重新选择提示，不静默忽略。服务内部调用也可直接传 `version_no=1`。返回的 `ChatMessage.version` 指定版本，`citations` 保持原来的 `A1/R9/risk.bank_list` 格式；前端跳转时必须结合 version，不能只按裸 A1 定位。
+
+每个模型事实段独立检查。假 id、对不上的逐字引文、无出处的事实段，以及能检测到的数值或判定冲突会被剔除，不只是删脚注。判定与信号/检查状态对照独立的权威规则字段，不能靠引用另一份材料里的“与记录相符”覆盖当前判定。全部被剔除时返回 `not_found=true` 和补充材料建议。来源目录的 `registry` 等 id 不是原始记录，不能当作事实出处。
+
+这些检查只能保证引用可追溯及部分一致性，不能证明任意解释的语义都正确。用户材料的原话也不等于事实，界面须保留来源类别、日期和演示标记。助手的文字和引文应按纯文本或安全 Markdown 渲染，不使用未经清理的 `innerHTML`。
+
+`term.<id>` 引用用于解释术语，不是本公司的调查证据。助手优先使用所选版本的 `Version.terms`（含固定词表及标为 origin=model 的 AI 解释），旧案卷没有时回退到 `app/glossary.json`；不会从后续版本借用术语。两类解释都不会放行对公司的法律定性；公司判定仍依据指定版本的规则和记录。混合引用公司记录与术语时，数值只对照公司记录，不能用解释中的示例补齐；需要举例的定义应单独成段，仅引用术语。AI 解释仍须保留前端的未人工核对标记。
+
+## 材料读取细节
+
+`read_upload` 仍返回共享 `models.ReadResult` 的 `text/method/note`。部分 PDF 页未读出时，已成功页保留，note 明确列出未读页并要求补充；扫描件、加密失败、坏文件和空内容不会标成成功。
+
+需要逐页状态时可使用 B 的内部服务：
+
+```python
+from app.readers import read_material
+
+result = read_material(
+    file_bytes,
+    filename="contract.pdf",
+    content_type="application/pdf",
+    gateway=llm,
+)
+# result.status: ready / partial / needs_manual / failed
+# result.pages: page_number, text, status
+```
+
+保护值可通过参数覆盖：10 MiB、PDF 50 页、图片 2000 万像素。超过限制整份拒绝，不静默截断。图片扩展名、实际格式及传入 MIME 不一致时拒绝；多帧图片要求拆分。DOCX 限制 XML 大小与解压比例，禁用声明式实体。
+
+现有 A 上传路由另有限制 15 MiB，所以当前 10–15 MiB 文件会得到 B 的“超过读取上限”结果。该路由是 async，但同步调用 PDF/模型读取；A 下一步宜用线程池调用 `read_upload`，限制 `UploadFile.read` 的读取字节数，并把实际 `content_type` 传给详细读取服务。B 未越界修改此路由。
+
+模型 OCR 仅是识别，不保证准确；必须显示“请对照原图核对金额、账号和姓名”。回放 OCR 会带录制时间，不能显示成刚刚在线识别。
+
+## 缓存与回放
+
+沿用 `XRAY_LLM_MODE=live/replay/off`：live 请求网关并录制成功结果，网络故障时尝试明确标注的回放；replay 只读录制，不联网；off 关闭模型。401/403 直接报告鉴权问题，不重试。每次结构化生成的 JSON 格式最多修复一次，两次均不合格则退回调用方模板。
+
+助手同时保留上游的越界改写机制：初次回答后最多改写两次，每次回答与改写都执行 B 的引用和事实一致性检查。越界改写与 JSON 修复是两层独立限制，最坏情况下三次结构化生成各发两次请求，共六次 HTTP 调用；并非整个问答最多请求两次。
+
+录制键包含模型、网关地址、输入、Schema、温度、有效思考模式和任务 namespace。问答和改写额外包含案卷 id 与版本，不能用别的案卷录制凑答案。修复后的有效结果保存到原请求键。思考模式 false/true/不传参数的录制互相隔离；新增思考键后不复用此前旧录制，需要在当前版本重新录制演示。
+
+默认录制目录仍是被忽略的 `backend/data/cache/`。录制可能包含材料内容，属于敏感本地数据，不要提交或公开提供静态访问；不需要录制时构造 `LLM(cache_dir=None)`。该缓存不是加密保险箱，也不是防篡改证据。离线演示使用已保存的同一案卷，不要新建案卷后期待旧录制跨案卷命中。
+
+## 需要 A 显式接入的增强
+
+以下服务有测试，但没有自动改动 A 的分析流水线。
+
+```python
+from app.assistant import classify_reply, rewrite_report
+from app.llm import LLMExtractor
+
+# 只返回解释文案映射；不返回被替换的报告或判定。
+wording = rewrite_report(case, gateway=llm)
+# wording.explanations: A2 / change:A7 / onepager.found.0 → 文案
+# 未通过检查的项保留 A 原模板；检查 warnings，保留 mode/recorded_at。
+
+# 只判断“是否回答问题”，不验证回复真假。
+reply_info = classify_reply("许可证编号是什么？", "编号123456", gateway=llm)
+# pending_identifiers 仅为待查编号，requires_verification 始终为 True。
+
+# 由 A 决定是否打开补充抽取；先保留 RuleExtractor 的全部结果。
+svc.extractor = LLMExtractor(llm)
+```
+
+报告改写采用可选文案覆盖层。规则判定、金额、引用和版本对象不被改写；变化原因的引文还必须来自该变化 `because` 指定的新材料。模型补抽必须逐字引用原文；影响规则的数字、关键词和机构名仍要经过确定性抽取验证，不接受模型直接提供判定。
+
+`llm.search` 和 `llm.read_url` 目前仍是明确的不可用状态接口，不会联网，也不会把模型记忆当搜索结果。博查 `/gateway/bocha/v1/web-search` 与 UniFuncs 搜索/阅读的独立协议已确认；上游 `app/sources/web.py` 已实现实际搜索，这是另一条服务路径，不需要为 B 重复实现。B 模型探针的搜索/阅读返回 `blocked_protocol`，表示该探针尚未接适配器，不代表官方协议未知。不要把占位接口的 `unavailable` 当作“查询成功、没有负面”。
+
+## 验证和下一步
+
+执行过原有测试以及新增 B 测试，覆盖缓存损坏、修复回放、假引用、旧版选择、聊天不写案卷、PDF 部分页、坏图片、需求金额和现有 HTTP 路由。所有样本均为合成测试资料，不是对真实公司的评价。
+
+最终本地结果：`python -m pytest -q` 为 **177 passed**，有一个上游 Starlette/httpx 弃用警告。新增 14 项思考开关测试先观察到 12 项失败、2 项既有行为通过，再完成实现；覆盖文本/图片请求顶层参数、默认值/显式开关/留空、非法配置的安全失败、JSON 修复保留参数以及跨模式缓存隔离。集成新增报告短句后，保留上游 5 项测试，另补 4 项先失败再通过的回归：本版 AI 术语不串到旧版、AI 术语数字不能作为公司事实的证据，以及短句录制不能跨案卷/版本回放。此前的引用、旧版选择、规则权威性检查保持通过。
+
+2026-10-02 06:18 完成进程内 FastAPI HTTP + 真实 Tokendance 验收（合成材料、临时案卷及缓存）：需求识别约 1.42 秒；中文图片读取约 1.97 秒，公司名/姓名/金额均匹配；案例 C 完整问答约 5.72 秒，mode=model、引用 A2/R9、无越界改写；相同输入回放标记和录制时间正确；补充材料产生 v2 和 33 条变化；再查 v1 约 8.33 秒且引用版本仍是 1。两次聊天均不修改报告/原始数据。临时验收数据自动清理，不是可直接拿去离线演示的持久录制。单次延迟不是 SLA。
+
+06:28 合并 `6f16f2d` 后再次验收：含短句生成的建案卷约 8.59 秒；v1 问答约 7.74 秒；补充材料及短句生成约 4.23 秒；v2 后查 v1 约 5.19 秒。短句与问答均在线返回 model，问答引用 A2/R9；同输入回放及聊天不改报告再次通过。新增短句功能来自上游；B 处理助手与版本术语的集成冲突，并根据独立审查给短句录制补上案卷/版本 namespace，避免跨案卷或版本复用。
+
+真实公司搜索已沿 `app/sources/web.py` 验证，网页阅读只做了独立协议验证，`LLM.read_url` 未接入，细节见能力文档。仍需完成：真实宣传单 OCR 人工核对；A 选择并接入 `rewrite_report`、`classify_reply`、`LLMExtractor` 等 P1 服务；F 按 version 定位引用；浏览器端完整演示及学校网络断网演练。当前结果不等于真实公司判断准确率评测。没有进行公网部署；公开部署前由 A 加访问控制与用量保护。

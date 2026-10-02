@@ -13,13 +13,15 @@ cd backend
 - 接口文档：http://localhost:8000/docs
 - 断网备用的静态演示：http://localhost:8000/demo/
 - 测试：`.venv\Scripts\python -m pytest`（不连网、不需要 Key）
-- 新机器：`python -m venv .venv`，再 `.venv\Scripts\pip install -r requirements.txt`
+- 新机器：`python -m venv .venv`，再 `.venv\Scripts\python -m pip install -r requirements-b.txt`（包含共享依赖和图片验证所需的 Pillow）
 
 ### 接模型
 
-复制 `.env.example` 为 `.env`，填比赛 Tokendance 的地址、Key、模型名。不填也能跑：助手退回模板回答，需求识别退回关键词，图片材料提示手动粘贴。
+复制 `.env.example` 为 `.env`，填比赛 Tokendance 的地址、Key、模型名，Key 只保存在被 Git 忽略的本机 `.env`。当前地址为 `https://tokendance.space/gateway/v1`，文本与视觉均使用 `qwen3.8-max`，已在线验证 `TOKENDANCE_JSON_MODE=1`。`TOKENDANCE_ENABLE_THINKING=0` 默认关闭长思考，避免完整案卷问答因长思考超时；`1` 开启，显式留空则不传该参数，修改后重启服务。不填凭据也能跑：助手退回模板回答，需求识别退回关键词，图片材料提示手动粘贴。
 
-`XRAY_LLM_MODE`：`live` 调网关并把每次响应录进 `data/cache/`，网关挂了自动回放；`replay` 只回放（断网演示，界面会标"离线回放"）；`off` 不调模型。
+`XRAY_LLM_MODE`：`live` 调网关并把成功结果录进 `data/cache/`，网络故障时尝试明确标注的回放；`replay` 只回放（断网演示，界面会标"离线回放"）；`off` 不调模型。401/403 直接报告鉴权问题，不重试。
+
+2026-10-02 06:18（中国时间）已用更新的本机凭据跑通合成材料的真实网关验收：需求识别、中文图片读取、完整案卷问答、v2 后查询旧版和同输入回放。06:28 合并最新报告短句功能后再次通过，两次问答实测约 7.74 / 5.19 秒，均为模型回答且通过引用校验；不是延迟承诺或真实公司判断验收。测试使用进程内 HTTP 路由，尚未做浏览器端和公网部署验收。详见 [Tokendance 能力记录](../docs/tokendance.md)；B 的版本引用、缓存与待接入服务见 [B 接入说明](../docs/backend-b-integration.md)。
 
 ## 接口
 
@@ -106,4 +108,4 @@ cd backend
 - 场景只改排序和措辞，不改事实：加场景就是在 `app/scenarios/` 加一个 JSON。
 - 报告里的图（`app/analysis/charts.py`，存在 `Version.charts`）全部从记录和规则算出，不经过模型：注册资本说的 / 登记的 / 实缴的，承诺收益 vs 定存参考利率，宣称门店 vs 登记分支机构，股东构成，近 12 个月投诉，时间线。没查的值是 `null`，前端画成"没查"，不画成 0；不画风险分和雷达图；自然人股东不显示姓名；时间线不放"其他提及"类的政府网站结果，法院文书只写类别。
 - 报告生成时一并写好"一眼看懂"的短句和名词（`app/plain.py`，存在 `Version.glance`、`Version.terms`）：模型把规则写的长句缩成 18 字以内的短句，并补上词表里没有的名词（标"AI 解释"）。程序逐条校验：短句里的数字必须在原句里出现，不许越界，原句里"不需要""不等于"这类改变意思的词不能丢；名词必须在报告里一字不差出现，不能提这家公司。校验不过就丢掉，前端用原句。二次分析时原句没变的短句和名词直接沿用。接模型时建案卷多花约 4–6 秒（实测：满盈禾从约 1 秒到 7.7 秒，杭州银行从约 5 秒到 9 秒）；二次分析只缩新条目，约 3 秒。
-- 名词解释是人工写好的固定词表 `app/glossary.json`，不让模型现编：每条写明是什么、对你意味着什么、依据（数据来源 id 或法规名）。助手解释名词时引用它，出处写作 `[term.<id>]`。词表不算案卷记录，不能拿来给"非法集资"这类定性词放行；"非法集资是指……"这种解释词义的句子可以。
+- 名词解释优先使用人工固定词表 `app/glossary.json`；报告生成时可补充词表里没有的术语，标为 origin=model 和"AI 解释"，随 `Version.terms` 保存。助手读取所选版本的术语，出处写作 `[term.<id>]`。两类解释都不算公司调查记录，不能拿来给公司定性或用示例数字证明公司事实。

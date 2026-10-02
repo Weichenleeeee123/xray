@@ -57,7 +57,10 @@ def test_model_sees_glossary_and_may_cite_it(tmp_path):
     case = make_case(DEMO_COMPANY, flyer("manyinghe.txt"))
     fake = FakeLLM([_ans("实缴资本是股东实际拿出来的钱 [term.paid_capital]，它的实缴是 0 [finance.paid_capital]。")], tmp_path)
     msg = answer(case, ChatIn(text="实缴资本是什么"), fake)
-    ctx = json.loads(fake.calls[0][1]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])
+    # The gateway may prepend the output schema; inspect the case message, not its index.
+    case_message = next(m["content"] for m in fake.calls[0]
+                        if m["role"] == "user" and m["content"].startswith("<案卷数据>"))
+    ctx = json.loads(case_message.split("\n", 1)[1].rsplit("\n", 1)[0])
     assert any(e["id"] == "term.paid_capital" for e in ctx["名词解释"])
     assert msg.mode == "model" and "term.paid_capital" in msg.citations and msg.dropped == 0
 

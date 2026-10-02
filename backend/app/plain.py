@@ -152,7 +152,7 @@ def build_glance(case: Case, v: Version, llm: LLM, prev: Version | None = None) 
                         "报告文字": visible[:4000],
                         "已有词表": sorted(known)}, ensure_ascii=False)}]
         try:
-            out, reply = llm.chat_json(messages, _Gen)
+            out, reply = llm.chat_json(messages, _Gen, cache_namespace=f"case:{case.id}:v:{v.no}:glance")
             mode = reply.mode
             for i, s in out.short.items():
                 if i in todo and _short_ok(s, todo[i], data, ctx.get(i)):

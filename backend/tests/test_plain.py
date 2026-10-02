@@ -1,6 +1,8 @@
 """一眼看懂：报告生成时一并写的短句和名词。模型只缩句、补名词，每条都由程序校验。不连网。"""
 import json
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -76,6 +78,25 @@ def test_short_that_drops_a_meaning_flipping_qualifier_is_rejected():
     src = "私募基金管理人登记：未登记（它是持牌机构，不需要私募登记）"
     assert not _short_ok("未做私募管理人登记", src, "")
     assert _short_ok("持牌机构，不需要私募登记", src, "")
+
+
+@pytest.mark.parametrize("changed_identity", ["case", "version"])
+def test_glance_replay_stays_with_its_case_and_version(tmp_path, changed_identity):
+    case = make_case(DEMO_COMPANY, flyer("manyinghe.txt"))
+    live, _ = build_glance(case, case.versions[0], gen(tmp_path))
+    assert live.mode == "model"
+    replay_llm = FakeLLM([], tmp_path)
+    replay_llm.mode = "replay"
+    same, _ = build_glance(case, case.versions[0], replay_llm)
+    assert same.mode == "replay" and same.short == live.short
+    other = case.model_copy(deep=True)
+    if changed_identity == "case":
+        other.id = "another-synthetic-case"
+    else:
+        other.current = other.versions[0].no = 2
+    result, _ = build_glance(other, other.versions[0], replay_llm)
+    assert result.mode == "template" and result.short == {}
+    assert not replay_llm.calls
 
 
 def test_short_moved_to_the_wrong_item_is_rejected():
