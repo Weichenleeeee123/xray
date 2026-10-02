@@ -5,12 +5,14 @@ import { reportPresentation } from './research-events';
 import type { OfficeDirector } from './office-director';
 
 export function ReportDossier({
+  artSrc,
   state,
   scene,
   opening,
   onOpen,
   onRetry,
 }: {
+  artSrc: string;
   state: ResearchState;
   scene: ReturnType<OfficeDirector['sample']>;
   opening: boolean;
@@ -62,7 +64,7 @@ export function ReportDossier({
           <span className="dossier-cover">
             <img
               className="dossier-art"
-              src="/research-assets/investigation-dossier.png"
+              src={artSrc}
               alt=""
               draggable={false}
             />

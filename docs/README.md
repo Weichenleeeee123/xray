@@ -10,6 +10,7 @@
 | [三分钟演示操作单](demo-runbook.md) | 上台演示的人 | 演示前准备、讲稿和点击顺序、断网预案、排练检查表 |
 | [证据采集清单](evidence-collection.md) | 去官方网站查证的队友 | 案例 A、B 上台前要截图核实的记录，以及怎么存进证据包 |
 | [backend/README.md](../backend/README.md) | 开发 | 运行、配置项、接口、数据来源、规则约定 |
+| [qier.asia 部署与维护](deployment.md) | 部署与演示负责人 | 服务器、HTTPS、免登录访问、数据目录、维护操作与上线验收 |
 | [前端交接](frontend.md) | 改 `web/` 的人 | 页面结构、界面上要守的规则、自测清单 |
 | [等待动画的进度事件](progress-events.md) | 做等待动画的人 | `/api/cases/stream` 的事件格式；和 `app/progress.py` 一一对应，改格式先改代码 |
 | [Tokendance 网关](tokendance.md) | 接模型的人 | 网关能力实测、长思考超时的修法、探针命令 |

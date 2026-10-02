@@ -162,7 +162,7 @@ button {
   width: 11.55%;
   height: 33.2%;
   opacity: var(--door-progress);
-  background-image: url('/research-assets/office-panorama-door-open.png');
+  background-image: var(--image-door, url('/research-assets/office-panorama-door-open.q90.webp?v=9ebb2bcd1d1e'));
   background-repeat: no-repeat;
   background-position: 49.8% 0.6%;
   background-size: 865.8% 301.2%;
@@ -177,7 +177,7 @@ button {
   width: 8.85%;
   height: 28.3%;
   opacity: 1;
-  background-image: url('/research-assets/office-panorama-closed.png');
+  background-image: var(--image-background, url('/research-assets/office-panorama-closed.q90.webp?v=d216fe3093d4'));
   background-repeat: no-repeat;
   background-position: 50.05% 6%;
   background-size: 1129.9% 353.4%;
@@ -191,7 +191,7 @@ button {
   position: absolute;
   display: block;
   aspect-ratio: 1;
-  background-image: url('/research-assets/office-motion-elements.png');
+  background-image: var(--image-motion, url('/research-assets/office-motion-elements.q90.webp?v=9fa1b2430c9b'));
   background-repeat: no-repeat;
   background-size: 400% 200%;
   image-rendering: pixelated;
@@ -272,7 +272,7 @@ button {
 .desk-foreground {
   position: absolute;
   z-index: 10;
-  background-image: url('/research-assets/office-panorama-closed.png');
+  background-image: var(--image-background, url('/research-assets/office-panorama-closed.q90.webp?v=d216fe3093d4'));
   background-repeat: no-repeat;
   background-size: 100% 100%;
   clip-path: polygon(31.8% 72.2%, 68.2% 72.2%, 68.2% 96.8%, 59.4% 96.8%, 59.4% 82%, 40.6% 82%, 40.6% 96.8%, 31.8% 96.8%);
@@ -321,7 +321,7 @@ button {
 }
 
 .walk-cycle {
-  background-image: url('/research-assets/xiaoqi-walk-cycles.png');
+  background-image: var(--image-walk, url('/research-assets/xiaoqi-walk-cycles.q90.webp?v=5175ea0c27c3'));
   animation: sprite-cycle 610ms steps(3, end) infinite;
 }
 
@@ -332,7 +332,7 @@ button {
 .walk-front { background-position-y: 100%; }
 
 .action-cycle {
-  background-image: url('/research-assets/xiaoqi-action-cycles.png');
+  background-image: var(--image-action, url('/research-assets/xiaoqi-action-cycles.q90.webp?v=e9c7687ccda8'));
   animation: sprite-cycle 1.28s steps(3, end) infinite;
 }
 
@@ -361,7 +361,7 @@ button {
   left: 53%;
   width: 104%;
   aspect-ratio: 1;
-  background-image: url('/research-assets/goose-actions-v2.png');
+  background-image: var(--image-goose, url('/research-assets/goose-actions-v2.q90.webp?v=3d67729380fc'));
   background-repeat: no-repeat;
   background-position: 33.333333% 100%;
   background-size: 400% 300%;
@@ -1020,12 +1020,12 @@ button {
 .standing-body { opacity: calc(1 - var(--seated-mix)); }
 .seated-body {
   opacity: var(--seated-mix);
-  background-image: url('/research-assets/xiaoqi-action-cycles.png');
+  background-image: var(--image-action, url('/research-assets/xiaoqi-action-cycles.q90.webp?v=e9c7687ccda8'));
   background-position: var(--action-frame) 0%;
   transform: translateY(-22%);
 }
 .distance-walk {
-  background-image: url('/research-assets/xiaoqi-walk-cycles.png');
+  background-image: var(--image-walk, url('/research-assets/xiaoqi-walk-cycles.q90.webp?v=5175ea0c27c3'));
   background-position-x: var(--walk-frame);
   transition: opacity 90ms linear;
 }
@@ -1034,7 +1034,7 @@ button {
 .distance-walk.walk-right, .distance-walk.walk-left { background-position-y: 50%; }
 .distance-walk.walk-left { transform: scaleX(-1); }
 .planted-feet, .gesture-body {
-  background-image: url('/research-assets/xiaoqi-action-cycles.png');
+  background-image: var(--image-action, url('/research-assets/xiaoqi-action-cycles.q90.webp?v=e9c7687ccda8'));
   background-position: 33.333333% 100%;
   transform: translateY(17%);
 }
@@ -1059,7 +1059,7 @@ button {
   position: absolute;
   z-index: 10;
   inset: 0;
-  background: url('/research-assets/office-panorama-closed.png') 0 0 / 100% 100% no-repeat;
+  background: var(--image-background, url('/research-assets/office-panorama-closed.q90.webp?v=d216fe3093d4')) 0 0 / 100% 100% no-repeat;
   clip-path: polygon(46% 80%, 53.4% 80%, 55% 84%, 54% 93%, 55.3% 98%, 43.8% 98%, 45% 92%, 44.7% 84%);
   pointer-events: none;
 }

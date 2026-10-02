@@ -381,8 +381,29 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
 .as-head{padding:14px 18px 10px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .as-head h3{margin:0 0 2px;font-family:var(--serif);font-weight:900;font-size:17px}
 .as-head p{margin:0}
+.as-heading{flex:1;min-width:0;align-self:center}
+.qi-role{font:11px var(--sans);color:var(--ink-3);font-weight:400;white-space:nowrap;margin-left:4px}
+.qi-avatar{display:block;border:0;padding:0;background:none}
+.qi-perch{position:relative;height:100px;flex:0 0 100px}
+.qi-perch .qi-avatar{position:absolute;left:24px;bottom:-2px}
+.qi-perch .qi-sprite,.qi-welcome .qi-sprite{width:100px;height:100px}
+.qi-sprite{display:block;width:64px;height:64px;flex-shrink:0;background-image:url('/research-assets/xiaoqi-assistant-sprites.png');background-size:400% 200%;background-position:0 0;background-repeat:no-repeat;clip-path:var(--qi-clip-0);transform:translateY(var(--qi-foot-0));animation:qi-idle 7s step-end infinite}
+.qi-sprite[data-qi-state="thinking"]{background-position:0 100%;clip-path:var(--qi-clip-4);transform:translateY(var(--qi-foot-4));animation:qi-think 1.8s step-end infinite}
+/* Each step selects one complete cell; the long neutral hold keeps reading calm. */
+@keyframes qi-idle{
+  0%,68%,74%,100%{background-position:0 0;clip-path:var(--qi-clip-0);transform:translateY(var(--qi-foot-0))}
+  71%{background-position:33.333333% 0;clip-path:var(--qi-clip-1);transform:translateY(var(--qi-foot-1))}
+  82%,92%{background-position:66.666667% 0;clip-path:var(--qi-clip-2);transform:translateY(var(--qi-foot-2))}
+  87%,96%{background-position:100% 0;clip-path:var(--qi-clip-3);transform:translateY(var(--qi-foot-3))}
+}
+@keyframes qi-think{
+  0%,100%{background-position:0 100%;clip-path:var(--qi-clip-4);transform:translateY(var(--qi-foot-4))}
+  25%{background-position:33.333333% 100%;clip-path:var(--qi-clip-5);transform:translateY(var(--qi-foot-5))}
+  50%{background-position:66.666667% 100%;clip-path:var(--qi-clip-6);transform:translateY(var(--qi-foot-6))}
+  75%{background-position:100% 100%;clip-path:var(--qi-clip-7);transform:translateY(var(--qi-foot-7))}
+}
 .as-x{display:none;background:none;border:0;font-size:22px;line-height:1;padding:2px 6px;color:var(--ink-3)}
-.as-body{flex:1;overflow:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px}
+.as-body{flex:1;min-height:0;overflow:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px}
 .as-intro .chips{margin-bottom:10px}
 .msg.me{align-self:flex-end;max-width:90%;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
 .msg.me .bubble{background:var(--ink);color:var(--paper-hi);padding:7px 12px;border-radius:10px 10px 3px 10px;font-size:14px;white-space:pre-wrap}
@@ -404,7 +425,8 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
 .mode.replay{color:var(--amber)} .mode.template{color:var(--grey)} .mode.guard{color:var(--red)} .mode.model{color:var(--green)}
 .rw{margin-top:6px;font-size:12px;color:var(--ink-3)}
 .rw summary{cursor:pointer;color:var(--amber);font-weight:600}
-.typing{align-self:flex-start;display:flex;gap:4px;padding:11px 13px;background:var(--paper);border:1px solid var(--rule);border-radius:4px}
+.typing{align-self:flex-start;display:flex;align-items:center;gap:4px;padding:11px 13px;background:var(--paper);border:1px solid var(--rule);border-radius:4px}
+.typing span{font-size:12px;color:var(--ink-3);margin-right:5px}
 .typing i{width:6px;height:6px;border-radius:50%;background:var(--ink-3);animation:dot 1s infinite}
 .typing i:nth-child(2){animation-delay:.15s} .typing i:nth-child(3){animation-delay:.3s}
 @keyframes dot{0%,60%,100%{opacity:.25}30%{opacity:1}}
@@ -413,8 +435,19 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
 .sel-chip button{background:none;border:0;color:var(--bone-2);padding:0 2px;font-size:13px;line-height:1}
 .as-input{display:flex;gap:8px;padding:10px 18px 16px;align-items:flex-end}
 .as-input textarea{flex:1;min-height:42px;max-height:140px}
-.fab{display:none;position:fixed;right:16px;bottom:16px;z-index:50;background:var(--film);color:var(--bone);border:0;border-radius:999px;padding:12px 20px;font-weight:700;box-shadow:0 10px 24px -8px rgba(0,0,0,.5)}
-.fab em{font-style:normal;background:var(--bone);color:var(--film);border-radius:999px;padding:0 6px;margin-left:6px;font-size:12px}
+.fab{display:none;position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));z-index:50;background:none;color:var(--ink);border:0;padding:0;transition:transform .2s;flex-direction:column}
+.fab:hover{transform:translateY(-3px)}
+.fab .qi-sprite{width:88px;height:88px}
+.qi-fab-caption{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.3;text-shadow:0 1px 3px var(--paper-hi),0 -1px 3px var(--paper-hi)}
+.qi-fab-caption b{font-family:var(--serif);font-size:16px}
+.qi-fab-caption>span{font-size:11px;color:var(--ink-3)}
+.fab em{position:absolute;right:-4px;top:-5px;min-width:22px;height:22px;display:grid;place-items:center;font-style:normal;background:var(--film);color:var(--bone);border:2px solid var(--paper-hi);border-radius:999px;padding:0 4px;font-size:11px}
+.case-layout:has(.assist.open) + .fab{visibility:hidden}
+@media (prefers-reduced-motion:reduce){
+  .qi-sprite,.qi-sprite[data-qi-state="thinking"],.typing i{animation:none}
+  .qi-avatar,.fab{transition:none}
+  .qi-avatar:hover,.fab:hover{transform:none}
+}
 
 /* ---------- 对话框 ---------- */
 .dlg{border:0;padding:0;border-radius:6px;max-width:min(760px,calc(100vw - 32px));width:100%;max-height:calc(100vh - 48px);background:var(--paper-hi);color:var(--ink);box-shadow:0 30px 70px -20px rgba(0,0,0,.55)}
