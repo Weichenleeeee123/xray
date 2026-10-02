@@ -121,7 +121,7 @@ def add_supplement(case_id: str, body: SupplementIn) -> Case:
 @app.post("/api/cases/{case_id}/chat")
 def chat(case_id: str, body: ChatIn) -> ChatMessage:
     case = _case(case_id)
-    reply = answer(case, body, llm)
+    reply = answer(case, body, llm, version_no=body.version)
     case.chat += [ChatMessage(role="user", text=body.text, refs=body.refs, version=reply.version,
                               created_at=reply.created_at), reply]
     store.save(case)

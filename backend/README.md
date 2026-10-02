@@ -21,7 +21,20 @@ cd backend
 
 `XRAY_LLM_MODE`：`live` 调网关并把成功结果录进 `data/cache/`，网络故障时尝试明确标注的回放；`replay` 只回放（断网演示，界面会标"离线回放"）；`off` 不调模型。401/403 直接报告鉴权问题，不重试。
 
-2026-10-02 06:18（中国时间）已用更新的本机凭据跑通合成材料的真实网关验收：需求识别、中文图片读取、完整案卷问答、v2 后查询旧版和同输入回放。06:28 合并最新报告短句功能后再次通过，两次问答实测约 7.74 / 5.19 秒，均为模型回答且通过引用校验；不是延迟承诺或真实公司判断验收。测试使用进程内 HTTP 路由，尚未做浏览器端和公网部署验收。详见 [Tokendance 能力记录](../docs/tokendance.md)；B 的版本引用、缓存与待接入服务见 [B 接入说明](../docs/backend-b-integration.md)。
+2026-10-02 06:18（中国时间）已用更新的本机凭据跑通合成材料的真实网关验收：需求识别、中文图片读取、完整案卷问答、v2 后查询旧版和同输入回放。06:28 合并报告短句功能后再次通过，两次问答实测约 7.74 / 5.19 秒，均为模型回答且通过引用校验；不是延迟承诺或真实公司判断验收。这两轮历史测试使用进程内 HTTP 路由，不是浏览器验收。详见 [Tokendance 能力记录](../docs/tokendance.md)；B 的版本引用、缓存与待接入服务见 [B 接入说明](../docs/backend-b-integration.md)。没有进行公网部署。
+
+### 浏览器演示验证
+
+额外安装 `requirements-browser.txt`，在装有 Microsoft Edge 的 Windows 上运行：
+
+```powershell
+.venv\Scripts\python -m pip install -r requirements-browser.txt
+.venv\Scripts\python tools/acceptance_browser.py
+# 以下命令会调用已配置的真实网关，产生 API 用量：
+.venv\Scripts\python tools/acceptance_browser.py --live
+```
+
+其他平台需要自行准备 Playwright Chromium。脚本只启动本机临时端口，使用新建的隔离案卷和缓存，不覆盖现有用户数据。默认关闭模型；`--live` 验证真实 A/B 问答、两次补充、旧版引用、A4 PDF、窄屏与静态备用页，然后恢复本次测试自己的提问前快照，在阻断外部 HTTP 的条件下验证同案卷回放和未命中提示。输出在仓库被忽略的 `.tmp/browser-acceptance-*/`，`result.json` 的 `completed` 才是本次结果；失败不可当通过。最新 [本机完整验收记录](../docs/2026-10-02-browser-acceptance.md) 已通过。学校实际网络和三分钟讲稿仍需人工排练，见 [演示操作单](../docs/demo-runbook.md)。
 
 ## 接口
 
@@ -35,7 +48,7 @@ cd backend
 | POST | `/api/cases` | 建案卷，生成第 1 版报告。`company_name`、`need`，可选 `scenario`、`for_whom`、`amount`、`material_text` |
 | GET | `/api/cases`、`/api/cases/{id}` | 案卷列表；单个案卷（全部版本、原始数据、对话） |
 | POST | `/api/cases/{id}/supplements` | 二次分析。`kind`：`material` 新材料 / `reply` 对方回复 / `need` 改需求；`text` 必填 |
-| POST | `/api/cases/{id}/chat` | AI 助手。`text`，可选 `refs`（选中的条目 id） |
+| POST | `/api/cases/{id}/chat` | AI 助手。`text`，可选 `refs`（选中的条目 id）、`version`（正在浏览的版本，正整数） |
 | GET | `/api/cases/{id}/onepager?audience=family\|teller` | 一页结论：家人版 / 网点版 |
 | GET | `/api/demo?case=C`、`/api/demo/cases` | 演示案例的输入和要补充的信息（`data/demo_cases.json`） |
 | GET | `/api/licenses/check?name=` | 查机构是否在银行业金融机构名单里 |

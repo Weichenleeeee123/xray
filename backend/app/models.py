@@ -432,6 +432,7 @@ class SupplementIn(BaseModel):
 class ChatIn(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     refs: list[str] = Field(default_factory=list)
+    version: int | None = Field(default=None, ge=1, strict=True)  # 正在浏览的版本；不选条目也能问旧版
 
 
 class ReadResult(BaseModel):

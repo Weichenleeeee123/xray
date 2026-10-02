@@ -13,7 +13,7 @@ from app.analysis.diff import diff
 from app.analysis.extract import ClaimExtractor, RuleExtractor
 from app.analysis.followup import build_questions
 from app.analysis.report import onepager
-from app.analysis.signals import build_signals
+from app.analysis.signals import build_signals, official_pack_items
 from app.analysis.verify import verify
 from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, MissingItem, RawRecord, Signal, Source,
                         SupplementIn, Version)
@@ -116,6 +116,11 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     amount = inp.amount or intake.amount
     signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
                             collected.others, collected.web, web_refs, amount)
+    pack_items = official_pack_items(inp.company_name, [raw_by_id[rid] for rid in collected_ids])
+    if pack_items:
+        credit = next(s for s in signals if s.key == "credit")
+        credit.items = pack_items + credit.items
+        credit.flags = sum(i.status == "bad" for i in credit.items)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
     link_refs(assertions, missing, signals, by_source, texts)
     charts = build_charts(ext, company, assertions, by_source, collected.web, web_refs, collected.complaints,

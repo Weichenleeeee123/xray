@@ -80,9 +80,10 @@ def test_structured_overreach_rewrite_still_checks_authoritative_verdict(tmp_pat
     conflict = {"segments": [{"text": "收益承诺与记录相符", "citations": ["A2"]}]}
     fake = FakeLLM([json.dumps(bad), json.dumps(conflict)], tmp_path)
     result = answer(case, ChatIn(text="解释收益承诺"), fake)
-    assert result.rewrites == 1 and result.blocked == ["很可能"]
-    assert result.not_found and "与记录相符" not in result.text
-    assert case.model_dump_json() == before and len(fake.calls) == 2
+    assert result.rewrites == 2 and result.blocked == ["很可能"]
+    assert result.not_found and result.mode == "guard" and result.dropped > 0
+    assert "与记录相符" not in result.text
+    assert case.model_dump_json() == before and len(fake.calls) == 3
 
 
 def test_glossary_example_cannot_supply_a_company_yield_number(tmp_path):
