@@ -242,6 +242,7 @@ export default function Home() {
   }, [begin, cancelResolution]);
   return (
     <main className="office-page">
+      <div className="office-layout">
       <section
         className={`office-stage status-${status} breeze-active live-office ${opening ? 'report-opening' : ''}`}
         aria-label="小企企业研究室"
@@ -434,80 +435,6 @@ export default function Home() {
             <a href="/xray/#/me">使用说明</a>
           </nav>
         </details>
-        {idle && (
-          <div className="query-layer visible">
-            <form className="home-query" onSubmit={submit}>
-              <span className="query-kicker">
-                <Sparkles /> 查企业
-              </span>
-              <h1>想先查哪家公司？</h1>
-              <label className="sr-only" htmlFor="company-query">
-                公司名称
-              </label>
-              <div className="prompt-bar">
-                <Search aria-hidden="true" />
-                <Input
-                  id="company-query"
-                  value={query}
-                  onChange={(e) => {
-                    cancelResolution();
-                    setQuery(e.target.value);
-                    setSelectedDemo(null);
-                  }}
-                  placeholder="输入公司名称，简称也行"
-                  autoComplete="organization"
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
-                      event.preventDefault();
-                  }}
-                  maxLength={80}
-                />
-                <Button type="submit" disabled={query.trim().length < 2 || resolving}>
-                  {resolving ? '正在找这家公司' : '开始查询'}
-                </Button>
-              </div>
-              {candidates && (
-                <div className="name-cands" role="group" aria-label="同名的公司">
-                  <p>{candidates.note ?? '请选一家'}</p>
-                  {candidates.candidates.map((c) => (
-                    <button key={c.name} type="button" className="name-cand" onClick={() => pick(c.name)}>
-                      <b>{c.name}</b>
-                      <small>{candidateLine(c)}</small>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {resolutionIssue && (
-                <div className="name-cands" role="group" aria-label="确认公司全称">
-                  <p role="status">{resolutionIssue === 'not-found'
-                    ? '没有找到匹配的公司。请检查名称；如果已输入公司全称，可以确认后继续查询。'
-                    : '暂时无法确认公司名称。请重试，或确认已输入公司全称后继续查询。'}</p>
-                  <button type="submit" className="name-cand"><b>重试名称匹配</b></button>
-                  <button type="button" className="name-cand" onClick={() => pick(query.trim())}>
-                    <b>我已确认是公司全称，继续查询</b><small>{query.trim()}</small>
-                  </button>
-                </div>
-              )}
-              <label className="need-field" htmlFor="research-need">
-                研究需求（选填）
-                <Input
-                  id="research-need"
-                  value={need}
-                  onChange={(e) => { cancelResolution(); setNeed(e.target.value); }}
-                  placeholder="例如：了解这家公司的登记、资质与公开资料"
-                  maxLength={500}
-                />
-              </label>
-              <DemoExamples selected={selectedDemo} onSelect={(demo) => {
-                cancelResolution();
-                setQuery(demo.input.company_name);
-                setNeed(demo.input.need);
-                setSelectedDemo(demo);
-              }} onRemove={() => { cancelResolution(); setSelectedDemo(null); }} />
-              <p>资料覆盖情况不代表安全评级。材料与案卷仅此浏览器可见；主动提交的评价才会公开。</p>
-            </form>
-          </div>
-        )}
         {testMode && (
           <div className="test-mode-badge">
             测试事件 · {testMode} · 非真实查询
@@ -699,6 +626,81 @@ export default function Home() {
           </dialog>
         )}
       </section>
+        {idle && (
+          <div className="query-layer visible">
+            <form className="home-query" onSubmit={submit}>
+              <span className="query-kicker">
+                <Sparkles /> 查企业
+              </span>
+              <h1>想先查哪家公司？</h1>
+              <label className="sr-only" htmlFor="company-query">
+                公司名称
+              </label>
+              <div className="prompt-bar">
+                <Search aria-hidden="true" />
+                <Input
+                  id="company-query"
+                  value={query}
+                  onChange={(e) => {
+                    cancelResolution();
+                    setQuery(e.target.value);
+                    setSelectedDemo(null);
+                  }}
+                  placeholder="输入公司名称，简称也行"
+                  autoComplete="organization"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
+                      event.preventDefault();
+                  }}
+                  maxLength={80}
+                />
+                <Button type="submit" disabled={query.trim().length < 2 || resolving}>
+                  {resolving ? '正在找这家公司' : '开始查询'}
+                </Button>
+              </div>
+              {candidates && (
+                <div className="name-cands" role="group" aria-label="同名的公司">
+                  <p>{candidates.note ?? '请选一家'}</p>
+                  {candidates.candidates.map((c) => (
+                    <button key={c.name} type="button" className="name-cand" onClick={() => pick(c.name)}>
+                      <b>{c.name}</b>
+                      <small>{candidateLine(c)}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {resolutionIssue && (
+                <div className="name-cands" role="group" aria-label="确认公司全称">
+                  <p role="status">{resolutionIssue === 'not-found'
+                    ? '没有找到匹配的公司。请检查名称；如果已输入公司全称，可以确认后继续查询。'
+                    : '暂时无法确认公司名称。请重试，或确认已输入公司全称后继续查询。'}</p>
+                  <button type="submit" className="name-cand"><b>重试名称匹配</b></button>
+                  <button type="button" className="name-cand" onClick={() => pick(query.trim())}>
+                    <b>我已确认是公司全称，继续查询</b><small>{query.trim()}</small>
+                  </button>
+                </div>
+              )}
+              <label className="need-field" htmlFor="research-need">
+                研究需求（选填）
+                <Input
+                  id="research-need"
+                  value={need}
+                  onChange={(e) => { cancelResolution(); setNeed(e.target.value); }}
+                  placeholder="例如：了解这家公司的登记、资质与公开资料"
+                  maxLength={500}
+                />
+              </label>
+              <DemoExamples selected={selectedDemo} onSelect={(demo) => {
+                cancelResolution();
+                setQuery(demo.input.company_name);
+                setNeed(demo.input.need);
+                setSelectedDemo(demo);
+              }} onRemove={() => { cancelResolution(); setSelectedDemo(null); }} />
+              <p>资料覆盖情况不代表安全评级。材料与案卷仅此浏览器可见；主动提交的评价才会公开。</p>
+            </form>
+          </div>
+        )}
+      </div>
     </main>
   );
 }
