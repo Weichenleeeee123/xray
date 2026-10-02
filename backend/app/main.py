@@ -4,14 +4,19 @@
 打开：http://localhost:8000（前端 web/）　接口文档：http://localhost:8000/docs　断网备用：/demo/
 """
 import json
+import logging
+import queue
+import threading
+import time
+from collections.abc import Callable
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import config
+from app import config, progress
 from app.analysis.pipeline import NoNewReviews, load_services, new_case, refresh_reviews, resolve, supplement
 from app.analysis.report import onepager
 from app.assistant import answer
@@ -30,6 +35,7 @@ from app.store import CaseStore
 MAX_UPLOAD = 15 * 1024 * 1024
 DEMO_CASES = config.DATA_DIR / "demo_cases.json"
 
+log = logging.getLogger("xray")
 svc = load_services()
 llm = LLM()
 store = CaseStore(config.CASES_DIR)
@@ -96,10 +102,67 @@ def company_profile(name: str = Query(min_length=2)) -> dict:
             "records": c.records}
 
 
+def _intake(text: str, scenario: str | None, company: str) -> Intake:
+    progress.start("intake")
+    info = run_intake(text, llm, scenario=scenario, company=company)
+    progress.done("intake", text=progress.intake_text(info))
+    return info
+
+
+def _create(body: CaseIn) -> Case:
+    info = _intake(body.need, body.scenario, body.company_name)
+    return store.save(finish_version(new_case(body, info, svc), llm))
+
+
+def _supplement(case: Case, body: SupplementIn) -> Case:
+    info = _intake(body.text, body.scenario, case.case.company_name) if body.kind == "need" else None
+    return store.save(finish_version(supplement(case, body, info, svc), llm))
+
+
+def _stream(first: dict, work: Callable[[], Case]) -> StreamingResponse:
+    """边做边发进度：一行一个 JSON（NDJSON）。begin → 各步 start/done → 最后一行 case（整个案卷）或 error。
+
+    t 是从收到请求起的秒数。活在后台线程里做，客户端中途断开也会做完、存好案卷。
+    """
+    events: queue.Queue = queue.Queue()
+    t0 = time.monotonic()
+
+    def put(event: dict) -> None:
+        events.put({**event, "t": round(time.monotonic() - t0, 2)})
+
+    def run() -> None:
+        try:
+            with progress.reporting(put):
+                case = work()
+            put({"type": "case", "case": case.model_dump(mode="json")})
+        except HTTPException as e:
+            put({"type": "error", "status": e.status_code, "message": str(e.detail)})
+        except Exception:  # noqa: BLE001 —— 出错要告诉前端，不能让流悄悄断掉
+            log.exception("stream failed")
+            put({"type": "error", "status": 500, "message": "生成失败，请重试；多次失败请查看后端日志"})
+        finally:
+            events.put(None)
+
+    put(first)
+    threading.Thread(target=run, daemon=True).start()
+
+    def lines():
+        while (event := events.get()) is not None:
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/api/cases")
 def create_case(body: CaseIn) -> Case:
-    info = run_intake(body.need, llm, scenario=body.scenario, company=body.company_name)
-    return store.save(finish_version(new_case(body, info, svc), llm))
+    return _create(body)
+
+
+@app.post("/api/cases/stream")
+def create_case_stream(body: CaseIn) -> StreamingResponse:
+    """同 /api/cases，但边查边发进度，给等待动画用。事件格式见 docs/progress-events.md。"""
+    return _stream(progress.begin("create", body.company_name, intake=True), lambda: _create(body))
 
 
 @app.get("/api/cases")
@@ -114,9 +177,15 @@ def get_case(case_id: str) -> Case:
 
 @app.post("/api/cases/{case_id}/supplements")
 def add_supplement(case_id: str, body: SupplementIn) -> Case:
+    return _supplement(_case(case_id), body)
+
+
+@app.post("/api/cases/{case_id}/supplements/stream")
+def add_supplement_stream(case_id: str, body: SupplementIn) -> StreamingResponse:
+    """同 /supplements，但边查边发进度。案卷不存在照常回 404，不开流。"""
     case = _case(case_id)
-    info = run_intake(body.text, llm, scenario=body.scenario, company=case.case.company_name) if body.kind == "need" else None
-    return store.save(finish_version(supplement(case, body, info, svc), llm))
+    return _stream(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
+                   lambda: _supplement(case, body))
 
 
 @app.post("/api/cases/{case_id}/resolve")

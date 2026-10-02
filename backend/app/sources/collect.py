@@ -7,6 +7,7 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from app import progress
 from app.models import AmacHit, CompanyProfile, Coverage, LicenseHit, RawRecord, RegistryHit, Source
 from app.reviews import review_record
 from app.sources.amac_detail import summary as amac_summary
@@ -76,6 +77,7 @@ def _real_amac(name: str, svc) -> tuple[AmacHit, list[RawRecord]] | None:
     index = svc.registries.get(AMAC_ID)
     if index is None:
         return None
+    progress.start("amac")
     hit = index.lookup(name)
     amac = AmacHit(coverage=Coverage.found if hit.found else Coverage.not_found, registered=hit.found,
                    record=hit.record, as_of=hit.as_of, count=hit.count)
@@ -122,19 +124,28 @@ def collect(name: str, svc) -> Collected:
     collected = _collect(name, svc)
     store = getattr(svc, "reviews", None)
     if store is not None:
+        progress.start("reviews")
         collected.reviews = store.all(name)
         if record := review_record(collected.reviews):
             collected.records.append(record)
+        progress.done("reviews", collected.records, coverage=None if collected.reviews else Coverage.not_found)
+    else:
+        progress.skip("reviews", "评价功能没开")
     return collected
 
 
 def _collect(name: str, svc) -> Collected:
     sources = dict(svc.sources)
+    progress.start("lists")
     lic = svc.licenses.lookup(name)
     others, list_records = _official_lists(name, svc)
     records = [_license_record(lic, svc.licenses.meta), *list_records]
+    progress.done("lists", records)
     real_amac = _real_amac(name, svc)
+    if real_amac:
+        progress.done("amac", real_amac[1])
 
+    progress.start("registry")  # 企查查要查好几秒，算在这一步里
     pack: Pack | None = svc.packs.get(name)
     # 证据包里有人工采集的登记信息就用它；没有（只摘了几份文书）才查商业接口
     commercial = svc.commercial.fetch(name) if svc.commercial and not (pack and "registry" in pack.sections) else None
@@ -158,17 +169,21 @@ def _collect(name: str, svc) -> Collected:
         records.append(_raw("registry", "企业登记信息", "demo", Coverage.not_covered,
                             note="没查：还没有这家公司的登记数据。真实公司要人工到国家企业信用信息公示系统查询，存进证据包，"
                                  "或者配置商业接口"))
+    progress.done("registry", records)
+    progress.skip("pack", "没有人工摘录的材料")
 
     if real_amac:
         amac, amac_records = real_amac
         records += amac_records
     else:
+        progress.start("amac")
         amac = svc.amac.lookup(name)
         amac_record = _raw("amac", "私募基金管理人公示", "demo", amac.coverage,
                            {"已登记": amac.registered} if amac.coverage is not Coverage.not_covered else None,
                            as_of=svc.amac.as_of, note="演示数据" if amac.coverage is not Coverage.not_covered else
                            "没查：中基协名单还没下载，也没有人工查询记录")
         records.append(amac_record)
+        progress.done("amac", [amac_record])
 
     complaints = svc.complaints.get(name)
     if complaints:
@@ -177,11 +192,17 @@ def _collect(name: str, svc) -> Collected:
     web = None
     is_demo = company is not None and sources["registry"].kind == "demo"
     if svc.web and not is_demo:  # 虚构公司不联网搜，搜了也是空的
+        progress.start("web")
         web = svc.web.findings(name)
         records += _web_records(web)
-    elif not complaints:
+        progress.done("web", records)
+    elif complaints:
+        progress.start("web")
+        progress.done("web", records)
+    else:
         records.append(_raw("complaints", "投诉平台", "demo", Coverage.not_covered,
                             note="没查：还没有这家公司的投诉数据，联网搜索也没开"))
+        progress.skip("web", "没联网搜：虚构的演示公司" if is_demo else "没联网搜：没配模型网关，或处于离线模式")
     return Collected(company=company, license=lic, amac=amac, complaints=complaints, as_of=date.fromisoformat(as_of),
                      sources=sources, records=records, others=others, note=note, web=web)
 
@@ -234,6 +255,10 @@ def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], real_amac
             sources[sid] = Source(id=sid, name=SECTIONS[sid], kind="collected", note="证据包里没有这一项")
             records.append(_raw(sid, SECTIONS[sid], "collected", Coverage.not_covered,
                                 note="没查：证据包里没有这一项"))
+    progress.done("registry", records)
+    if not real_amac:
+        progress.start("amac")
+        progress.done("amac", records)
     for s in pack.self_description:
         records.append(_raw("self_description", s.title or "公司自己的公开说法", "web", Coverage.found, s.data,
                             retrieved_at=s.retrieved_at, url=s.source.url, screenshot=s.screenshot,
@@ -243,9 +268,16 @@ def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], real_amac
         records.append(_raw(s.source.id, s.title or s.source.name, "collected", Coverage.found, s.data,
                             retrieved_at=s.retrieved_at, as_of=s.source.as_of, url=s.source.url,
                             screenshot=s.screenshot, note=s.source.note))
+    progress.start("pack")
+    progress.done("pack", records)
     as_of = date.fromisoformat((pack.as_of or now())[:10])
-    web = svc.web.findings(pack.company) if svc.web else None
-    if web:
+    web = None
+    if svc.web:
+        progress.start("web")
+        web = svc.web.findings(pack.company)
         records += _web_records(web)
+        progress.done("web", records)
+    else:
+        progress.skip("web", "没联网搜：没配模型网关，或处于离线模式")
     return Collected(company=company, license=lic, amac=amac, complaints=complaints, as_of=as_of,
                      sources=sources, records=records, others=others, note=pack.note, web=web)

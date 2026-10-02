@@ -20,7 +20,7 @@ from app.analysis.verify import verify
 from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, JudgmentChange, MissingItem, RawRecord,
                         ResolveIn, Signal, Source, SupplementIn, Version)
 from app.scenarios import claim_rank, get_scenario
-from app import config
+from app import config, progress
 from app.reviews import SOURCE_ID as REVIEW_SOURCE, ReviewStore, review_record
 from app.sources.amac_detail import AmacDetailClient
 from app.sources.catalog import build_sources, registry_sources
@@ -110,6 +110,7 @@ def link_refs(assertions: list[Assertion], missing: list[MissingItem], signals: 
 
 def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected: Collected,
                   collected_ids: list[str], raw: list[RawRecord], svc: Services) -> Version:
+    progress.start("rules")
     scenario = get_scenario(intake.scenario)
     texts = [r for r in raw if r.source_id in TEXT_SOURCES and isinstance(r.content, str)]
     text = "\n".join(t.content for t in texts)
@@ -165,6 +166,8 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
                   questions=questions, onepager=page, charts=charts, judgments=judges)
     if no == 1:
         ver.judgments, ver.judgment_changes, ver.judgment_summary = update_judgments([], judges, {}, 1)
+    checks = sum(len(s.items) for s in signals)
+    progress.done("rules", text=f"对照了 {len(assertions)} 条说法、{checks} 项检查" if assertions else f"做了 {checks} 项检查")
     return ver
 
 

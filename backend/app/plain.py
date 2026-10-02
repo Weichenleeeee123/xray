@@ -13,6 +13,7 @@ import re
 
 from pydantic import BaseModel, Field
 
+from app import progress
 from app.assistant import SPECULATION, VERDICT_WORDS, citable, evidence_text, overreach
 from app.glossary import find_terms, load_glossary
 from app.llm import LLM, LLMError
@@ -177,5 +178,15 @@ def finish_version(case: Case, llm: LLM) -> Case:
     """给最新一版补上一眼看懂的短句和名词解释。建案卷、二次分析之后调用。"""
     v = case.versions[-1]
     prev = case.versions[-2] if len(case.versions) > 1 else None
+    progress.start("plain")
     v.glance, v.terms = build_glance(case, v, llm, prev)
+    progress.done("plain", text=_plain_text(v))
     return case
+
+
+def _plain_text(v: Version) -> str:
+    if v.glance.mode == "template":
+        return "没用模型，报告用规则原句"
+    gen = sum(t.origin == "model" for t in v.terms)
+    return (f"写好 {len(v.glance.short)} 条短句" + (f"，补了 {gen} 个名词解释" if gen else "") +
+            ("（离线回放）" if v.glance.mode == "replay" else ""))

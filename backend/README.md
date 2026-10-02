@@ -48,6 +48,7 @@ cd backend
 | POST | `/api/cases` | 建案卷，生成第 1 版报告。`company_name`、`need`，可选 `scenario`、`for_whom`、`amount`、`material_text` |
 | GET | `/api/cases`、`/api/cases/{id}` | 案卷列表；单个案卷（全部版本、原始数据、对话） |
 | POST | `/api/cases/{id}/supplements` | 二次分析。`kind`：`material` 新材料 / `reply` 对方回复 / `need` 改需求；`text` 必填 |
+| POST | `/api/cases/stream`、`/api/cases/{id}/supplements/stream` | 同上两个，但边查边发进度（NDJSON，一行一个事件），最后一行是整个案卷。给等待动画用，格式见 `docs/progress-events.md` |
 | POST | `/api/cases/{id}/reviews` | 把这家公司最新的用户评价放进案卷，出一版新报告（"更新用户评价"）；评价没变返回 409 |
 | GET | `/api/reviews?company=&author=` | 某家公司的用户评价：条数、1–5 星分布（不算平均分）、评价列表（新的在前；`mine` 标出这个浏览器写的） |
 | POST | `/api/reviews` | 写评价：`company`、`stars` 1–5、`relation`（customer / employee / applicant / other）、`text` 10–500 字、可选 `nickname`、`author`（浏览器匿名编号）。同一编号对同一家公司只能写一条，重复 409 |
