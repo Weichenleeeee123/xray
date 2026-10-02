@@ -17,6 +17,19 @@ function harness() {
   return { ctx, run, listeners, node };
 }
 
+test('redesigned report keeps Xiaoqi animated and selected references visible during a request', async () => {
+  const h = harness();
+  h.run(`isDesignReview=()=>true; S.selected.add('A2'); api=()=>new Promise(resolve=>globalThis.resolveRequest=resolve);`);
+  assert.match(h.run('qiLauncherContent()'), /data-qi-state="idle"/);
+  assert.match(h.run('qiLauncherContent()'), /aria-label="已选 1 条"/);
+  const pending = h.run(`ask('解释这一条')`);
+  assert.match(h.run('qiLauncherContent()'), /data-qi-state="thinking"/);
+  assert.match(h.run('qiLauncherContent()'), /思考中/);
+  h.run(`resolveRequest({role:'assistant',text:'答复',version:1})`);
+  await pending;
+  assert.match(h.run('qiLauncherContent()'), /data-qi-state="idle"/);
+});
+
 test('asks about viewed version, including unselected questions and typed references', async () => {
   const h = harness();
   h.run(`api=async (url, opts)=>{ globalThis.sent=opts.body; return {role:'assistant'}; }; S.selected=new Set(['A2','M1','Q1','risk.bank_list','R3']);`);

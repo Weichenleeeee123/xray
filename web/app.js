@@ -1308,10 +1308,6 @@ function qiAvatarHtml() {
   return `<button type="button" class="qi-avatar" data-act="open-assist" aria-label="向小企提问" title="向小企提问">${qiSpriteHtml()}</button>`;
 }
 function qiLauncherContent() {
-  // Keep the report's compact brass launcher; the assistant panel retains its animated avatar.
-  if (isDesignReview() && /^#\/case\//.test(location.hash)) {
-    return `小企${S.selected.size ? `<em aria-label="已选 ${S.selected.size} 条">${S.selected.size}</em>` : ''}`;
-  }
   return `${qiSpriteHtml()}<span class="qi-fab-caption"><b>小企</b><span data-qi-caption>${qiThinking() ? '思考中…' : '问问报告'}</span></span>${S.selected.size ? `<em aria-label="已选 ${S.selected.size} 条">${S.selected.size}</em>` : ''}`;
 }
 function qiLauncherHtml() {
