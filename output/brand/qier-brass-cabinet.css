@@ -1,0 +1,31 @@
+/* 企er · 黄铜蓝柜 | 已确认配色 v1.0 | 2026-10-03 */
+/* 使用说明：docs/2026-10-03-qier-color-palette.md */
+:root {
+  --qier-navy: #222e39;
+  --qier-paper: #f7f0e0;
+  --qier-brass: #b88b4c;
+  --qier-brass-light: #e2bc78;
+  --qier-wood: #795037;
+
+  --qier-ink: #29333a;
+  --qier-text-secondary: #6f675b;
+  --qier-paper-inset: #ede2cd;
+  --qier-divider: #d9ccb4;
+  --qier-poster: #24323e;
+  --qier-poster-text: #f5ecd9;
+  --qier-chart-teal: #527a80;
+
+  --qier-difference: #a44738;
+  --qier-difference-bg: #f4e2d9;
+  --qier-pending: #8a641f;
+  --qier-pending-bg: #f1e5c9;
+  --qier-recorded: #506348;
+  --qier-recorded-bg: #e5ead9;
+
+  --qier-background: var(--qier-paper);
+  --qier-text: var(--qier-ink);
+  --qier-heading: var(--qier-navy);
+  --qier-button-background: var(--qier-navy);
+  --qier-button-text: var(--qier-paper);
+  --qier-focus: var(--qier-navy);
+}
