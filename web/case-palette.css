@@ -1,0 +1,223 @@
+/* 黄铜蓝柜 · color-only report skin.
+ * Source: docs/2026-10-03-qier-color-palette.md.
+ * Keep geometry, typography, content and motion in case-design.css unchanged.
+ * Scoped to the current report; ?classic=1 keeps its original appearance. */
+body.research-mode {
+  --qier-navy:#222e39;
+  --qier-paper:#f7f0e0;
+  --qier-brass:#b88b4c;
+  --qier-light:#e2bc78;
+  --qier-ink:#29333a;
+  --qier-secondary:#6f675b;
+  --qier-inset:#ede2cd;
+  --qier-divider:#d9ccb4;
+  --qier-teal:#527a80;
+  --paper:var(--qier-paper);
+  --paper-hi:var(--qier-paper);
+  --paper-lo:var(--qier-inset);
+  --ink:var(--qier-ink);
+  --ink-2:var(--qier-ink);
+  --ink-3:var(--qier-secondary);
+  --rule:var(--qier-divider);
+  --rule-2:#a6977f;
+  --film:var(--qier-navy);
+  --bone:var(--qier-paper);
+  --bone-2:var(--qier-light);
+  --red:#a44738;
+  --red-bg:#f4e2d9;
+  --amber:#8a641f;
+  --amber-bg:#f1e5c9;
+  --green:#506348;
+  --green-bg:#e5ead9;
+  --grey:var(--qier-secondary);
+  --grey-bg:var(--qier-inset);
+  --blue:var(--qier-teal);
+  background:var(--qier-paper);
+  color:var(--qier-ink);
+}
+
+/* Cabinet header and brass brand details. */
+body.research-mode .topbar {background:#222e39f5;border-bottom-color:var(--qier-brass);color:var(--qier-paper)}
+body.research-mode .brand-text span,
+body.research-mode .case-strip,
+body.research-mode .tb.live {color:var(--qier-light)}
+body.research-mode .case-strip {border-color:#b88b4c66}
+body.research-mode .brand .logo {border-color:#b88b4c88}
+body.research-mode .brand .logo rect {fill:var(--qier-navy)}
+body.research-mode .brand .logo path {stroke:var(--qier-light)}
+body.research-mode .brand .logo path:last-child {stroke:var(--qier-brass)}
+body.research-mode .snav-b {color:var(--qier-paper)}
+body.research-mode .snav-b[aria-current=true] {background:#f7f0e014;color:var(--qier-light);border-color:transparent}
+body.research-mode :focus-visible {outline-color:var(--qier-teal)}
+body.research-mode .topbar :focus-visible {outline-color:var(--qier-light)}
+
+/* Existing title, buttons and directory retain their original sizes. */
+body.research-mode .research-hero:before {background:radial-gradient(ellipse,#b88b4c09,transparent 65%)}
+body.research-mode :is(.research-hero h1,.research-heading h2,.radar-caption,.flow-preview strong,.source-collection h2,#research-question-title,.signal-value,.signal-item-head h4,.photo-launch,.source-name,.research-disclaimer h2) {color:var(--qier-navy)}
+body.research-mode :is(.back-study,.hero-meta,.hero-meta button,.hero-title .research-eyebrow,.hero-title>p,.research-eyebrow,.research-heading>p,.hero-foot,.hero-foot button,.flow-preview small,.flow-secondary .flow-preview strong,.radar-caption span:last-child,.research-radar>p,.overview-summary .gl-q,.overview-note>span,.column-label,.capital-label p,.research-fine,.photo-copy>p,.photo-focus>p,.photo-steps,.research-notes,.research-notes summary,.source-kind,.source-count,.source-total,.source-entry-body>p,.source-meta,.source-entry-body li small,.signal-total,.signal-explanation,.signal-source,.signal-records-label,.signal-record-date,.signal-metrics dt,.question-cloud>.column-label>span,.research-disclaimer) {color:var(--qier-secondary)}
+body.research-mode .hero-title .research-eyebrow i {background:var(--qier-brass);box-shadow:0 0 12px #b88b4c33}
+body.research-mode .back-study:hover {color:var(--qier-navy)}
+body.research-mode .research-button,
+body.research-mode .btn {background:var(--qier-navy);color:var(--qier-paper);border-color:var(--qier-navy)}
+body.research-mode .research-button:hover,
+body.research-mode .btn:hover {background:#344553}
+body.research-mode .research-button.ghost,
+body.research-mode .btn.ghost {background:transparent;color:var(--qier-navy);border-color:var(--qier-teal)}
+body.research-mode .research-button.ghost:hover,
+body.research-mode .btn.ghost:hover {background:var(--qier-inset);border-color:var(--qier-navy)}
+body.research-mode .research-text-link {color:var(--qier-navy)}
+body.research-mode .research-text-link:hover {color:var(--amber)}
+body.research-mode .wire-base {stroke:#b88b4c55}
+body.research-mode #flowGradient stop {stop-color:var(--qier-brass)}
+body.research-mode #flowGradient stop:last-child {stop-color:var(--qier-light)}
+body.research-mode .research-flow .wire-light {filter:drop-shadow(0 0 5px #b88b4caa)}
+body.research-mode .flow-stop {color:var(--qier-navy)}
+body.research-mode .flow-label {background:var(--qier-inset);color:var(--qier-navy)}
+body.research-mode .flow-primary .flow-label {background:var(--qier-navy);color:var(--qier-paper)}
+body.research-mode .flow-label b,
+body.research-mode .flow-label>span {color:var(--amber)}
+body.research-mode .flow-primary .flow-label b,
+body.research-mode .flow-primary .flow-label>span {color:var(--qier-light)}
+/* Compensate the paper mask for the existing brightness pulse so it stays paper-colored. */
+body.research-mode .research-flow .flow-label {--mask-brightness:calc(1 + var(--pass)*.18);box-shadow:0 0 0 7px rgb(calc(247 / var(--mask-brightness)) calc(240 / var(--mask-brightness)) calc(224 / var(--mask-brightness))),0 0 calc(var(--pass)*26px) rgb(184 139 76 / calc(var(--pass)*.28));border-color:rgb(184 139 76 / calc(.55 + var(--pass)*.45))}
+body.research-mode .research-flow .flow-primary .flow-label {border-color:rgb(184 139 76 / calc(.7 + var(--pass)*.3))}
+body.research-mode .research-flow .flow-preview {border-left-color:rgb(184 139 76 / calc(.22 + var(--pass)*.5))}
+body.research-mode .research-flow .flow-stop:hover .flow-label,
+body.research-mode .research-flow .flow-stop:focus-visible .flow-label {--mask-brightness:1.2;border-color:var(--qier-brass)}
+body.research-mode .mini-trace i {background:var(--qier-brass)}
+body.research-mode .mini-trace i:nth-child(4n) {background:var(--qier-navy)}
+body.research-mode .flow-stop[data-section=inquiry] .flow-preview strong svg {color:var(--amber)}
+
+/* Warm reading surfaces and semantic status colors. */
+body.research-mode :is(.overview-grid,.research-question,.research-question:nth-child(2n),.research-tab-panel,.research-inquiry .research-tab-panel,.research-photo,.inquiry-stage,.panel,.glance) {background:var(--qier-paper);border-color:var(--qier-divider)}
+body.research-mode .overview-summary {border-color:var(--qier-divider)}
+body.research-mode .overview-summary .gl-first li {background:var(--qier-inset);border-color:var(--qier-divider)}
+body.research-mode .overview-note p,
+body.research-mode .question-column p,
+body.research-mode .question-detail-grid p {color:var(--qier-ink)}
+body.research-mode .overview-summary .s-bad .gl-a {color:var(--red)}
+body.research-mode .overview-summary .s-warn .gl-a {color:var(--amber)}
+body.research-mode .overview-summary .s-ok .gl-a {color:var(--green)}
+body.research-mode :is(.overview-summary,.research-signals) .s-bad {--c:var(--red)}
+body.research-mode :is(.overview-summary,.research-signals) .s-warn,
+body.research-mode :is(.overview-summary,.research-signals) .s-miss {--c:var(--amber)}
+body.research-mode :is(.overview-summary,.research-signals) .s-ok {--c:var(--green)}
+body.research-mode :is(.overview-summary,.research-signals) .s-none {--c:var(--qier-secondary)}
+body.research-mode .mk {color:var(--qier-paper)}
+body.research-mode .research-radar svg polygon,
+body.research-mode .research-radar svg line {stroke:var(--qier-secondary)}
+body.research-mode .research-radar svg path {fill:var(--qier-navy);stroke:var(--qier-navy)}
+body.research-mode .research-radar svg circle {fill:var(--qier-brass)}
+body.research-mode .research-radar svg text {fill:var(--qier-navy)}
+body.research-mode .research-radar svg text[font-size="12"] {fill:var(--qier-secondary)}
+body.research-mode .research-radar svg text[fill="#ed9b89"] {fill:var(--red)}
+body.research-mode .research-signals .tile {background:var(--qier-inset);border-color:var(--qier-divider);border-top-color:var(--qier-navy)}
+body.research-mode .research-signals .tile:hover {background:#e6dbc7}
+body.research-mode .research-signals .tile.s-bad {border-top-color:var(--red)}
+body.research-mode .research-signals .tile.s-warn {border-top-color:var(--qier-brass)}
+body.research-mode .research-signals .tile .t-h b {color:var(--qier-navy)}
+body.research-mode .research-signals .tile .t-p {color:var(--qier-ink)}
+body.research-mode .research-signals .tile .t-n {color:var(--red)}
+body.research-mode .gl-next {background:var(--qier-inset);border-color:var(--qier-brass)}
+body.research-mode .question-column p i {background:var(--qier-navy);color:var(--qier-paper)}
+
+/* The same camera and floating questions, recolored without replacing artwork. */
+body.research-mode .camera-illustration {filter:drop-shadow(0 18px 20px #222e391c)}
+body.research-mode .camera-body {fill:var(--qier-navy);stroke:var(--qier-brass)}
+body.research-mode .camera-paper {fill:var(--qier-inset);stroke:var(--qier-brass)}
+body.research-mode .camera-paper-line {stroke:var(--amber)}
+body.research-mode .camera-lens-outer {fill:#18242e;stroke:var(--qier-brass)}
+body.research-mode .camera-lens-inner {fill:#344553;stroke:var(--qier-light)}
+body.research-mode .camera-reflection {stroke:var(--qier-paper)}
+body.research-mode .camera-flash {fill:var(--qier-light)}
+body.research-mode .camera-scan {stroke:var(--qier-light)}
+body.research-mode :is(.photo-launch-label>span,.question-no,.question-open,.source-expand) {color:var(--amber)}
+body.research-mode .question-float,
+body.research-mode .question-float:nth-of-type(2n) {background:var(--qier-inset);color:var(--qier-navy);border-color:var(--qier-divider);box-shadow:0 10px 24px #222e390a}
+body.research-mode .question-float:hover,
+body.research-mode .question-float:focus-visible {background:#e6dbc7;border-color:var(--qier-brass);box-shadow:0 12px 28px #222e3914}
+body.research-mode .question-detail-grid,
+body.research-mode .research-verification {border-color:var(--qier-divider)}
+
+/* Timeline, shareholder and capital charts use navy, brass and archive teal. */
+body.research-mode .research-tabs {border-color:var(--qier-divider);scrollbar-color:var(--qier-brass) transparent}
+body.research-mode .research-tabs [role=tab] {color:var(--qier-secondary)}
+body.research-mode .research-tabs [aria-selected=true] {color:var(--qier-navy);border-bottom-color:var(--qier-brass)}
+body.research-mode .research-tabs [role=tab]:hover {color:var(--qier-navy)}
+body.research-mode .research-timeline {scrollbar-color:var(--qier-brass) transparent}
+body.research-mode :is(.timeline-toolbar>span,.event-detail time,.holder-list b,.research-data-charts .cmp-v) {color:var(--qier-navy)}
+body.research-mode :is(.timeline-toolbar small,.event-date,.event-short,.research-event,.holder-key,.holder-key>span,.holder-list .holder-no,.holder-list em,.v-note,.v-src,.research-data-charts figcaption>span) {color:var(--qier-secondary)}
+body.research-mode .research-event:before {background:var(--qier-divider)}
+body.research-mode .event-wave path {stroke:var(--qier-brass)}
+body.research-mode .event-stem {background:var(--qier-brass)}
+body.research-mode .event-dot {background:var(--qier-brass);border-color:var(--qier-paper);box-shadow:0 0 0 1px var(--qier-brass)}
+body.research-mode .research-event.bad .event-dot {background:var(--red);box-shadow:0 0 0 1px var(--red)}
+body.research-mode .research-event.active .event-year,
+body.research-mode .research-event:hover .event-year,
+body.research-mode .research-event:focus-visible .event-year {color:var(--qier-navy)}
+body.research-mode .research-event.active .event-dot {background:var(--qier-navy);box-shadow:0 0 0 5px #b88b4c19,0 0 20px #b88b4c44}
+body.research-mode .event-detail {background:var(--qier-inset);border-color:var(--qier-divider)}
+body.research-mode .event-detail p {color:var(--qier-ink)}
+body.research-mode .research-data-charts .cmp-bar {background:var(--qier-inset)}
+body.research-mode .research-data-charts .cmp-bar i {background:var(--qier-navy)}
+body.research-mode .holder-bar button {background:var(--qier-navy)}
+body.research-mode .holder-bar button:nth-child(3n+2) {background:var(--qier-brass)}
+body.research-mode .holder-bar button:nth-child(3n) {background:var(--qier-teal)}
+body.research-mode .holder-bar>span {background:repeating-linear-gradient(125deg,#ede2cd 0 3px,#d9ccb4 3px 6px)}
+body.research-mode .holder-list button {color:var(--qier-ink);border-color:var(--qier-divider)}
+body.research-mode .holder-list button:hover {color:var(--qier-navy);background:var(--qier-inset)}
+
+/* Dialogs and all scrollable signal records share the paper reading surface. */
+body.research-mode :is(.dlg,.research-signal-dialog,.research-question-dialog,.pop,.assist) {background:var(--qier-paper);color:var(--qier-ink);border-color:var(--qier-brass)}
+body.research-mode .dlg::backdrop {background:#222e3999}
+body.research-mode :is(.dlg-head,.research-signal-dialog .dlg-head,.research-question-dialog .dlg-head) {border-color:var(--qier-divider)}
+body.research-mode .research-signal-dialog .dlg-head .research-eyebrow {color:var(--qier-secondary)}
+body.research-mode .dlg-x,
+body.research-mode .research-signal-dialog .dlg-x {background:var(--qier-inset);color:var(--qier-navy)}
+body.research-mode .dlg-x:hover,
+body.research-mode .research-signal-dialog .dlg-x:hover {background:var(--qier-divider)}
+body.research-mode .research-signal-dialog .dlg-body,
+body.research-mode .question-cloud-many {scrollbar-color:var(--qier-brass) transparent}
+body.research-mode .signal-item {background:var(--qier-paper);border-color:var(--qier-divider);border-left-color:var(--qier-navy)}
+body.research-mode .signal-item.s-bad {background:linear-gradient(110deg,#f4e2d966,#f7f0e0 75%);border-left-color:var(--red)}
+body.research-mode .signal-item.s-warn,
+body.research-mode .signal-item.s-miss {background:linear-gradient(110deg,#f1e5c966,#f7f0e0 75%);border-left-color:var(--qier-brass)}
+body.research-mode .signal-status {color:var(--qier-ink);border-color:var(--qier-divider);background:var(--qier-inset)}
+body.research-mode .s-bad>.signal-item-head>.signal-status {color:var(--red);border-color:#a4473866;background:var(--red-bg)}
+body.research-mode .s-warn>.signal-item-head>.signal-status,
+body.research-mode .s-miss>.signal-item-head>.signal-status {color:var(--amber);border-color:#8a641f66;background:var(--amber-bg)}
+body.research-mode .signal-item.s-none .signal-value,
+body.research-mode .signal-item.s-ok .signal-value {color:var(--qier-ink)}
+body.research-mode .signal-total b {color:var(--red)}
+body.research-mode :is(.signal-source,.signal-records li,.signal-metrics>div) {border-color:var(--qier-divider)}
+body.research-mode .signal-source [class*=k-],
+body.research-mode .signal-source a {color:var(--qier-secondary)}
+body.research-mode :is(.signal-source button,.signal-metrics dd,.signal-records-more>summary,.source-more>summary) {color:var(--qier-navy)}
+body.research-mode .signal-records li,
+body.research-mode .research-signal-dialog .it-d {color:var(--qier-ink)}
+body.research-mode .signal-records-more>summary:hover,
+body.research-mode .source-more>summary:hover {color:var(--amber)}
+body.research-mode .cite {background:var(--qier-inset);color:var(--qier-navy);border-color:var(--qier-divider)}
+body.research-mode .src.k-commercial,
+body.research-mode .src.k-web {color:var(--qier-secondary)}
+body.research-mode .big-inp,
+body.research-mode .box {background:var(--qier-paper);color:var(--qier-ink);border-color:var(--qier-teal)}
+body.research-mode .big-inp::placeholder,
+body.research-mode .box::placeholder {color:var(--qier-secondary)}
+body.research-mode .seg {background:var(--qier-inset)}
+body.research-mode .seg button[aria-pressed=true] {background:var(--qier-navy);color:var(--qier-paper)}
+body.research-mode .toast {background:var(--qier-navy);color:var(--qier-paper)}
+body.research-mode .fab {background:var(--qier-navy);color:var(--qier-paper);border-color:var(--qier-brass);box-shadow:0 8px 28px #222e3926}
+body.research-mode .fab:hover {background:#344553}
+body.research-mode .fab em {background:var(--qier-brass);color:var(--qier-navy)}
+body.research-mode .assist {box-shadow:0 20px 90px #222e3926}
+
+/* Sources keep the same disclosure and its visible click hint. */
+body.research-mode :is(.source-directory,.source-entry,.source-collection,.source-collection .source-directory,.source-entry-body li button,.source-more>summary,.research-notes,.foot) {border-color:var(--qier-divider)}
+body.research-mode .source-entry-body li button {color:var(--qier-ink)}
+body.research-mode .source-entry summary:hover .source-name,
+body.research-mode .source-entry-body li button:hover,
+body.research-mode .source-collection>summary:hover h2 {color:var(--amber)}
+body.research-mode .source-toggle-hint {background:var(--qier-inset);color:var(--qier-navy);border-color:var(--qier-brass)}
+body.research-mode .source-collection>summary:hover .source-toggle-hint {background:var(--qier-divider);border-color:var(--qier-brass)}
+body.research-mode .research-versions [aria-current=true] {background:var(--qier-inset)!important;color:var(--qier-navy)}
