@@ -3,6 +3,8 @@
 这组测试盯的是产品最要紧的一条：报告只是某一版的样子，判断才是被追踪的东西。
 系统不许把材料上的文字当成事实，不许只会加警告不会撤警告。
 """
+import re
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -205,6 +207,24 @@ def test_key_items_are_named_not_leaked():
     for j in v.judgments:
         if j.id.startswith("key."):
             assert j.id[4:] not in j.text, f"{j.id} 这条把编号漏在正文里了"
+
+
+def test_every_scenario_item_has_a_name_or_says_it_generically():
+    """每个场景列进 first_items 的检查项都得有人话名字。
+
+    2026-10-02 队友加了 risk.amac_tips，名字表里没有、这一版又没查到，正文里就漏出了
+    「risk.amac_tips」这种内部编号，用户看不懂。所以这里把六个场景一次扫完：
+    认得出名字的，名字里不能再出现内部编号的样子（带点的英文、下划线）；
+    认不出的，宁可返回 None（调用方会说成"有一项该核的事"），也不许把编号当名字用。
+    """
+    from app.analysis.judgments import _item_title
+    from app.scenarios import load_scenarios
+    for sid, sc in load_scenarios().items():
+        for key in sc.first_items:
+            name = _item_title(key, [], [], sc)
+            if name is None:
+                continue
+            assert not re.search(r"[a-z_]+\.[a-z_]+|[a-z]+_[a-z]+", name), f"{sid} 的 {key} 名字还是内部编号的样子：{name}"
 
 
 def test_payee_example_lands_in_the_five_buckets():

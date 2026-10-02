@@ -134,6 +134,7 @@ KEY_NAME = {
     "credit.penalties": "行政处罚记录",
     "risk.bank_list": "有没有在持牌机构名单里",
     "risk.amac": "私募基金管理人登记",
+    "risk.amac_tips": "中基协公示的提示信息",
     "risk.pf_threshold": "门槛和合格投资者要求",
     "risk.scope": "经营范围里有没有这一项",
     "risk.product_code": "理财产品登记编码",
@@ -144,8 +145,13 @@ KEY_NAME = {
 }
 
 
-def _item_title(key: str, assertions: list[Assertion], signals: list[Signal]) -> str:
-    """内部编号换成报告里给人看的那句话，别把 A1 这种代号漏给用户。"""
+def _item_title(key: str, assertions: list[Assertion], signals: list[Signal],
+                scenario: Scenario | None = None) -> str | None:
+    """内部编号换成报告里给人看的那句话，别把 A1 这种代号漏给用户。
+
+    认不出来就返回 None，让调用方换一句不含代号的话说，绝不把 risk.amac_tips 这种内部编号漏出去。
+    队友新加的检查项（2026-10-02 的 amac_tips）就是漏了代号才被测试抓到——所以名字优先从数据里取。
+    """
     for a in assertions:
         if a.id == key:
             return _short(a.text, 40)
@@ -153,7 +159,13 @@ def _item_title(key: str, assertions: list[Assertion], signals: list[Signal]) ->
         for it in sig.items:
             if key in (f"{sig.key}.{it.key}", it.key):
                 return f"{sig.title} · {it.label}"
-    return KEY_NAME.get(key, key)
+    if key in KEY_NAME:
+        return KEY_NAME[key]
+    # 数据里没这个名字（这一版没查到），退一步用这个信号自己的那句话
+    family = key.split(".")[0]
+    if scenario and (lede := (scenario.signal_ledes or {}).get(family)):
+        return lede.rstrip("。：:")
+    return None
 
 
 def _material_basis(quote: str, texts: list[RawRecord]) -> Basis:
@@ -359,13 +371,15 @@ def build(company_name: str, scenario: Scenario, version_no: int, assertions: li
     for key in scenario.first_items:
         if key in covered:
             continue
-        title = _item_title(key, assertions, signals)
+        title = _item_title(key, assertions, signals, scenario)
         if title in named:
             continue
         named.add(title)
+        # 认不出名字的就别硬安一个，换一句不含内部代号的话说
+        said = f"「{title}」这一项还没有任何记录或判断" if title else "有一项该核的事还没有任何记录或判断"
         out.append(Judgment(
             id=f"key.{key}", layer="confirmed", layer_label=LAYER_LABEL["confirmed"],
-            text=f"「{title}」这一项还没有任何记录或判断",
+            text=said,
             scope=f"{company_name}｜{scenario.label}",
             unknown=["这一版里没有这项记录：可能是数据源没覆盖，也可能是没查"],
             cannot=["没查到就等于没问题"],
