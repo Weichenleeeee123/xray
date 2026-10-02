@@ -13,10 +13,10 @@ import re
 
 from pydantic import BaseModel, Field
 
-from app import progress
+from app import config, progress
 from app.assistant import SPECULATION, VERDICT_WORDS, citable, evidence_text, overreach
 from app.glossary import find_terms, load_glossary
-from app.llm import LLM, LLMError
+from app.llm import LLM, LLMError, request_budget
 from app.models import Case, Glance, Status, Term, Version
 from app.scenarios import get_scenario
 from app.sources.web import short_name
@@ -161,7 +161,8 @@ def build_glance(case: Case, v: Version, llm: LLM, prev: Version | None = None) 
                         "报告文字": visible[:4000],
                         "已有词表": sorted(known)}, ensure_ascii=False)}]
         try:
-            out, reply = llm.chat_json(messages, _Gen, cache_namespace=f"case:{case.id}:v:{v.no}:glance")
+            with request_budget(config.PLAIN_TIMEOUT):
+                out, reply = llm.chat_json(messages, _Gen, cache_namespace=f"case:{case.id}:v:{v.no}:glance")
             mode = reply.mode
             for i, s in out.short.items():
                 if i in todo and _short_ok(s, todo[i], data, ctx.get(i)):

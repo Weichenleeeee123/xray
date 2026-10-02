@@ -10,6 +10,7 @@ import math
 import os
 import tempfile
 import time
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,6 +27,22 @@ from app.models import ClaimKind
 
 T = TypeVar("T", bound=BaseModel)
 REQUEST_DEADLINE: ContextVar[float | None] = ContextVar("llm_request_deadline", default=None)
+
+
+@contextmanager
+def request_budget(seconds: float):
+    """Share a stage deadline across HTTP calls/repairs, preserving an earlier parent.
+
+    HTTPX timeouts limit individual transport waits, not absolute wall-clock time.
+    The deadline also prevents starting another attempt after the budget expires.
+    """
+    parent = REQUEST_DEADLINE.get()
+    deadline = time.monotonic() + seconds
+    token = REQUEST_DEADLINE.set(min(parent, deadline) if parent is not None else deadline)
+    try:
+        yield
+    finally:
+        REQUEST_DEADLINE.reset(token)
 
 
 def remaining_timeout(default: float) -> float:

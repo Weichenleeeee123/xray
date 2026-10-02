@@ -5,7 +5,8 @@
 """
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.llm import LLM, LLMError
+from app import config
+from app.llm import LLM, LLMError, request_budget
 from app.models import Intake
 from app.scenarios import FOCUS_RULES, get_scenario, keyword_intake, load_scenarios
 
@@ -38,7 +39,8 @@ def run_intake(need: str, llm: LLM, scenario: str | None = None, company: str | 
     if base.method == "user" or not need.strip():
         return base
     try:
-        out, _ = llm.chat_json(_prompt(need, company), _ModelIntake, temperature=0, cache_namespace="intake")
+        with request_budget(config.INTAKE_TIMEOUT):
+            out, _ = llm.chat_json(_prompt(need, company), _ModelIntake, temperature=0, cache_namespace="intake")
     except LLMError:
         return base
     if out.scenario not in load_scenarios():

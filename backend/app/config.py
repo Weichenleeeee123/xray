@@ -45,6 +45,9 @@ LLM_VISION_MODEL = os.getenv("TOKENDANCE_VISION_MODEL", "") or LLM_MODEL
 LLM_JSON_MODE = os.getenv("TOKENDANCE_JSON_MODE", "0") == "1"
 LLM_TIMEOUT = float(os.getenv("TOKENDANCE_TIMEOUT", "45"))
 CHAT_TIMEOUT = float(os.getenv("XRAY_CHAT_TIMEOUT", "60"))
+# 可回退的模型辅助阶段：首个请求和 JSON 修复共用预算，不限制事实采集或 OCR。
+INTAKE_TIMEOUT = float(os.getenv("XRAY_INTAKE_TIMEOUT", "8"))
+PLAIN_TIMEOUT = float(os.getenv("XRAY_PLAIN_TIMEOUT", "12"))
 # live：调用网关并录下响应，失败时回放录音；replay：只回放；off：不调用
 LLM_MODE = os.getenv("XRAY_LLM_MODE", "live")
 
@@ -60,7 +63,9 @@ YOUNG_COMPANY_MONTHS = 24
 
 def validate_settings():
     errors = []
-    for name, value in (("TOKENDANCE_TIMEOUT", LLM_TIMEOUT), ("XRAY_CHAT_TIMEOUT", CHAT_TIMEOUT), ("XRAY_REF_DEPOSIT_RATE", REF_DEPOSIT_RATE)):
+    for name, value in (("TOKENDANCE_TIMEOUT", LLM_TIMEOUT), ("XRAY_CHAT_TIMEOUT", CHAT_TIMEOUT),
+                        ("XRAY_INTAKE_TIMEOUT", INTAKE_TIMEOUT), ("XRAY_PLAIN_TIMEOUT", PLAIN_TIMEOUT),
+                        ("XRAY_REF_DEPOSIT_RATE", REF_DEPOSIT_RATE)):
         if not math.isfinite(value) or value <= 0:
             errors.append(f"{name} 必须是有限正数")
     if LLM_MODE not in ("live", "replay", "off"):
