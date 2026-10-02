@@ -24,8 +24,12 @@ import {
   collectionFinished,
   coverageLabels,
   reportPresentation,
+  researchProgress,
 } from './research-events';
 import { ReportDossier } from './report-dossier';
+import { DemoExamples } from './demo-examples';
+import type { DemoCase } from './research-input';
+import type { Station } from './research-events';
 const icons = {
   enterprise: Building2,
   library: BookOpen,
@@ -57,7 +61,9 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export default function Home() {
   const [query, setQuery] = useState(''),
     [need, setNeed] = useState(''),
+    [selectedDemo, setSelectedDemo] = useState<DemoCase | null>(null),
     [inspector, setInspector] = useState(false),
+    [inspectorSource, setInspectorSource] = useState<Station | null>(null),
     [retryConfirm, setRetryConfirm] = useState(false),
     [testResult, setTestResult] = useState(false),
     [opening, setOpening] = useState<{ id: string; href: string } | null>(null);
@@ -115,6 +121,7 @@ export default function Home() {
     collectionDone = collectionFinished(state),
     life = lifecycleLabel(state);
   const report = reportPresentation(state, phase.id);
+  const progress = researchProgress(state);
   const openReport = () => {
     if (report.canOpen && report.href && state.result && !opening)
       setOpening({ id: state.result.id, href: report.href });
@@ -136,7 +143,7 @@ export default function Home() {
   const submit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (query.trim().length < 2) return;
-    void begin(query, need);
+    void begin(query, need, selectedDemo?.input);
   };
   useEffect(() => {
     const context = (
@@ -256,7 +263,7 @@ export default function Home() {
             return (
               <li
                 key={source.id}
-                className={`source-marker source-${source.id} ${s.active ? 'active' : ''} ${s.successful ? 'done' : ''} ${s.failed ? 'failed' : ''}`}
+                className={`source-marker source-${source.id} ${s.active ? 'active' : ''} ${s.done ? 'done' : ''} ${s.failed ? 'failed' : ''} ${s.progress === 'unknown' ? 'unknown' : ''}`}
                 data-source={source.id}
                 data-status={s.label}
                 title={s.details || source.caption}
@@ -268,8 +275,13 @@ export default function Home() {
                   <strong>{source.title}</strong>
                   <small>{idle ? source.caption : s.label}</small>
                 </div>
-                {s.successful ? (
+                {!idle && <button type="button" className="source-detail-trigger"
+                  aria-label={`${source.title}：${s.label}，查看详情`}
+                  onClick={() => { setInspectorSource(source.id); setInspector(true); }} />}
+                {s.done && !s.failed ? (
                   <Check aria-hidden="true" />
+                ) : s.failed || s.progress === 'unknown' ? (
+                  <em aria-hidden="true">!</em>
                 ) : (
                   <i aria-hidden="true" />
                 )}
@@ -376,7 +388,10 @@ export default function Home() {
                 <Input
                   id="company-query"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setSelectedDemo(null);
+                  }}
                   placeholder="输入公司全称"
                   maxLength={80}
                 />
@@ -394,6 +409,11 @@ export default function Home() {
                   maxLength={500}
                 />
               </label>
+              <DemoExamples selected={selectedDemo} onSelect={(demo) => {
+                setQuery(demo.input.company_name);
+                setNeed(demo.input.need);
+                setSelectedDemo(demo);
+              }} onRemove={() => setSelectedDemo(null)} />
               <p>资料覆盖情况来自真实后端，不代表安全评级。</p>
             </form>
           </div>
@@ -413,7 +433,7 @@ export default function Home() {
               <div className="research-controls">
                 <button
                   type="button"
-                  onClick={() => setInspector((v) => !v)}
+                  onClick={() => { setInspectorSource(null); setInspector((v) => !v); }}
                   aria-label="任务与动作详情"
                 >
                   ⌕
@@ -439,14 +459,17 @@ export default function Home() {
             </div>
             <output className="live-status">
               <strong>{life}</strong>
+              <span className="current-task">{progress.current}</span>
+              <ol className="stage-progress" aria-label="研究阶段">
+                {progress.stages.map(stage => <li key={stage.id} data-state={stage.status}>
+                  <b>{stage.title}</b><small>{stage.label}{stage.detail ? ` ${stage.detail}` : ''}</small>
+                </li>)}
+              </ol>
               <span>
-                {collectionDone ? '资料收集结束' : '资料查询尚未结束'} ·{' '}
+                {collectionDone ? '资料收集结束' : '资料收集中'} ·{' '}
                 {knownRecords} 条已找到记录
               </span>
-              <small>
-                动画：{phase.label}
-                {paused ? '（已暂停，后台继续）' : ''}
-              </small>
+              {paused && <small>动画已暂停，后台继续处理</small>}
               {report.canOpen && report.visible && (
                 <span className="dossier-hint">
                   点击桌面上的发光卷宗，查看报告
@@ -487,11 +510,12 @@ export default function Home() {
             )}
             {inspector && (
               <aside className="live-inspector">
-                <strong>真实任务进度{testMode ? '（测试事件）' : ''}</strong>
+                <strong>{inspectorSource ? `${stations.find(s => s.id === inspectorSource)?.title} · 查询明细` : '真实任务进度'}{testMode ? '（测试事件）' : ''}</strong>
                 <button type="button" onClick={() => setInspector(false)} aria-label="关闭任务详情">关闭</button>
-                <p>资料点可并行查询；动作队列不会阻塞后端。</p>
+                <p>{progress.current}。多个资料点可能同时查询。</p>
+                {inspectorSource && <p>{stationState(state, inspectorSource).resultLabel}</p>}
                 <ol>
-                  {state.steps.map((s) => (
+                  {state.steps.filter(s => !inspectorSource || (stations.find(station => station.id === inspectorSource)!.steps as readonly string[]).includes(s.id)).map((s) => (
                     <li key={s.id}>
                       <b>{s.label}</b>
                       <span>
@@ -504,13 +528,15 @@ export default function Home() {
                               ? '状态待确认'
                               : '查询中'
                             : s.lookup
-                              ? coverageLabels[s.coverage!]
+                              ? `已结束 · ${coverageLabels[s.coverage!]}`
                               : '已结束'}
                       </span>
                       <small>{s.text}</small>
                     </li>
                   ))}
                 </ol>
+                {inspectorSource && <button type="button" onClick={() => setInspectorSource(null)}>查看全部阶段</button>}
+                <small>小企动作：{phase.label}</small>
                 <label>
                   动画速度
                   <select
@@ -518,7 +544,8 @@ export default function Home() {
                     value={speed}
                     onChange={(e) => setSpeed(Number(e.target.value))}
                   >
-                    <option value={1}>正常速度</option>
+                    <option value={1}>跟随任务</option>
+                    <option value={2}>加速</option>
                     <option value={0.25}>四分之一速度</option>
                   </select>
                 </label>

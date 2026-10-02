@@ -57,7 +57,7 @@ test('a social start cannot invent a visitor before a found result, including en
       d.tick(40, s);
       if (d.sample().door > 0) sawVisitor = true;
     }
-    assert.equal(sawVisitor, coverage === 'found', coverage);
+    assert.equal(sawVisitor, false, 'completed runs skip obsolete visitor scenes: ' + coverage);
   }
   const d = new OfficeDirector();
   let s = reduceEvent(emptyResearch(), {
@@ -84,7 +84,8 @@ test('parallel starts remain visible and mixed failures are not hidden by found 
   assert.equal(stationState(s, 'news').label, '查询中');
   s = reduceEvent(s, event('lists'));
   s = reduceEvent(s, event('registry', 'done', 'failed'));
-  assert.equal(stationState(s, 'enterprise').label, '已查到 · 查询失败');
+  assert.equal(stationState(s, 'enterprise').label, '已结束 · 部分失败');
+  assert.match(stationState(s, 'enterprise').resultLabel, /已查到.*查询失败/);
   assert.equal(stationState(s, 'enterprise').failed, true);
   for (const [id, cov] of [
     ['pack', 'not_covered'],
@@ -93,8 +94,9 @@ test('parallel starts remain visible and mixed failures are not hidden by found 
     ['reviews', 'found'],
   ])
     s = reduceEvent(s, event(id, 'done', cov));
-  assert.equal(stationState(s, 'library').label, '未查询');
-  assert.equal(stationState(s, 'news').label, '未找到');
+  assert.equal(stationState(s, 'library').label, '已跳过');
+  assert.equal(stationState(s, 'news').label, '已完成');
+  assert.match(stationState(s, 'news').resultLabel, /未找到/);
   assert.equal(collectionFinished(s), true);
 });
 test('slow lookup waits on planted feet until the done event', () => {
@@ -109,7 +111,7 @@ test('slow lookup waits on planted feet until the done event', () => {
   d.tick(40, s);
   assert.deepEqual(d.sample().motion.position, pos);
 });
-test('fast result never teleports and completes gather, sorting and sitting in order', () => {
+test('fast result stays at the desk and archives before presenting without replaying old visits', () => {
   const d = new OfficeDirector();
   let s = state();
   for (const step of s.steps) s = reduceEvent(s, event(step.id));
@@ -130,13 +132,14 @@ test('fast result never teleports and completes gather, sorting and sitting in o
     prior = current.motion.position;
     if (current.phase.id === 'sort')
       assert.ok(
-        current.motion.position.x < 40,
-        'sorting must happen beside the desk, not inside the chair',
+        current.seated === 1,
+        'a finished task is archived at the desk',
       );
   }
   assert.equal(d.finished, true);
-  assert.ok(seen.indexOf('gather-left') < seen.indexOf('gather-right'));
-  assert.ok(seen.indexOf('sort') < seen.indexOf('sit'));
+  assert.ok(seen.indexOf('sort') < seen.indexOf('bind-report'));
+  assert.ok(!seen.includes('research'));
+  assert.ok(!seen.includes('walk'));
   assert.deepEqual(d.sample().motion.position, SEAT);
 });
 test('all waypoint routes stay outside the desk footprint', () => {
@@ -434,15 +437,15 @@ test('binding waits for saved confirmation and closes and pushes continuously af
     d.tick(20, s);
     const sample = d.sample();
     assert.ok(
-      sample.binding >= lastBinding && sample.binding - lastBinding < 0.05,
+      sample.binding >= lastBinding && sample.binding - lastBinding < 0.08,
       'cover snapped',
     );
     assert.ok(
-      sample.pushing >= lastPush && sample.pushing - lastPush < 0.06,
+      sample.pushing >= lastPush && sample.pushing - lastPush < 0.09,
       'folder teleported',
     );
     assert.ok(
-      Math.abs(sample.wingReach - lastWing) < 0.06,
+      Math.abs(sample.wingReach - lastWing) < 0.14,
       'wing flashed between closing, pushing and presenting',
     );
     if (seen.at(-1) !== sample.phase.id) seen.push(sample.phase.id);

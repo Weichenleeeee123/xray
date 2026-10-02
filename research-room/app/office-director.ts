@@ -119,7 +119,7 @@ export class OfficeDirector {
       'walk',
       label,
       'walk',
-      Math.max(500, (length / 145) * 1000),
+      Math.max(220, (length / 560) * 1000),
       to,
       { route },
     );
@@ -157,6 +157,23 @@ export class OfficeDirector {
     if (a.id === 'push-report') this.reportStage = 2;
     if (a.id === 'present-report') this.reportStage = 3;
     if (a.id === 'close-door') this.socialHandled = true;
+    // Finish the current movement continuously, then discard obsolete station visits.
+    // position normally points to the end of the queued route, so restore the actual endpoint.
+    if (collectionFinished(state) && !this.returning) {
+      this.returning = true;
+      this.queue = [];
+      this.position = a.to;
+      this.socialHandled = true;
+      if (!same(this.position, SEAT)) {
+        this.queue.push(this.walk(SEAT, '资料收集已结束，返回工位'));
+        this.queue.push(this.make('sit', '回到工位', 'sit', 200, SEAT));
+      } else if (a.visual !== 'desk')
+        this.queue.push(this.make('sit', '回到工位', 'sit', 200, SEAT));
+      this.queue.push(this.make('sort', '核对并归档资料', 'desk', 350, SEAT, { finish: 'sort' }));
+      this.queue.push(this.make('report', '核对资料并撰写报告', 'desk', 250, SEAT));
+      this.setNext();
+      return;
+    }
     if (
       a.id === 'research' &&
       a.tasks?.some(
@@ -201,7 +218,7 @@ export class OfficeDirector {
       if (s.lookup && s.phase === 'done' && s.coverage === 'not_covered')
         this.visited.add(s.id);
     const pending = state.steps.filter(
-      (s) => s.lookup && s.phase !== 'waiting' && !this.visited.has(s.id),
+      (s) => s.lookup && s.phase === 'start' && !this.visited.has(s.id),
     );
     const first = pending.find((s) => s.phase === 'start') ?? pending[0];
     if (first && !this.returning) {
@@ -218,7 +235,7 @@ export class OfficeDirector {
       tasks.forEach((id) => this.visited.add(id));
       if (a.visual === 'desk')
         this.queue.push(
-          this.make('stand', '放下资料，起身', 'stand', 900, SEAT),
+          this.make('stand', '放下资料，起身', 'stand', 250, SEAT),
         );
       this.queue.push(this.walk(locations[station.id], `前往${station.title}`));
       const social = station.id === 'social';
@@ -227,55 +244,10 @@ export class OfficeDirector {
           'research',
           social ? '查新闻舆情和用户评价' : `查阅${station.title}`,
           social ? 'listen' : 'research',
-          1200,
+          400,
           this.position,
           { station: station.id, tasks },
         ),
-      );
-      this.setNext();
-      return;
-    }
-    if (collectionFinished(state) && !this.returning) {
-      this.returning = true;
-      if (a.visual === 'desk')
-        this.queue.push(this.make('stand', '起身整理散纸', 'stand', 900, SEAT));
-      this.queue.push(this.walk(nodes[2], '回到工位左侧收纸'));
-      this.queue.push(
-        this.make(
-          'gather-left',
-          '拾起左侧散纸',
-          'gather',
-          2400,
-          this.position,
-          { finish: 'left' },
-        ),
-      );
-      this.queue.push(this.walk(nodes[8], '绕过桌前，收拾右侧散纸'));
-      this.queue.push(
-        this.make(
-          'gather-right',
-          '拾起右侧散纸',
-          'gather',
-          2400,
-          this.position,
-          { finish: 'right' },
-        ),
-      );
-      this.queue.push(this.walk(nodes[14], '带资料回到桌侧'));
-      this.queue.push(
-        this.make(
-          'sort',
-          '在桌侧分类、对齐、叠放资料',
-          'sort',
-          2400,
-          this.position,
-          { finish: 'sort' },
-        ),
-      );
-      this.queue.push(this.walk(SEAT, '整理完成，回到椅子'));
-      this.queue.push(this.make('sit', '坐下核对资料', 'sit', 900, SEAT));
-      this.queue.push(
-        this.make('report', '核对资料并撰写报告', 'desk', 1600, SEAT),
       );
       this.setNext();
       return;
@@ -288,7 +260,7 @@ export class OfficeDirector {
                 'bind-report',
                 '合上封面，装订企业研究卷宗',
                 'desk',
-                1000,
+                450,
                 SEAT,
               )
             : this.reportStage === 1
@@ -296,14 +268,14 @@ export class OfficeDirector {
                   'push-report',
                   '将卷宗推到桌面中央',
                   'desk',
-                  800,
+                  350,
                   SEAT,
                 )
               : this.make(
                   'present-report',
                   '收回翅膀，示意查看报告',
                   'desk',
-                  800,
+                  350,
                   SEAT,
                 );
         this.action = next;
@@ -347,9 +319,9 @@ export class OfficeDirector {
             ? 1
             : 0;
     const gathering =
-      a.id === 'gather-left' ? ease(p) : this.paperStage >= 1 ? 1 : 0;
+      a.id === 'sort' ? ease(p) : a.id === 'gather-left' ? ease(p) : this.paperStage >= 1 ? 1 : 0;
     const gatheringRight =
-      a.id === 'gather-right' ? ease(p) : this.paperStage >= 2 ? 1 : 0;
+      a.id === 'sort' ? ease(p) : a.id === 'gather-right' ? ease(p) : this.paperStage >= 2 ? 1 : 0;
     const sorting = a.id === 'sort' ? ease(p) : this.paperStage >= 3 ? 1 : 0;
     const binding =
       a.id === 'bind-report' ? ease(p) : this.reportStage >= 1 ? 1 : 0;

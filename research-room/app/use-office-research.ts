@@ -13,6 +13,8 @@ import type { ResearchState, CaseReference } from './research-events';
 import { OfficeDirector } from './office-director';
 import { fixtureFetch, testNames } from './research-fixtures';
 import type { TestName } from './research-fixtures';
+import { researchInput } from './research-input';
+import type { ResearchInput } from './research-input';
 
 const RUN_ID = /^[0-9a-f]{24}$/;
 function rememberRun(runId: string | null) {
@@ -33,7 +35,7 @@ export function useOfficeResearch() {
     transport = useRef<typeof fetch>(fetch),
     activeRun = useRef<string | null>(null),
     generation = useRef(0),
-    lastInput = useRef({
+    lastInput = useRef<ResearchInput>({
       company_name: '',
       need: '了解这家公司的登记、资质与公开资料',
     });
@@ -80,6 +82,7 @@ export function useOfficeResearch() {
         );
         if (token !== generation.current || controller.signal.aborted) return;
         lastInput.current = {
+          ...lastInput.current,
           company_name: confirmed.case?.company_name ?? company,
           need: confirmed.case?.need ?? lastInput.current.need,
         };
@@ -104,17 +107,14 @@ export function useOfficeResearch() {
     [publish],
   );
   const run = useCallback(
-    async (company: string, need?: string, resumeId: string | null = null) => {
+    async (company: string, need?: string, resumeId: string | null = null, preset?: ResearchInput) => {
       if (!company.trim() && !resumeId) return;
       const token = ++generation.current;
       request.current?.abort();
       const controller = new AbortController();
       request.current = controller;
       if (!resumeId)
-        lastInput.current = {
-          company_name: company.trim(),
-          need: need?.trim() || '了解这家公司的登记、资质与公开资料',
-        };
+        lastInput.current = researchInput(company, need, preset);
       activeRun.current = resumeId;
       director.current = new OfficeDirector();
       setScene(director.current.sample());
@@ -202,9 +202,9 @@ export function useOfficeResearch() {
       queueMicrotask(() => void run('', undefined, resume));
   }, [run]);
   const begin = useCallback(
-    async (company: string, need?: string) => {
+    async (company: string, need?: string, preset?: ResearchInput) => {
       if (['connecting', 'live'].includes(stateRef.current.connection)) return;
-      await run(company, need);
+      await run(company, need, null, preset);
     },
     [run],
   );
@@ -262,7 +262,7 @@ export function useOfficeResearch() {
     begin,
     reset,
     step,
-    retry: () => begin(lastInput.current.company_name, lastInput.current.need),
+    retry: () => begin(lastInput.current.company_name, lastInput.current.need, lastInput.current),
     retrySave,
     canReconnect: !!activeRun.current && state.connection === 'disconnected',
     reconnect: () => activeRun.current

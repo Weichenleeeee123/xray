@@ -133,7 +133,9 @@ export function stationState(state: ResearchState, id: Station) {
   const tasks = state.steps.filter((s) =>
     (definition.steps as readonly string[]).includes(s.id),
   );
-  const active = tasks.some((s) => s.phase === 'start');
+  const running = tasks.some((s) => s.phase === 'start');
+  const interrupted = ['disconnected', 'error'].includes(state.connection);
+  const active = running && !interrupted;
   const done = tasks.filter((s) => s.phase === 'done');
   const counts: Partial<Record<Coverage, number>> = {};
   for (const task of done) {
@@ -146,27 +148,28 @@ export function stationState(state: ResearchState, id: Station) {
       ...Object.keys(counts).filter((k) => (counts[k as Coverage] ?? 0) > 0),
     ]),
   ] as Coverage[];
-  const label = active
-    ? ['disconnected', 'error'].includes(state.connection)
-      ? '状态待确认'
-      : '查询中'
-    : !tasks.length
-      ? state.steps.length
-        ? '未查询'
-        : '等待任务'
-      : !done.length
-        ? '等待查询'
-        : outcomes.map((c) => coverageLabels[c]).join(' · ') +
-          (done.length < tasks.length ? ' · 仍有待查' : '');
   const complete = done.length === tasks.length && tasks.length > 0;
+  const failed = outcomes.includes('failed');
+  const skipped = complete && outcomes.length === 1 && outcomes[0] === 'not_covered';
+  const progress = active ? 'active' : running && interrupted ? 'unknown'
+    : complete ? failed ? 'failed' : skipped ? 'skipped' : 'done' : 'waiting';
+  const label = active ? '查询中' : running && interrupted ? '状态待确认'
+    : complete ? failed ? '已结束 · 部分失败' : skipped ? '已跳过' : '已完成'
+    : !tasks.length ? state.steps.length ? '未安排' : '等待任务'
+    : done.length ? `等待后续查询（${done.length}/${tasks.length}）` : '等待查询';
+  const resultLabel = outcomes.map(c =>
+    (counts[c] ?? 0) > 0 ? `${coverageLabels[c]} ${counts[c]} 项` : coverageLabels[c],
+  ).join(' · ');
   return {
     tasks,
     active,
     done: complete,
     successful: complete && outcomes.length === 1 && outcomes[0] === 'found',
     label,
+    progress,
+    resultLabel,
     counts,
-    failed: outcomes.includes('failed'),
+    failed,
     details: tasks
       .map(
         (s) =>
@@ -174,6 +177,36 @@ export function stationState(state: ResearchState, id: Station) {
       )
       .join('\n'),
   };
+}
+export function researchProgress(state: ResearchState) {
+  const interrupted = ['disconnected', 'error'].includes(state.connection);
+  const groups = [
+    { id: 'intake', title: '理解需求', tasks: state.steps.filter(s => s.id === 'intake') },
+    { id: 'collect', title: '查询资料', tasks: state.steps.filter(s => s.lookup) },
+    { id: 'rules', title: '整理分析', tasks: state.steps.filter(s => s.id === 'rules') },
+    { id: 'plain', title: '生成报告', tasks: state.steps.filter(s => s.id === 'plain') },
+  ];
+  const stages = groups.map(group => {
+    const done = group.tasks.filter(s => s.phase === 'done').length;
+    const active = group.tasks.some(s => s.phase === 'start');
+    const status = done === group.tasks.length && done > 0 ? 'done'
+      : active ? interrupted ? 'unknown' : 'active' : 'waiting';
+    return { id: group.id, title: group.title, status,
+      label: status === 'done' ? '已完成' : status === 'active' ? '进行中' : status === 'unknown' ? '待确认' : '等待',
+      detail: group.id === 'collect' ? `${done}/${group.tasks.length}` : '',
+    };
+  });
+  const saving = state.verifying || state.steps.some(s => s.id === 'plain' && s.phase === 'done');
+  const uncertainSave = !!state.saveStatus || (saving && interrupted);
+  stages.push({id:'save',title:'保存报告',status:state.connection === 'saved' ? 'done' : uncertainSave ? 'unknown' : saving ? 'active' : 'waiting',
+    label:state.connection === 'saved' ? '已完成' : uncertainSave ? '待确认' : saving ? '进行中' : '等待',detail:''});
+  const running = state.steps.filter(s => s.phase === 'start');
+  const current = state.connection === 'saved' ? '研究已完成，可以查看报告'
+    : interrupted || state.saveStatus ? lifecycleLabel(state)
+    : state.verifying ? '正在确认报告已保存'
+    : running.length ? `正在${running.every(s => s.lookup) ? '查询' : '处理'}：${running.map(s => s.label).join('、')}`
+    : lifecycleLabel(state);
+  return { stages, current };
 }
 export function lifecycleLabel(state: ResearchState) {
   if (state.saveStatus === 'failed') return '报告保存失败';

@@ -1084,6 +1084,24 @@ button {
 .live-office .source-marker strong {font-size:13px;}
 .live-office .source-marker small {display:block;font-size:11px;max-width:190px;white-space:normal;}
 .live-office .source-marker.failed {border-color:#d39779;background:#392c26ef;}
+.source-detail-trigger {position:absolute;inset:0;border:0;border-radius:inherit;background:transparent;cursor:pointer;pointer-events:auto;}
+.source-detail-trigger:focus-visible {outline:3px solid #8cf0c9;outline-offset:3px;}
+.source-marker em {font-style:normal;font-weight:900;color:#ffd19c;}
+.live-office .source-marker.active {border:2px solid #8df6ce;background:#123f33f5;box-shadow:0 0 0 4px #72e9c126,0 0 22px #72e9c14d;}
+.live-office .source-marker.active small {color:#a6ffdd;font-weight:800;}
+.live-office .source-marker.unknown {border-color:#e5bb83;background:#392c26ef;}
+.source-markers:not(.idle) .source-enterprise {top:32%;}
+.live-status {width:35%;}
+.live-status .current-task {color:#e6fff4;line-height:1.5;}
+.stage-progress {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;list-style:none;margin:7px 0;padding:0;}
+.stage-progress li {display:grid;gap:4px;padding:6px 2px;border-top:3px solid #6f807d;color:#a5b5af;}
+.stage-progress b {font-size:11px;font-weight:500;}
+.stage-progress small {font-size:10px;}
+.stage-progress [data-state=done] {border-color:#6ee3b8;color:#bff5dd;}
+.stage-progress [data-state=done] small {color:#bff5dd;}
+.stage-progress [data-state=active] {border-color:#9bffcf;background:#72e9c120;color:#fff;}
+.stage-progress [data-state=active] small {color:#9bffcf;font-weight:800;}
+.stage-progress [data-state=unknown] {border-color:#efbb76;}
 .live-office .evidence-paper {transition:opacity 250ms;}
 .live-inspector {position:absolute;z-index:45;right:2%;top:13%;width:30%;max-height:78%;overflow:auto;background:#10202af2;color:#f3f5ee;padding:16px;border:1px solid #ffffff40;border-radius:14px;font-size:13px;}
 .live-inspector p,.live-inspector small {color:#b6cbc8;font-size:12px;}
@@ -1207,6 +1225,21 @@ button {
  .connection-notice,.local-dialog {left:15%;width:70%;font-size:12px;}.test-mode-badge {font-size:10px;}
 }
 
+.demo-examples {position:relative;width:fit-content;max-width:100%;padding:2px 10px;border-radius:8px;background:#08111c99;font-size:12px;color:#c7d1cc;text-shadow:0 1px 4px #000;}
+.demo-links {display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 12px;}
+.demo-links > span {color:#bec9c4;}
+.demo-links button,.demo-remove {border:0;background:none;color:#e4eae5;cursor:pointer;font:inherit;}
+.demo-links button {padding:7px 2px;border-bottom:1px solid transparent;}
+.demo-links button small {margin-left:5px;font-size:10px;color:#bac8c1;}
+.demo-links button:hover,.demo-links button[aria-pressed=true] {color:#8cf0c9;border-bottom-color:#8cf0c9;}
+.demo-links button:focus-visible,.demo-remove:focus-visible,.demo-material summary:focus-visible {outline:2px solid #8cf0c9;outline-offset:3px;border-radius:3px;}
+.demo-selection {display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:5px 12px;margin-top:4px;font-size:11px;}
+.demo-material {position:static;}
+.demo-material summary {cursor:pointer;color:#c6eadb;}
+.demo-material > div {position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:5;width:min(460px,72vw);max-height:160px;overflow:auto;padding:14px;text-align:left;background:#142129;border:1px solid #ffffff30;border-radius:10px;box-shadow:0 8px 30px #0006;line-height:1.7;text-shadow:none;}
+.demo-material p {white-space:pre-wrap;margin:8px 0 0;}
+.demo-remove {padding:4px;color:#bcc9c2;text-decoration:underline;text-underline-offset:3px;}
+
 /* Same-origin report navigation retained from integration. */
 .office-menu {position:absolute;z-index:46;right:16px;bottom:16px;color:#eadcc6;}
 .office-menu summary {display:grid;place-items:center;width:44px;height:44px;list-style:none;cursor:pointer;border:1px solid #eed6b126;border-radius:8px;background:#19181690;backdrop-filter:blur(8px);}
@@ -1217,3 +1250,16 @@ button {
 .office-menu .office-nav {inset:auto 0 52px auto;display:flex;flex-direction:column;gap:4px;width:156px;padding:6px;border:1px solid #eed6b138;border-radius:10px;background:#191816f0;box-shadow:0 8px 24px #0005;}
 .office-menu .office-nav a {display:flex;align-items:center;min-height:44px;padding:8px 12px;border:0;border-radius:5px;background:none;color:#eadcc6;font-size:13px;}
 .office-menu .office-nav a:hover,.office-menu .office-nav a:focus-visible {background:#eed6b11a;color:#fff3de;}
+
+/* Give live progress its own space on narrow screens; keep the entry scene unchanged. */
+@media (max-width:640px) {
+  html:has(.live-office:not(.status-idle)),body:has(.live-office:not(.status-idle)) {height:auto;overflow-y:auto;}
+  .office-page:has(.live-office:not(.status-idle)) {display:block;height:auto;min-height:100svh;padding:80px 0 280px;overflow:visible;}
+  .live-office:not(.status-idle) {width:100%;overflow:visible;}
+  .live-office:not(.status-idle) .live-status {top:calc(100% + 14px);left:12px;width:calc(100% - 24px);padding:12px;gap:5px;}
+  .live-office .stage-progress b {font-size:11px;}
+  .live-office .research-hud {top:-62px;left:12px;right:12px;}
+  .live-office .research-subject {max-width:65%;font-size:12px;}
+  .source-markers:not(.idle) .source-enterprise {top:12%;}
+  .live-office .live-inspector {position:fixed;top:12px;left:12px;right:12px;width:auto;max-height:calc(100svh - 24px);}
+}
