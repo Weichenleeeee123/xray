@@ -48,6 +48,9 @@ cd backend
 | POST | `/api/cases` | 建案卷，生成第 1 版报告。`company_name`、`need`，可选 `scenario`、`for_whom`、`amount`、`material_text` |
 | GET | `/api/cases`、`/api/cases/{id}` | 案卷列表；单个案卷（全部版本、原始数据、对话） |
 | POST | `/api/cases/{id}/supplements` | 二次分析。`kind`：`material` 新材料 / `reply` 对方回复 / `need` 改需求；`text` 必填 |
+| POST | `/api/cases/{id}/reviews` | 把这家公司最新的用户评价放进案卷，出一版新报告（"更新用户评价"）；评价没变返回 409 |
+| GET | `/api/reviews?company=&author=` | 某家公司的用户评价：条数、1–5 星分布（不算平均分）、评价列表（新的在前；`mine` 标出这个浏览器写的） |
+| POST | `/api/reviews` | 写评价：`company`、`stars` 1–5、`relation`（customer / employee / applicant / other）、`text` 10–500 字、可选 `nickname`、`author`（浏览器匿名编号）。同一编号对同一家公司只能写一条，重复 409 |
 | POST | `/api/cases/{id}/chat` | AI 助手。`text`，可选 `refs`（选中的条目 id）、`version`（正在浏览的版本，正整数） |
 | GET | `/api/cases/{id}/onepager?audience=family\|teller` | 一页结论：家人版 / 网点版 |
 | GET | `/api/demo?case=C`、`/api/demo/cases` | 演示案例的输入和要补充的信息（`data/demo_cases.json`） |
@@ -67,6 +70,17 @@ cd backend
 - 来源 = 来源类型 + 数据日期 + 原始数据编号，一行灰字，点开就是原始记录；原始记录里列出报告用到它的地方，引文高亮。
 - 虚构公司全程挂"演示数据 · 公司为虚构"，打印出来的一页结论上也有。只有真查到了演示数据才挂，真实公司"没查"的记录显示"没有数据"。
 - 二次分析的对话框里，演示案例准备好的补充材料可以一键填入。
+- 报告页最后一个标签是"评价"：用户个人观点，未经核实。星级分布、写评价、评价列表；有没进这一版的评价时，可以"放进报告"出一版新的。
+
+## 用户评价（`app/reviews.py`）
+
+评价按公司存，不按案卷存；它是别人说的、没核实，只让人多留意，不让人放心：
+- 有评价时，汇集数据记一条原始数据"用户评价（N 条）"（来源 `user_reviews`，类型 `user_review`，不含作者编号）。
+- 口碑信号加一条 `reputation.user_reviews`：少于 3 条只作参考；3 条以上、1–2 星占一半或更多，标"要留意"；其余只作参考。**好评不标绿，差评不到"有问题"**。
+- 一页结论和判断（judgments）都不收评价。助手可以引用评价，但越界检查不把评价原文当作记录：评价里写了"非法集资"，助手也不能借它说出口。
+- 存之前遮掉手机号、身份证号、住址、出生信息；定性话照发，页面统一写"用户个人观点，未经核实"。
+- 没有账号：浏览器生成匿名编号，后端只存哈希，同一浏览器对同一家公司只能写一条。防手滑，不防刷。
+- 用户写的评价在 `data/reviews/`（git 忽略）；演示评价只给虚构的满盈禾，在 `data/fixtures/reviews.json`。不给真实公司编评价。
 
 ## 条目 id（前端跳转、助手引用都用它）
 

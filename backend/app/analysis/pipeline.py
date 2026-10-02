@@ -236,8 +236,10 @@ def refresh_reviews(case: Case, svc: Services) -> Case:
     after = _review_raw(case, cur)
     cur.changes, base = diff(prev, cur, {after.id: ""} if after else {})
     n_before = len(before.content) if before else 0
+    # 条数变了、状态没变时，逐条比对算"没变"；开头这句要把评价这一条现在是什么说出来
+    ch = next((c for c in cur.changes if c.target == "reputation.user_reviews"), None)
     cur.change_summary = (f"这一版放进了新写的用户评价：上一版 {n_before} 条，现在 {len(after.content)} 条。"
-                          "评价是用户自己写的，没核实，只影响口碑里\"用户评价\"这一条。" + base)
+                          + (ch.plain if ch else "") + "评价是用户自己写的，没核实，只影响口碑里这一条。" + base)
     cur.judgments, cur.judgment_changes, cur.judgment_summary = update_judgments(prev.judgments, cur.judgments, {}, cur.no)
     case.versions.append(cur)
     case.current = cur.no

@@ -7,6 +7,7 @@
  * 页面里所有可点的东西都用 data-act 声明，统一在 onClick 里分发。
  * 条目 id：A1 说法、M1 缺项、risk.bank_list 信号条目、Q1 问题、R1 原始数据。R 开头的打开原始数据，其余跳到所在标签页里那一条。
  * 报告条目的锚点用 data-item；按钮要去的目标用 data-id，两者不要混用。
+ * 用户评价按公司存（/api/reviews），不属于某一版报告；"放进报告"才会出一版新的，把当时的评价记成一条原始数据。
  */
 'use strict';
 
@@ -15,7 +16,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const KIND = { none: '没有数据', official: '官方记录', collected: '人工采集', commercial: '商业数据', regulation: '法规', parameter: '参数',
-  demo: '演示·虚构', user_material: '用户材料', web: '网络公开' };
+  demo: '演示·虚构', user_material: '用户材料', web: '网络公开', user_review: '用户评价' };
 const COVERAGE = { found: '查到了', not_found: '查了没有', not_covered: '没查', failed: '查询失败' };
 const STATUS = { bad: '有问题', warn: '要留意', miss: '该有的没有', none: '没查', ok: '没问题' };
 const FLAG = new Set(['bad', 'warn', 'miss']);   // 要看的；ok、none 默认折叠
@@ -24,7 +25,10 @@ const MODE = { model: '模型回答', replay: '离线回放', template: '模板�
 // 判断页先收起来（地址带 ?judg=1 才显示）：它的逐条比对在"只改需求"时也会报"需要重新核实"，
 // 和"事实没变"打架；记录里查到的官方文书也不该一键撤掉。后端照常存判断，修好再放出来。
 const SHOW_JUDGMENTS = /[?&]judg=1/.test(location.search);
-const TABS = { judgments: '判断', changes: '变化', signals: '四个信号', claims: '宣称 vs 记录', questions: '该问对方的', raw: '原始数据' };
+const TABS = { judgments: '判断', changes: '变化', signals: '四个信号', claims: '宣称 vs 记录', questions: '该问对方的', raw: '原始数据', reviews: '评价' };
+// 用户评价只作参考时（不够集中），既不算"没问题"，也不算"没查"
+const isRef = i => i.source === 'user_reviews' && !FLAG.has(i.status);
+const stLabel = i => (isRef(i) ? '只作参考' : STATUS[i.status] || '');
 // 三个分区。顺序就是顶栏顺序，也是第一次用的人该走的顺序
 const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['me', '我的', '状态、名单、名词表、这几条底线']];
 const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
@@ -39,6 +43,7 @@ const S = {
   terms: [], termById: new Map(), termByName: new Map(), termRe: null,
   case: null, viewNo: null, selected: new Set(), busy: false, audience: 'family', opCache: {},
   tab: 'signals', openRest: new Set(), showText: false,
+  reviews: null, rvStars: 0, rvRel: null,   // 这家公司现在的评价（不随版本变）；写评价表单里选的星级和身份
   form: { userScenario: null, showScen: false, dirty: {}, intake: null },
 };
 
@@ -505,6 +510,7 @@ async function openCase(id, no) {
       return;
     }
     S.selected.clear(); S.opCache = {}; S.tab = 'signals'; S.openRest.clear();
+    S.reviews = null; S.rvStars = 0; S.rvRel = null;
   }
   const next = no && S.case.versions.some(v => v.no === no) ? no : S.case.current;
   if (S.viewNo !== next) S.selected.clear();
@@ -533,6 +539,7 @@ function renderCase() {
   </div>
   <button type="button" class="fab" data-act="open-assist">小企${S.selected.size ? `<em>${S.selected.size}</em>` : ''}</button>`;
   loadOnepager(v);
+  loadReviews();
   scrollChat();
 }
 
@@ -688,7 +695,7 @@ function glanceHtml(v) {
   // 四个信号
   const tiles = v.signals.map(s => {
     const flagged = s.items.filter(i => FLAG.has(i.status)).sort((a, b) => SEV[b.status] - SEV[a.status]);
-    const nOk = s.items.filter(i => i.status === 'ok').length, nNone = s.items.length - flagged.length - nOk;
+    const nOk = s.items.filter(i => i.status === 'ok').length, nNone = s.items.filter(i => !isRef(i)).length - flagged.length - nOk;
     const st = flagged.length ? flagged[0].status : (nOk && !nNone ? 'ok' : 'none');
     const phrase = flagged.length ? shortOf(v, `${s.key}.${flagged[0].key}`, `${flagged[0].label}：${flagged[0].value}`)
       : !nOk ? '没查到数据' : nNone ? `查过的没问题，${nNone} 项没查` : '查过的没问题';
@@ -750,7 +757,8 @@ function tabsHtml(v) {
   const changed = SHOW_JUDGMENTS ? Math.max(mchg, jchg) : mchg;
   const jug = v.judgments || [];
   const counts = { judgments: [jug.length, jug.some(j => j.state === 'needs_check')], changes: [changed, changed > 0], signals: [flagged, flagged > 0], claims: [v.assertions.length + v.missing.length, (v.tally.red || 0) > 0],
-    questions: [v.questions.length, false], raw: [v.raw_ids.length, false] };
+    questions: [v.questions.length, false], raw: [v.raw_ids.length, false],
+    reviews: [S.reviews ? S.reviews.count : '…', !!(reviewItemOf(v) && reviewItemOf(v).status === 'warn')] };
   const tabs = Object.keys(TABS).filter(k => (k !== 'changes' || v.no > 1) && (k !== 'judgments' || (SHOW_JUDGMENTS && jug.length)));
   return `<nav class="tabs" role="tablist" aria-label="报告的各层">${tabs.map(k => `<button type="button" class="tab" role="tab" data-act="tab" data-tab="${k}" aria-selected="${S.tab === k}">${TABS[k]}<span class="n${counts[k][1] ? ' hot' : ''}">${counts[k][0]}</span></button>`).join('')}</nav>`;
 }
@@ -762,6 +770,7 @@ function panelHtml(v) {
     case 'claims': return claimsPanel(v, cm);
     case 'questions': return questionsPanel(v);
     case 'raw': return rawPanel(v);
+    case 'reviews': return reviewsPanel(v);
     default: return signalsPanel(v, cm);
   }
 }
@@ -877,8 +886,8 @@ function signalCard(sig, cm, v) {
   const flagged = sig.items.filter(i => FLAG.has(i.status));
   const rest = sig.items.filter(i => !FLAG.has(i.status));
   const open = S.openRest.has(sig.key) || !flagged.length && rest.length <= 2;
-  const nOk = rest.filter(i => i.status === 'ok').length, nNone = rest.length - nOk;
-  const restLabel = [nOk && `${nOk} 项没问题`, nNone && `${nNone} 项没查`].filter(Boolean).join('、');
+  const nOk = rest.filter(i => i.status === 'ok').length, nRef = rest.filter(isRef).length, nNone = rest.length - nOk - nRef;
+  const restLabel = [nOk && `${nOk} 项没问题`, nNone && `${nNone} 项没查`, nRef && '用户评价只作参考'].filter(Boolean).join('、');
   // 没查不等于没问题：有没查的项就不用绿色
   const head = flagged.length ? ['', `${flagged.length} 项要看`]
     : !nOk ? [' none', '没查到数据'] : nNone ? [' none', `查过的没问题，${nNone} 项没查`] : [' zero', '查过的没问题'];
@@ -895,7 +904,7 @@ function signalCard(sig, cm, v) {
 function itemHtml(sigKey, it, cm) {
   const id = `${sigKey}.${it.key}`, seen = new Set();
   return `<div class="it s-${esc(it.status)}${selCls(id)}" data-item="${esc(id)}">
-    <div class="it-h"><span class="it-l">${termText(it.label, seen)}</span>${it.value === STATUS[it.status] ? '' : `<span class="it-s">${STATUS[it.status] || ''}</span>`}${chgTag(id, cm)}${askBtn(id)}</div>
+    <div class="it-h"><span class="it-l">${termText(it.label, seen)}</span>${it.value === stLabel(it) ? '' : `<span class="it-s">${stLabel(it)}</span>`}${chgTag(id, cm)}${askBtn(id)}</div>
     <div class="it-v">${termText(it.value, seen)}</div>
     ${it.detail ? `<div class="it-d">${termText(it.detail, seen)}</div>` : ''}
     <div class="it-m">${srcLink(it.source, it.ref)}</div>
@@ -981,6 +990,118 @@ function rawPanel(v) {
         <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span>
       </button>`;
     }).join('')}</div>`;
+}
+
+// ---------- 评价：按公司存，用户个人观点，未经核实 ----------
+// 星级只给分布，不算平均分。报告只看差评是否集中：集中才在"口碑"里标"要留意"，好评不标绿。
+
+const REL = { customer: '客户', employee: '员工', applicant: '求职者', other: '其他' };
+// 浏览器里的匿名编号：同一个浏览器对同一家公司只能写一条。存不下来（隐私窗口）就每次打开页面换一个
+const AUTHOR = (() => {
+  let id = null;
+  try { id = localStorage.getItem('xray.author'); } catch { /* 存不了 */ }
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try { localStorage.setItem('xray.author', id); } catch { /* 存不了 */ }
+  }
+  return id;
+})();
+const reviewItemOf = v => { for (const s of v.signals) for (const i of s.items) if (i.key === 'user_reviews') return i; return null; };
+const starStr = n => '★'.repeat(n) + '☆'.repeat(5 - n);
+
+async function loadReviews() {
+  const company = S.case.case.company_name;
+  let got;
+  try { got = await api(`/api/reviews?company=${encodeURIComponent(company)}&author=${encodeURIComponent(AUTHOR)}`); }
+  catch (e) { got = { company, count: 0, dist: {}, reviews: [], error: e.message }; }
+  if (!S.case || S.case.case.company_name !== company) return;
+  // 已经有数据时只更新标签上的数字，不重画面板，免得冲掉正在写的评价
+  const first = !S.reviews;
+  S.reviews = got;
+  refreshReviewTab(first);
+}
+function refreshReviewTab(rerender = true) {
+  const n = $('.tabs .tab[data-tab="reviews"] .n');
+  if (n && S.reviews) n.textContent = S.reviews.count;
+  if (S.tab === 'reviews' && rerender) renderPanel();
+}
+
+function reviewsPanel(v) {
+  const R = S.reviews;
+  if (!R) return '<p class="empty-line">读取评价…</p>';
+  const snap = versionRaws(v).find(r => r.source_id === 'user_reviews');
+  const inVer = snap && Array.isArray(snap.content) ? snap.content.length : 0;
+  const fresh = R.count - inVer;
+  const latest = v.no === S.case.versions[S.case.versions.length - 1].no;
+  const max = Math.max(1, ...Object.values(R.dist || {}));
+  const item = reviewItemOf(v);
+  const mine = R.reviews.some(r => r.mine);
+  const dist = [5, 4, 3, 2, 1].map(st => {
+    const c = (R.dist || {})[st] || 0;
+    return `<div class="rv-bar${st <= 2 ? ' low' : ''}"><span>${st} 星</span><i><b style="width:${(c / max) * 100}%"></b></i><em>${c}</em></div>`;
+  }).join('');
+  return `<div class="rv-note"><b>用户个人观点，未经核实。</b>系统不判断真假，也不算平均分。报告只看差评是否集中：集中才在"口碑"里标"要留意"；好评再多，也不算放心的理由。</div>
+    ${R.error ? `<p class="err">评价没读出来：${esc(R.error)}</p>` : ''}
+    <div class="rv-top">
+      <div class="rv-dist" aria-label="星级分布">${dist}<p class="small muted">共 ${R.count} 条${R.count ? '' : '，还没有人写'}</p></div>
+      <div class="rv-in"><span class="kicker">这一版报告里</span>${item
+        ? `<div class="rv-in-v s-${esc(item.status)}"><b>${esc(item.value)}</b><span>${esc(stLabel(item))}</span></div><p class="small">${esc(item.detail || '')}</p><button type="button" class="linkish small" data-act="goto" data-id="reputation.user_reviews">看口碑里这一条 →</button>`
+        : '<p class="small muted">还没有评价进这一版报告。评价进报告后，只出现在"口碑"里的一条，不进一页结论。</p>'}</div>
+    </div>
+    ${fresh > 0 ? `<div class="rv-fresh"><span>有 ${fresh} 条评价还没进这一版报告。</span>${latest
+      ? `<button type="button" class="btn sm" data-act="rv-refresh">放进报告，出第 ${S.case.versions.length + 1} 版</button>`
+      : '<span class="small muted">切到最新一版才能放进去。</span>'}</div>` : ''}
+    ${mine ? '<p class="rv-done small">你已经给这家公司写过一条。同一个浏览器对同一家公司只能写一条。</p>' : reviewFormHtml()}
+    <div class="rv-list">${R.reviews.map(reviewHtml).join('')}</div>`;
+}
+function reviewFormHtml() {
+  return `<form class="rv-form" id="rvForm" novalidate>
+    <h4>写一条评价</h4>
+    <div class="rv-row"><span class="lbl">打几星</span><span class="stars" role="group" aria-label="星级">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="star" data-act="rv-star" data-n="${n}" aria-pressed="${n <= S.rvStars}" aria-label="${n} 星">★</button>`).join('')}</span><span class="small muted" id="rvStarTxt">${S.rvStars ? `${S.rvStars} 星` : ''}</span></div>
+    <div class="rv-row"><span class="lbl">你是它的</span><span class="seg">${Object.entries(REL).map(([k, l]) => `<button type="button" data-act="rv-rel" data-rel="${k}" aria-pressed="${S.rvRel === k}">${l}</button>`).join('')}</span></div>
+    <textarea class="big-inp sm" name="text" rows="4" maxlength="500" placeholder="写你遇到的事：对方怎么说的、钱打到哪、能不能取出来。10–500 字。手机号、身份证号会自动遮掉。"></textarea>
+    <div class="rv-row"><input class="big-inp sm" name="nickname" maxlength="20" placeholder="昵称（选填，不填显示匿名用户）"><button type="submit" class="btn sm">发布评价</button></div>
+    <p class="small muted">没有账号，防不了刷：同一个浏览器对同一家公司只能写一条。发布后所有人都能看到。</p>
+    <div class="err" id="rvErr" role="alert"></div>
+  </form>`;
+}
+function reviewHtml(r) {
+  return `<article class="rv${r.mine ? ' mine' : ''}">
+    <div class="rv-h"><span class="rv-stars${r.stars <= 2 ? ' low' : ''}" aria-label="${r.stars} 星">${starStr(r.stars)}</span><b>${esc(r.nickname || '匿名用户')}</b><span class="rv-rel">${esc(r.relation_label)}</span>${r.demo ? '<span class="rv-tag demo">演示数据</span>' : ''}${r.mine ? '<span class="rv-tag mine">你写的</span>' : ''}<time>${esc(fmtTime(r.created_at).slice(0, 10))}</time></div>
+    <p>${esc(r.text)}</p></article>`;
+}
+async function submitReview(f) {
+  const err = $('#rvErr'), text = f.text.value.trim();
+  err.textContent = '';
+  if (!S.rvStars) { err.textContent = '先选几星'; return; }
+  if (!S.rvRel) { err.textContent = '选一下你和这家公司的关系'; return; }
+  if (text.length < 10) { err.textContent = '至少写 10 个字，说说具体遇到了什么事'; return; }
+  const btn = f.querySelector('[type="submit"]');
+  btn.disabled = true; btn.textContent = '正在发布…';
+  try {
+    S.reviews = await api('/api/reviews', { method: 'POST', body: { company: S.case.case.company_name, stars: S.rvStars,
+      relation: S.rvRel, text, nickname: f.nickname.value.trim() || null, author: AUTHOR } });
+    S.rvStars = 0; S.rvRel = null;
+    refreshReviewTab();
+    toast('已发布。报告要算进这条，点"放进报告"');
+  } catch (e) {
+    err.textContent = '没发出去：' + e.message;
+    btn.disabled = false; btn.textContent = '发布评价';
+  }
+}
+async function refreshReviews(el) {
+  el.disabled = true; el.textContent = '正在重新判断…';
+  try {
+    const c = await api(`/api/cases/${encodeURIComponent(S.case.id)}/reviews`, { method: 'POST' });
+    S.case = c; S.opCache = {}; S.tab = 'changes';
+    const target = `#/case/${c.id}/v/${c.current}`;
+    if (location.hash === target) { S.viewNo = c.current; renderCase(); } else location.hash = target;
+    setTimeout(() => { const t = $('.chg-banner'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+    toast(`已生成第 ${c.current} 版`);
+  } catch (e) {
+    toast('没生成出来：' + e.message, true);
+    el.disabled = false; el.textContent = '放进报告';
+  }
 }
 
 // ---------- 原始数据弹窗 ----------
@@ -1411,6 +1532,9 @@ document.addEventListener('click', e => {
       $('#resHelp').textContent = RES_KIND[d.kind][1]; } break;
     case 'close-dlg': el.closest('dialog').close(); break;
     case 'demo-fill': fillDemo(d.id); break;
+    case 'rv-star': S.rvStars = +d.n; $$('[data-act="rv-star"]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.n <= S.rvStars)); $('#rvStarTxt').textContent = `${S.rvStars} 星`; break;
+    case 'rv-rel': S.rvRel = d.rel; $$('[data-act="rv-rel"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.rel === d.rel)); break;
+    case 'rv-refresh': refreshReviews(el); break;
     case 'scen-toggle': S.form.showScen = !S.form.showScen; $('#intake').innerHTML = intakeHtml(); break;
     case 'scenario': S.form.userScenario = S.form.userScenario === d.id ? null : d.id; S.form.showScen = false; $('#intake').innerHTML = intakeHtml(); break;
   }
@@ -1424,6 +1548,7 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('submit', e => {
   if (e.target.id === 'asForm') { e.preventDefault(); const t = e.target.q; const q = t.value; t.value = ''; ask(q); }
+  if (e.target.id === 'rvForm') { e.preventDefault(); submitReview(e.target); }
 });
 window.addEventListener('scroll', closePop, { passive: true });
 
