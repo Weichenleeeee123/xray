@@ -2,6 +2,8 @@
 
 日期 2026-10-02 ｜ 分支 `feat/trackable-judgments` ｜ 主要由前端一侧提出，改动落在 `backend/app/models.py`
 
+实现状态：`Basis`、`Judgment`、`JudgmentChange`、`ResolveIn` 和 `cleared` 已进入主线，`POST /api/cases/{id}/resolve` 已有后端实现与测试。判断页目前默认隐藏，前端地址带 `?judg=1` 才显示；此功能的界面行为仍需核对，不能把后端契约完成等同于界面已正式开放。
+
 ## 1. 为什么加这些字段
 
 原来的「二次分析」是：新材料进来 → 重跑一遍 → 出一版新报告，两个版本的**报告条目**做 diff。
@@ -108,7 +110,7 @@ plain → **报告那一头对应的断言也改写**（前缀「第 N 版：这
   - v3（对 `check.A7` 下 `clarified`）→ 已经澄清 1，报告 A7 那条提醒跟着改写，判断 history 留两行
 - 没有出现「风险等级从低变高」，也没有推出「账户真实属于张某 / 违法收款 / 这是诈骗」这些说法。
 
-## 8. 要 A 确认的两件事
+## 8. 原待确认事项（现状）
 
-1. 这些字段加在 `models.py`（A 的地盘）上是否接受；如果要挪到别的模块或改名，接口数据不变的话前端不用动。
-2. `ResolveIn` 是否需要进 `openapi` 的公共类型清单，以及要不要加鉴权 / 错误信封（现在和 supplements 一致）。
+1. 字段已加入 `models.py` 并由主线使用，不再等待契约确认。
+2. `/resolve` 使用 `ResolveIn`，由 FastAPI 生成 OpenAPI 描述；当前和 supplements 一样没有用户鉴权。若以后公网部署，访问控制应作为部署任务处理。

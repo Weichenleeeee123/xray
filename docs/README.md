@@ -31,7 +31,7 @@
 | 文档 | 内容 |
 |---|---|
 | [完整版 PRD](2026-10-02-xray-prd.md) | 比赛前写的完整产品方案 |
-| [后端 A 交接](backend-a.md)、[后端 B 交接](backend-b.md) | 按完整版 PRD 写的分工，目录结构（`apps/server/…`）和现在的仓库对不上 |
+| [后端 A 交接](backend-a.md)、[后端 B 交接](backend-b.md) | 按完整版 PRD 写的分工，目录结构（`apps/server/…`）和现在的仓库对不上；其中 `/api/v1` 是旧方案，当前接口统一为 `/api/` |
 | [企鹅后端 B 实施计划](superpowers/plans/2026-10-02-penguin-backend-b.md) | 企鹅动手前的计划；实际做成什么样以后端 B 接入说明为准 |
 
 把文档喂给自己的 Agent 时，只给"现行"那一栏的。
