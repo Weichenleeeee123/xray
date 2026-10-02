@@ -144,22 +144,25 @@ function termPop(el, id) {
   popAt(el, `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}`);
 }
 const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问小企">${S.selected.has(id) ? '已选' : '问'}</button>`;
+// Keep raw record IDs for navigation, but use readable labels in the review UI.
+const hideRecordIds = () => typeof isDesignReview === 'function' && isDesignReview();
+const recordRefText = ref => hideRecordIds() && /^R\d+$/.test(ref) ? '查看出处' : ref;
 const goLink = (id, version = null) => {
   const target = parseRef(id, version);
   const terms = target.version == null ? S.terms : (S.case?.versions.find(v => v.no === target.version)?.terms || S.terms);
   const t = target.id.startsWith('term.') && terms.find(t => t.id === target.id.slice(5));
-  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}"${target.version == null ? '' : ` data-version="${target.version}"`}>${esc(t ? `名词·${t.term}` : target.id)}</button>`;
+  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}"${target.version == null ? '' : ` data-version="${target.version}"`}>${esc(t ? `名词·${t.term}` : recordRefText(target.id))}</button>`;
 };
-const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(r)}</button>`).join('');
+const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(recordRefText(r))}</button>`).join('');
 const selCls = id => (S.selected.has(id) ? ' is-sel' : '');
 
-// 来源：一行灰字"类型 · 日期 · 编号"，点开是原始记录（法规、参数类没有编号，点开是出处说明）
+// Source metadata opens the original record; internal record IDs stay in data attributes.
 function srcLink(sourceId, ref) {
   const s = srcOf(sourceId), r = ref && rawById(ref);
   const kind = (r && rawKind(r)) || (s && s.kind) || '';
   const date = kind === 'none' ? null : (r && r.as_of) || (s && s.as_of);
   const title = s ? s.name : sourceId;
-  const inner = `<span class="k-${esc(kind)}">${esc(KIND[kind] || '来源')}</span>${date ? ` · ${esc(date)}` : ''}${ref ? ` · <b>${esc(ref)}</b>` : ''}`;
+  const inner = `<span class="k-${esc(kind)}">${esc(KIND[kind] || '来源')}</span>${date ? ` · ${esc(date)}` : ''}${ref ? hideRecordIds() ? ' · 查看出处 ↗' : ` · <b>${esc(ref)}</b>` : ''}`;
   return ref
     ? `<button type="button" class="src" data-act="raw" data-ref="${esc(ref)}" title="${esc(title)} · 点开看原始数据">${inner}</button>`
     : `<button type="button" class="src" data-act="src" data-src="${esc(sourceId)}" title="${esc(title)}">${inner}</button>`;
@@ -510,24 +513,22 @@ async function openCase(id, no) {
 function renderCase() {
   const c = S.case, v = ver();
   if (S.tab === 'changes' && v.no === 1) S.tab = 'signals';
+  if (isDesignReview() && ['signals', 'reviews'].includes(S.tab)) S.tab = 'claims';
   const assistOpen = $('#assist') && $('#assist').classList.contains('open');
   useTerms(v.terms && v.terms.length ? v.terms : S.terms);
   renderTop();
   $('#view').innerHTML = `
   <div class="case-layout">
     <div class="report" id="report">
-      ${caseHead(c, v)}
-      ${conclusionHtml(v)}
-      ${chartsHtml(v)}
-      ${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc((SHOW_JUDGMENTS && v.judgment_summary) || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}
-      ${tabsHtml(v)}
-      <div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>
-      <footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>
+      ${isDesignReview() ? researchReport(c, v) : caseHead(c, v) + conclusionHtml(v) + chartsHtml(v)}
+      ${!isDesignReview() ? `${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc((SHOW_JUDGMENTS && v.judgment_summary) || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}${tabsHtml(v)}<div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>` : ''}
+      ${isDesignReview() ? researchDisclaimer() : '<footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>'}
     </div>
     <aside class="assist${assistOpen ? ' open' : ''}" id="assist" aria-label="小企（AI 栏）">${assistHtml()}</aside>
   </div>
   ${qiLauncherHtml()}`;
-  loadOnepager(v);
+  initResearchDesign();
+  if ($('#onepager')) loadOnepager(v);
   loadReviews();
   scrollChat();
 }
@@ -559,12 +560,12 @@ function caseHead(c, v) {
 }
 
 // 第一层：一眼看懂（屏幕上）+ 一页结论（文字版，给家人看、打印）
-function conclusionHtml(v) {
+function conclusionHtml(v, includeSignals = true) {
   return `<section class="conclusion" id="L1">
     <div class="cc-bar"><span class="kicker">一眼看懂</span>
       <button type="button" class="linkish" data-act="optext">${S.showText ? '收起文字版' : '文字版（给家人看）'}</button>
       <button type="button" class="linkish" data-act="print">打印</button></div>
-    <div class="glance">${glanceHtml(v)}</div>
+    <div class="glance">${glanceHtml(v, includeSignals)}</div>
     <div class="op-wrap"${S.showText ? '' : ' hidden'}>
       <div class="op-tools"><div class="seg" role="group" aria-label="给谁看"><button type="button" data-act="aud" data-aud="family" aria-pressed="${S.audience === 'family'}">给家人</button><button type="button" data-act="aud" data-aud="teller" aria-pressed="${S.audience === 'teller'}">给网点柜员</button></div></div>
       <article class="onepager" id="onepager">${opBody(currentOp(v), v)}</article>
@@ -593,7 +594,7 @@ function chartCard(c, v) {
     <figcaption><b>${esc(c.title)}</b>${c.item ? `<button type="button" class="linkish small" data-act="goto" data-id="${esc(c.item)}">看这一条</button>` : ''}</figcaption>
     ${body}
     ${c.note ? `<p class="v-note">${termText(c.note)}</p>` : ''}
-    ${refs.length || params.length ? `<div class="v-src">出处 ${refs.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(r)}</button>`).join('')}${params.map(s => srcLink(s)).join('')}</div>` : ''}
+    ${refs.length || params.length ? `<div class="v-src">出处 ${refs.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(recordRefText(r))}</button>`).join('')}${params.map(s => srcLink(s)).join('')}</div>` : ''}
   </figure>`;
 }
 function compareHtml(c) {
@@ -651,7 +652,7 @@ function answerOf(sts) {
   if (none === sts.length) return ['none', '没查到数据'];
   return none ? ['none', '查过的没问题', `另有 ${none} 项没查`] : ['ok', '查过，没发现问题'];
 }
-function glanceHtml(v) {
+function glanceHtml(v, includeSignals = true) {
   const items = glanceItems(v), seen = new Set();
   const sc = S.scenarios.find(s => s.id === v.scenario);
   const firstIds = ((v.glance && v.glance.first.length) ? v.glance.first : (sc && sc.first_items) || []).filter(id => items[id]);
@@ -696,9 +697,9 @@ function glanceHtml(v) {
   const q = v.questions[0];
   const ai = v.glance && ['model', 'replay'].includes(v.glance.mode);
   return `${first}
-    <div class="gl-grid">
+    <div class="gl-grid${includeSignals ? '' : ' without-signals'}">
       <div><h4 class="gl-h">它说的 <span>⟷</span> 记录里的</h4>${pairs}</div>
-      <div><h4 class="gl-h">四个信号</h4><div class="tiles">${tiles}</div></div>
+      ${includeSignals ? `<div><h4 class="gl-h">四个信号</h4><div class="tiles">${tiles}</div></div>` : ''}
     </div>
     ${q ? `<div class="gl-next"><span class="kicker">下一步，先问对方</span><p>${termText(q.ask, seen)}</p>
       <span class="small muted">${termText(q.check_where, seen)}</span>
@@ -748,7 +749,7 @@ function tabsHtml(v) {
   const counts = { judgments: [jug.length, jug.some(j => j.state === 'needs_check')], changes: [changed, changed > 0], signals: [flagged, flagged > 0], claims: [v.assertions.length + v.missing.length, (v.tally.red || 0) > 0],
     questions: [v.questions.length, false], raw: [v.raw_ids.length, false],
     reviews: [S.reviews ? S.reviews.count : '…', !!(reviewItemOf(v) && reviewItemOf(v).status === 'warn')] };
-  const tabs = Object.keys(TABS).filter(k => (k !== 'changes' || v.no > 1) && (k !== 'judgments' || (SHOW_JUDGMENTS && jug.length)));
+  const tabs = Object.keys(TABS).filter(k => (!isDesignReview() || !['signals', 'reviews'].includes(k)) && (k !== 'changes' || v.no > 1) && (k !== 'judgments' || (SHOW_JUDGMENTS && jug.length)));
   return `<nav class="tabs" role="tablist" aria-label="报告的各层">${tabs.map(k => `<button type="button" class="tab" role="tab" data-act="tab" data-tab="${k}" aria-selected="${S.tab === k}">${TABS[k]}<span class="n${counts[k][1] ? ' hot' : ''}">${counts[k][0]}</span></button>`).join('')}</nav>`;
 }
 function panelHtml(v) {
@@ -769,6 +770,18 @@ function renderPanel() {
   $('#panel').innerHTML = panelHtml(v);
 }
 function showTab(tab, scroll = true) {
+  if ($('#signalDlg')?.open) $('#signalDlg').close();
+  if (typeof researchNavigate === 'function' && isDesignReview()) {
+    researchNavigate(tab, scroll); return;
+  }
+  if (tab === 'signals' && $('#research-signals')) {
+    if (scroll) $('#research-signals').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (tab === 'reviews' && $('#research-reviews')) {
+    if (scroll) $('#research-reviews').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
   S.tab = tab; renderPanel();
   if (scroll) {
     const tabs = $('.tabs');
@@ -818,7 +831,7 @@ function judgCard(j) {
       <span class="jg-scope">${esc(j.scope)}</span>
       ${j.since ? `<span class="jg-scope">第 ${j.since} 版起</span>` : ''}
       ${j.target ? `<button type="button" class="linkish" data-act="goto" data-id="${esc(j.target)}">报告里这一条</button>` : ''}
-      ${refs.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(r)}</button>`).join('')}
+      ${refs.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(recordRefText(r))}</button>`).join('')}
     </footer>
     ${(j.premise || []).length ? `<details class="jg-more"><summary>什么前提下这条才成立</summary><ul>${j.premise.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
     ${(j.unknown || []).length ? `<details class="jg-more"><summary>还没证明的事</summary><ul>${j.unknown.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
@@ -845,7 +858,7 @@ function fivePanel(v) {
         : list.map(c => `<div class="chg">
             <div class="chg-h"><button type="button" class="linkish" data-act="goto" data-id="${esc(c.target)}">${esc(c.text || c.label)}</button></div>
             ${c.before && c.after && c.before !== c.after ? `<div class="ba"><s>${esc(c.before)}</s> → <b>${esc(c.after)}</b></div>` : ''}
-            ${(c.because || []).length ? `<div class="chg-src">依据 ${c.because.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(r)}</button>`).join('')}</div>` : ''}
+            ${(c.because || []).length ? `<div class="chg-src">依据 ${c.because.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(recordRefText(r))}</button>`).join('')}</div>` : ''}
           </div>`).join('')}
     </section>`).join('')}`;
 }
@@ -860,7 +873,7 @@ function changesPanel(v) {
         <div class="ba">${x.before ? `<s>${esc(x.before)}</s> → ` : ''}<b>${esc(x.after || '这版没有了')}</b></div>
         ${x.after && x.plain.includes(x.after.slice(0, 12)) ? '' : `<p>${esc(x.plain)}</p>`}
         ${x.quote ? `<blockquote>${esc(x.quote)}</blockquote>` : ''}
-        ${x.because.length ? `<div class="chg-src">依据 ${x.because.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(x.quote ? [x.quote] : []))}">${esc(r)}</button>`).join('')}</div>` : ''}
+        ${x.because.length ? `<div class="chg-src">依据 ${x.because.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(x.quote ? [x.quote] : []))}">${esc(recordRefText(r))}</button>`).join('')}</div>` : ''}
       </div>`).join('')}</div>`
       : `<p class="empty-line">${v.trigger === 'need' ? '公司的记录和它的说法都没变，每条判定也没变；变的是信号的排序、"第一问"和报告措辞。' : '新信息没有改变任何一条判断。'}</p>`}
     ${same.length ? `<details class="same"><summary>没变的 ${same.length} 项</summary><ul>${same.map(x => `<li><button type="button" class="linkish" data-act="goto" data-id="${esc(x.target)}">${esc(x.label)}</button>：${esc(x.after || x.before || '')}</li>`).join('')}</ul></details>` : ''}`;
@@ -919,7 +932,7 @@ function sigExtra(sig, v) {
   if (Array.isArray(x.web) && x.web.length) {
     out += `<details class="webhits"><summary>搜到的 ${x.web.length} 条公开报道和投诉</summary><ul>${x.web.map(hh => `<li>
       <a href="${esc(hh.url)}" target="_blank" rel="noopener noreferrer">${esc(hh.title)}</a>
-      <div class="wm">${esc(hh.category || '其他')} · ${esc(hh.site || '')}${hh.date ? ' · ' + esc(hh.date) : ''}${hh.ref ? ` · <button type="button" class="cite" data-act="raw" data-ref="${esc(hh.ref)}">${esc(hh.ref)}</button>` : ''}</div>
+      <div class="wm">${esc(hh.category || '其他')} · ${esc(hh.site || '')}${hh.date ? ' · ' + esc(hh.date) : ''}${hh.ref ? ` · <button type="button" class="cite" data-act="raw" data-ref="${esc(hh.ref)}">${esc(recordRefText(hh.ref))}</button>` : ''}</div>
       ${hh.excerpt ? `<div class="small">${esc(hh.excerpt)}</div>` : ''}</li>`).join('')}</ul></details>`;
   }
   // 企查查新闻舆情：只列它标为负面的；倾向是平台标的，不是我们的判断
@@ -933,7 +946,7 @@ function sigExtra(sig, v) {
   if (Array.isArray(x.media) && x.media.length) {
     out += `<details class="webhits"><summary>权威媒体的 ${x.media.length} 篇报道</summary><ul>${x.media.map(hh => `<li>
       <a href="${esc(hh.url)}" target="_blank" rel="noopener noreferrer">${esc(hh.title)}</a>
-      <div class="wm">${esc(hh.category || '其他')} · ${esc(hh.site || '')}${hh.date ? ' · ' + esc(hh.date) : ''}${hh.ref ? ` · <button type="button" class="cite" data-act="raw" data-ref="${esc(hh.ref)}">${esc(hh.ref)}</button>` : ''}</div>
+      <div class="wm">${esc(hh.category || '其他')} · ${esc(hh.site || '')}${hh.date ? ' · ' + esc(hh.date) : ''}${hh.ref ? ` · <button type="button" class="cite" data-act="raw" data-ref="${esc(hh.ref)}">${esc(recordRefText(hh.ref))}</button>` : ''}</div>
       ${hh.excerpt ? `<div class="small">${esc(hh.excerpt)}</div>` : ''}</li>`).join('')}</ul></details>`;
   }
   // 巨潮资讯网：最近一年标题带处罚、诉讼、问询字样的公告
@@ -967,7 +980,7 @@ function claimsPanel(v, cm) {
     ${v.missing.length ? `<h4 class="sub-h">该写却没写</h4><div class="claims">${v.missing.map(m => { const seen = new Set(); return `<article class="claim c-miss${selCls(m.id)}" data-item="${esc(m.id)}">
         <div class="cl-h"><q>${termText(m.text, seen)}</q><span class="verdict">该写没写</span>${chgTag(m.id, cm)}${askBtn(m.id)}</div>
         <p class="cl-p">${termText(m.plain, seen)}</p>
-        <div class="cl-f">${srcLink(m.source)}${m.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}">看材料 ${esc(r)}</button>`).join('')}</div></article>`; }).join('')}</div>` : ''}`;
+        <div class="cl-f">${srcLink(m.source)}${m.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}">看材料${hideRecordIds() ? '' : ` ${esc(r)}`}</button>`).join('')}</div></article>`; }).join('')}</div>` : ''}`;
 }
 function claimCard(a, cm) {
   const seen = new Set();   // 对方原话里的词（"保本保息""资金存管"）最需要解释，先标
@@ -975,7 +988,7 @@ function claimCard(a, cm) {
     <div class="cl-h"><q>${termText(a.text, seen)}</q><span class="verdict">${esc(a.verdict_label)}</span>${chgTag(a.id, cm)}${askBtn(a.id)}</div>
     <p class="cl-p"><span class="ckind">${termText(a.kind_label, seen)}</span>${termText(a.plain, seen)}</p>
     <div class="cl-f">
-      ${a.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(a.quotes))}">看原文 ${esc(r)}</button>`).join('')}
+      ${a.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(a.quotes))}">看原文${hideRecordIds() ? '' : ` ${esc(r)}`}</button>`).join('')}
       <details><summary>怎么查的（${a.checks.length} 项）</summary><ul class="checks">${a.checks.map(ck => `<li class="s-${esc(ck.status)}">
         <span class="ck-l">${termText(ck.label, seen)}</span><span class="ck-s">${STATUS[ck.status] || ''}</span><div>${termText(ck.result, seen)}</div>${srcLink(ck.source, ck.ref)}</li>`).join('')}</ul></details>
     </div>
@@ -1000,7 +1013,7 @@ function rawPanel(v) {
     <div class="raws">${raws.map(r => {
       const s = srcOf(r.source_id), kind = rawKind(r);
       return `<button type="button" class="raw-row" data-act="raw" data-ref="${esc(r.id)}" data-item="${esc(r.id)}">
-        <span class="rid">${esc(r.id)}</span>
+        ${hideRecordIds() ? '' : `<span class="rid">${esc(r.id)}</span>`}
         <span class="rt">${esc(r.title)}<small>${esc(r.note || (s ? s.name : ''))}${r.as_of ? ` · 截至 ${esc(r.as_of)}` : ''}</small></span>
         <span class="k-${esc(kind)} rk">${esc(KIND[kind] || r.kind)}</span>
         <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span>
@@ -1039,7 +1052,9 @@ async function loadReviews() {
 function refreshReviewTab(rerender = true) {
   const n = $('.tabs .tab[data-tab="reviews"] .n');
   if (n && S.reviews) n.textContent = S.reviews.count;
-  if (S.tab === 'reviews' && rerender) renderPanel();
+  const reviewBody = $('#research-reviews-body');
+  if (reviewBody && rerender) reviewBody.innerHTML = reviewsPanel(ver());
+  else if (S.tab === 'reviews' && rerender) renderPanel();
 }
 
 function reviewsPanel(v) {
@@ -1155,11 +1170,11 @@ function contentHtml(content, quotes) {
 }
 function openRaw(rid, quotes) {
   const r = rawById(rid);
-  if (!r) { toast(`案卷里没有 ${rid}`, true); return; }
+  if (!r) { toast(hideRecordIds() ? '这条来源记录暂不可用' : `案卷里没有 ${rid}`, true); return; }
   const s = srcOf(r.source_id), back = backRefs(rid), kind = rawKind(r);
   const dlg = $('#rawDlg');
   dlg.innerHTML = `<div class="dlg-in">
-    <div class="dlg-head"><div><div class="kicker">原始数据 ${esc(r.id)} · <span class="k-${esc(kind)}">${esc(KIND[kind] || r.kind)}</span> · <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span></div>
+    <div class="dlg-head"><div><div class="kicker">${hideRecordIds() ? '来源原文' : `原始数据 ${esc(r.id)}`} · <span class="k-${esc(kind)}">${esc(KIND[kind] || r.kind)}</span> · <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span></div>
       <h3 id="rawTitle">${esc(r.title)}</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
     <div class="dlg-body">
       <dl class="kv">
@@ -1188,6 +1203,8 @@ function showSource(el, id) {
 
 function popAt(el, html) {
   const p = $('#pop');
+  const host = el.closest('#signalDlg') || document.body;
+  if (p.parentElement !== host) host.append(p);
   p.innerHTML = `<button type="button" class="x" data-act="close-pop" aria-label="关闭">×</button>${html}`;
   p.hidden = false;
   const r = el.getBoundingClientRect();
@@ -1211,7 +1228,7 @@ function refreshSel() {
     const on = S.selected.has(b.dataset.id);
     b.setAttribute('aria-pressed', on); b.textContent = on ? '已选' : '问';
   });
-  $$('#panel [data-item]').forEach(el => el.classList.toggle('is-sel', S.selected.has(el.dataset.item) && !el.classList.contains('raw-row')));
+  $$('#panel [data-item], #signalDlg [data-item], #research-inquiry [data-item]').forEach(el => el.classList.toggle('is-sel', S.selected.has(el.dataset.item) && !el.classList.contains('raw-row')));
   const box = $('#asSel');
   if (box) box.innerHTML = selHtml();
   const fab = $('.fab');
@@ -1235,6 +1252,12 @@ function gotoItem(ref, version = null, anchorEl = null) {
   const target = parseRef(ref, version);
   if (!selectRefVersion(target.version)) return;
   const id = target.id;
+  if ($('#questionDlg')?.open) $('#questionDlg').close();
+  if (/^Q\d+$/.test(id) && typeof openResearchQuestion === 'function' && isDesignReview()) {
+    const index = ver().questions.findIndex(q => q.id === id);
+    if (index < 0) { toast(`这一版报告里没有 ${id}`); return; }
+    openResearchQuestion(index); return;
+  }
   if (id.startsWith('term.')) {
     const anchor = anchorEl?.isConnected ? anchorEl : $('#assist');
     termPop(anchor, id.slice(5)); return;
@@ -1249,6 +1272,22 @@ function gotoItem(ref, version = null, anchorEl = null) {
     const sig = ver().signals.find(s => s.key === key);
     const it = sig && sig.items.find(i => `${key}.${i.key}` === id);
     if (it && !FLAG.has(it.status)) S.openRest.add(key);
+    if (typeof isDesignReview === 'function' && isDesignReview()) {
+      if (!it) { toast(`这一版报告里没有 ${id}`); return; }
+      openResearchSignal(key, id); return;
+    }
+  }
+  if ($('#signalDlg')?.open) $('#signalDlg').close();
+  if (typeof researchNavigate === 'function' && isDesignReview()) {
+    researchNavigate(tab, false);
+    const item = $(`#research-inquiry [data-item="${CSS.escape(id)}"]`);
+    if (!item) { toast(`这一版报告里没有 ${id}`); return; }
+    for (let parent = item.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    item.classList.remove('flash'); void item.offsetWidth; item.classList.add('flash');
+    return;
   }
   S.tab = tab; renderPanel();
   const el = $(`#panel [data-item="${CSS.escape(id)}"]`);
@@ -1269,6 +1308,10 @@ function qiAvatarHtml() {
   return `<button type="button" class="qi-avatar" data-act="open-assist" aria-label="向小企提问" title="向小企提问">${qiSpriteHtml()}</button>`;
 }
 function qiLauncherContent() {
+  // Keep the report's compact brass launcher; the assistant panel retains its animated avatar.
+  if (isDesignReview() && /^#\/case\//.test(location.hash)) {
+    return `小企${S.selected.size ? `<em aria-label="已选 ${S.selected.size} 条">${S.selected.size}</em>` : ''}`;
+  }
   return `${qiSpriteHtml()}<span class="qi-fab-caption"><b>小企</b><span data-qi-caption>${qiThinking() ? '思考中…' : '问问报告'}</span></span>${S.selected.size ? `<em aria-label="已选 ${S.selected.size} 条">${S.selected.size}</em>` : ''}`;
 }
 function qiLauncherHtml() {
@@ -1297,7 +1340,7 @@ function assistHtml() {
 }
 function selHtml() {
   if (!S.selected.size) return '<span class="muted">想问某一条？点报告里那一条右边的"问"。</span>';
-  return `<span class="muted">针对：</span>${[...S.selected].map(id => `<span class="sel-chip">${esc(id)}<button type="button" data-act="unsel" data-id="${esc(id)}" aria-label="取消选中 ${esc(id)}">×</button></span>`).join('')}`;
+  return `<span class="muted">针对：</span>${[...S.selected].map(id => `<span class="sel-chip">${esc(recordRefText(id))}<button type="button" data-act="unsel" data-id="${esc(id)}" aria-label="取消选中 ${esc(recordRefText(id))}">×</button></span>`).join('')}`;
 }
 function chatHtml() {
   const chat = S.case.chat;
@@ -1329,7 +1372,7 @@ function msgHtml(m, prev) {
     <div class="ans">${citeText(m.text, m.version)}</div>
     ${(m.citations || []).length ? `<div class="msg-refs">出处 ${m.citations.map(id => goLink(id, m.version)).join('')}</div>` : ''}
     ${m.quotes.length ? `<div class="quotes"><div class="ql">原文（程序逐字核对过）</div>${m.quotes.map(q => `<blockquote>${esc(q.text)} ${/^R\d+$/.test(q.ref)
-      ? `<button type="button" class="cite" data-act="raw" data-ref="${esc(q.ref)}" data-version="${m.version}" data-hl="${esc(JSON.stringify([q.text]))}">${esc(q.ref)}</button>` : goLink(q.ref, m.version)}</blockquote>`).join('')}</div>` : ''}
+      ? `<button type="button" class="cite" data-act="raw" data-ref="${esc(q.ref)}" data-version="${m.version}" data-hl="${esc(JSON.stringify([q.text]))}">${esc(recordRefText(q.ref))}</button>` : goLink(q.ref, m.version)}</blockquote>`).join('')}</div>` : ''}
     ${other.length ? `<div class="sugg"><span>可以补充：</span>${other.map(s => `<button type="button" class="chip" data-act="supplement" data-kind="material" data-title="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
     <div class="msg-meta">${mode}${m.not_found ? '<span>数据里没有</span>' : ''}${m.dropped ? `<span>丢掉了 ${m.dropped} 条对不上的出处或引文</span>` : ''}${vNote}</div>
@@ -1562,9 +1605,17 @@ document.addEventListener('click', e => {
     case 'unsel': S.selected.delete(d.id); refreshSel(); break;
     case 'ver': location.hash = `#/case/${S.case.id}/v/${d.no}`; break;
     case 'tab': showTab(d.tab); break;
-    case 'sigtile': S.tab = 'signals'; renderPanel(); { const c = $(`#sig-${d.key}`); if (c) { c.closest('.sig').scrollIntoView({ behavior: 'smooth', block: 'center' }); c.closest('.sig').classList.add('flash'); } } break;
+    case 'sigtile':
+      if (isDesignReview()) { openResearchSignal(d.key); break; }
+      S.tab = 'signals'; renderPanel(); { const c = $(`#sig-${d.key}`); if (c) { c.closest('.sig').scrollIntoView({ behavior: 'smooth', block: 'center' }); c.closest('.sig').classList.add('flash'); } } break;
     case 'optext': S.showText = !S.showText; $('.op-wrap').hidden = !S.showText; el.textContent = S.showText ? '收起文字版' : '文字版（给家人看）'; break;
-    case 'rest': if (S.openRest.has(d.key)) S.openRest.delete(d.key); else S.openRest.add(d.key); renderPanel(); break;
+    case 'rest':
+      if (S.openRest.has(d.key)) S.openRest.delete(d.key); else S.openRest.add(d.key);
+      if (el.closest('#signalDlg')) {
+        renderResearchSignal(d.key);
+        $('#signalDlg .rest-tog')?.focus({ preventScroll: true });
+      } else renderPanel();
+      break;
     case 'aud': S.audience = d.aud; $$('[data-act="aud"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.aud === d.aud));
       $('#onepager').innerHTML = opBody(currentOp(ver()), ver()); loadOnepager(ver()); break;
     case 'print': printOnepager(); break;
@@ -1609,6 +1660,8 @@ window.addEventListener('scroll', closePop, { passive: true });
 // ---------- 路由与启动 ----------
 
 async function route() {
+  researchCleanup();
+  document.body.classList.remove("research-mode");
   // The research room owns the homepage. The old full-material form remains at #/new.
   if (!location.hash || /^#\/(?:check)?\/?$/.test(location.hash)) {
     location.replace('/');
