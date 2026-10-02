@@ -9,7 +9,7 @@ import re
 from datetime import date
 
 from app.analysis.extract import Extraction
-from app.analysis.fmt import money, wan
+from app.analysis.fmt import wan
 from app.config import REF_DEPOSIT_RATE
 from app.models import AmacHit, Assertion, Chart, ChartPoint, ClaimKind, CompanyProfile, TimelineEvent
 from app.sources.amac_detail import scale_upper
@@ -40,11 +40,11 @@ def capital_chart(ext: Extraction, company: CompanyProfile | None, assertions: l
                                  ref=a.refs[0] if a and a.refs else None, source="material"))
     points.append(ChartPoint(label="登记的注册资本（认缴）", value=reg, display=wan(reg), ref=refs.get("registry"),
                              source="registry"))
-    points.append(ChartPoint(label="实缴资本（年报）", value=paid, display=money(paid) if paid is not None else "没查",
+    points.append(ChartPoint(label="实缴资本（年报）", value=paid, display=wan(paid) if paid is not None else "没查",
                              ref=refs.get("annual_report"), source="annual_report"))
     if paid is None and claimed is None:
         return None
-    note = (f"登记的注册资本是股东承诺出的钱；实际交了 {money(paid)}，占 {paid / reg:.0%}。" if paid is not None and reg
+    note = (f"登记的注册资本是股东承诺出的钱；实际交了 {wan(paid)}，占 {paid / reg:.0%}。" if paid is not None and reg
             else "实缴资本年报没公示，实际交了多少不知道。")
     return Chart(id="capital", kind="compare", title="注册资本：说的、登记的、实际交的", note=note,
                  item=a.id if a else "finance.paid_capital", points=points)

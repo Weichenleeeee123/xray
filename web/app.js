@@ -168,13 +168,31 @@ const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="
 // Keep raw record IDs for navigation, but use readable labels in the review UI.
 const hideRecordIds = () => typeof isDesignReview === 'function' && isDesignReview();
 const recordRefText = ref => hideRecordIds() && /^R\d+$/.test(ref) ? '查看出处' : ref;
+// Readable name for a cited id (record title, signal item, claim kind); the id itself stays in data-id.
+function refLabel(id, version = null) {
+  const target = parseRef(id, version), rid = target.id;
+  if (!hideRecordIds()) return rid;
+  const cut = s => {   // 去掉末尾的括号说明（"（共 5 条）"），太长再截断
+    s = String(s || '').trim().replace(/\s*[（(][^（）()]*[）)]$/, '') || String(s || '').trim();
+    return s.length > 14 ? `${s.slice(0, 13).replace(/[\s（(·、，,：:]+$/, '')}…` : s;
+  };
+  if (/^R\d+$/.test(rid)) { const r = rawById(rid); return r ? cut(r.title) : '查看出处'; }
+  const v = (target.version != null && S.case?.versions.find(x => x.no === target.version)) || ver();
+  if (!v) return '查看出处';
+  if (/^A\d+$/.test(rid)) { const a = v.assertions.find(x => x.id === rid); return a ? `它说的·${a.kind_label}` : '它说的'; }
+  if (/^M\d+$/.test(rid)) { const m = v.missing.find(x => x.id === rid); return m ? `该写没写·${cut(m.text)}` : '该写没写'; }
+  if (/^Q\d+$/.test(rid)) { const i = v.questions.findIndex(x => x.id === rid); return i >= 0 ? `第 ${i + 1} 个问题` : '该问的问题'; }
+  const [sk, ik] = rid.split('.');
+  const it = v.signals.find(s => s.key === sk)?.items.find(x => x.key === ik);
+  return it ? cut(it.label) : '查看出处';
+}
 const goLink = (id, version = null, label = null) => {
   const target = parseRef(id, version);
   const terms = target.version == null ? S.terms : (S.case?.versions.find(v => v.no === target.version)?.terms || S.terms);
   const t = target.id.startsWith('term.') && terms.find(t => t.id === target.id.slice(5));
-  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}"${target.version == null ? '' : ` data-version="${target.version}"`}>${esc(label || (t ? `名词·${t.term}` : recordRefText(target.id)))}</button>`;
+  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}"${target.version == null ? '' : ` data-version="${target.version}"`}>${esc(label || (t ? `名词·${t.term}` : refLabel(id, version)))}</button>`;
 };
-const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(recordRefText(r))}</button>`).join('');
+const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(refLabel(r))}</button>`).join('');
 const selCls = id => (S.selected.has(id) ? ' is-sel' : '');
 
 // Source metadata opens the original record; internal record IDs stay in data attributes.
@@ -733,8 +751,9 @@ async function loadOnepager(v) {
   const key = `${v.no}:${S.audience}`;
   try {
     S.opCache[key] = await api(`/api/cases/${encodeURIComponent(S.case.id)}/onepager?audience=${S.audience}&version=${v.no}`);
-    if (ver() === v) $('#onepager').innerHTML = opBody(S.opCache[key], v);
-  } catch (e) { $('#onepager').innerHTML = `<p class="err">一页结论没生成出来：${esc(e.message)}</p>`; }
+    // 打印预览可能在请求回来之前就关了
+    if (ver() === v && key === `${v.no}:${S.audience}` && $('#onepager')) $('#onepager').innerHTML = opBody(S.opCache[key], v);
+  } catch (e) { if ($('#onepager')) $('#onepager').innerHTML = `<p class="err">一页结论没生成出来：${esc(e.message)}</p>`; }
 }
 function opBody(op, v) {
   if (!op) return '<p class="muted">正在生成…</p>';
@@ -1367,7 +1386,7 @@ function assistHtml() {
 }
 function selHtml() {
   if (!S.selected.size) return '<span class="muted">想问某一条？点报告里那一条右边的"问"。</span>';
-  return `<span class="muted">针对：</span>${[...S.selected].map(id => `<span class="sel-chip">${esc(recordRefText(id))}<button type="button" data-act="unsel" data-id="${esc(id)}" aria-label="取消选中 ${esc(recordRefText(id))}">×</button></span>`).join('')}`;
+  return `<span class="muted">针对：</span>${[...S.selected].map(id => `<span class="sel-chip">${esc(refLabel(id))}<button type="button" data-act="unsel" data-id="${esc(id)}" aria-label="取消选中 ${esc(refLabel(id))}">×</button></span>`).join('')}`;
 }
 function chatHtml() {
   const chat = S.case.chat;
@@ -1704,6 +1723,16 @@ async function submitSupplement(e) {
 
 function printOnepager() {
   if (!$('#onepager') || !currentOp(ver())) { toast('一页结论还没生成好'); return; }
+  if (!isDesignReview()) { window.print(); return; }
+  // 新版报告页没有经典版的 #L1：把预览里的一页结论单独放进 #printSheet，打印时只印它
+  $('#printSheet')?.remove();
+  const sheet = document.createElement('div');
+  sheet.id = 'printSheet';
+  sheet.innerHTML = `<article class="onepager">${$('#onepager').innerHTML}</article>`;
+  document.body.append(sheet);
+  document.body.classList.add('printing-sheet');
+  $('#printDlg')?.close();
+  window.addEventListener('afterprint', () => { sheet.remove(); document.body.classList.remove('printing-sheet'); }, { once: true });
   window.print();
 }
 

@@ -196,3 +196,23 @@ test('retry after uncertain failure reuses request identity and can stop waiting
   assert.equal(h.run('S.case.chat.length'), 0);
   assert.ok(h.run(`pendingChat('c')`));
 });
+
+test('report references show record titles and item names instead of internal ids', () => {
+  const h = harness();
+  h.run(`isDesignReview=()=>true;
+    S.case.raw=[{id:'R3',title:'企查查·行政处罚记录明细（共 5 条）',source_id:'qcc',kind:'commercial'}];
+    S.case.versions[0]=Object.assign(S.case.versions[0],{assertions:[{id:'A1',kind_label:'资格'}],missing:[{id:'M1',text:'没写收款账户'}],
+      questions:[{id:'Q1',ask:'钱交给谁？'}],signals:[{key:'risk',items:[{key:'bank_list',label:'持牌机构名单'}]}]});`);
+  const labels = html => [...html.matchAll(/<button[^>]*class="(?:cite|rf)[^"]*"[^>]*>([^<]*)<\/button>/g)].map(m => m[1]);
+  const asked = h.run(`msgHtml({role:'user',text:'解释',version:1,refs:['v:1:assertion:A1','v:1:missing:M1','v:1:question:Q1','v:1:signal:risk:bank_list','R3','risk.gone']})`);
+  assert.deepEqual(labels(asked), ['它说的·资格', '该写没写·没写收款账户', '第 1 个问题', '持牌机构名单', '企查查·行政处罚记录明细', '查看出处']);
+  assert.match(asked, /data-id="v:1:signal:risk:bank_list"/, 'navigation still uses the id');
+  assert.deepEqual(labels(h.run(`refLinks(['A1','R3'])`)), ['它说的·资格', '企查查·行政处罚记录明细']);
+  const answer = h.run(`msgHtml({role:'assistant',text:'查了名单 [risk.bank_list]，见 [R3]',version:1,citations:['A1','R3'],suggest:[],quotes:[]})`);
+  assert.doesNotMatch(answer, />(A1|R3|risk\.bank_list)</);
+  assert.match(h.run(`goLink('A1',1,'查看报告条目：资格')`), />查看报告条目：资格</, 'an explicit label wins');
+  h.run(`S.selected=new Set(['risk.bank_list','A1'])`);
+  assert.doesNotMatch(h.run('selHtml()'), />(risk\.bank_list|A1)</);
+  h.run(`isDesignReview=()=>false`);
+  assert.match(h.run(`goLink('risk.bank_list',1)`), />risk\.bank_list</, 'classic view keeps ids');
+});

@@ -63,3 +63,32 @@ test('flow response starts at the leading edge and fades smoothly after the bubb
  assert.ok(samples.every(p=>p>=0 && p<=1));
  assert.ok(samples.slice(1).every((p,i)=>Math.abs(p-samples[i])<0.05),'has no sudden jumps');
 });
+test('radar axes use every signal item once and an unchecked item does not hide checked ones',()=>{
+ const h=harness();
+ const items=(sts,prefix='x')=>sts.map((status,i)=>({key:`${prefix}${i}`,status,label:`${prefix}${i}`}));
+ h.ctx.v={signals:[
+  {key:'risk',items:[...items(['warn','warn','none','warn'],'q'),{key:'controller',status:'ok'},{key:'promise',status:'bad'}]},
+  {key:'finance',items:[...items(['ok','ok','ok','ok','ok','ok','ok','ok','ok','ok','ok'],'f'),{key:'pledges',status:'none'},{key:'paid_capital',status:'ok'}]},
+  {key:'credit',items:[{key:'status',status:'ok'},{key:'penalties',status:'bad'},{key:'lawsuits',status:'none'}]},
+  {key:'reputation',items:[]}]};
+ const axes=JSON.parse(h.run('JSON.stringify(researchRadarAxes(v))'));
+ const by=Object.fromEntries(axes.map(a=>[a.label,a]));
+ assert.deepEqual(axes.map(a=>a.label),['经营资格','基本面','资金面','风险稳定性','消息面','宣传承诺']);
+ assert.equal(by['经营资格'].status,'warn');assert.equal(by['经营资格'].unchecked,1);
+ assert.equal(by['资金面'].status,'ok','eleven checked items outweigh one unchecked item');assert.equal(by['资金面'].unchecked,1);
+ assert.equal(by['基本面'].status,'ok');assert.equal(by['基本面'].checked,3);
+ assert.equal(by['风险稳定性'].status,'bad');
+ assert.equal(by['宣传承诺'].status,'bad');
+ assert.equal(by['消息面'].status,'none','nothing checked is uncovered');
+ const total=h.ctx.v.signals.reduce((n,s)=>n+s.items.length,0);
+ assert.equal(axes.reduce((n,a)=>n+a.checked+a.unchecked,0),total);
+ const svg=h.run('researchRadar(v)');
+ assert.match(svg,/资金面未见异常（查了 11 项，另有 1 项没查）/);
+ assert.match(svg,/消息面未覆盖/);
+ assert.doesNotMatch(svg,/技术面|行业表现|记录较完整/);
+});
+test('an axis whose items were all unchecked stays uncovered',()=>{
+ const h=harness();h.ctx.v={signals:[{key:'finance',items:[{key:'pledges',status:'none'},{key:'revenue',status:'none'}]}]};
+ const axes=JSON.parse(h.run('JSON.stringify(researchRadarAxes(v))'));
+ assert.ok(axes.every(a=>a.status==='none'));
+});

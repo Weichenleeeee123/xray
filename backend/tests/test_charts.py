@@ -17,9 +17,18 @@ def test_demo_report_has_the_comparisons_that_matter():
     assert list(got) == ["capital", "return", "scale", "holders", "complaints", "timeline"]
     cap = got["capital"]
     assert [(p.side, p.value) for p in cap.points] == [("said", 50_000_000), ("record", 50_000_000), ("record", 0)]
-    assert cap.item == "A5" and "¥0" in cap.note
+    assert cap.item == "A5" and "实际交了 0 元" in cap.note
+    assert [p.display for p in cap.points] == ["5000 万", "5000 万", "0 元"]
     assert [p.side for p in got["return"].points] == ["said", "reference"]
     assert [p.value for p in got["scale"].points] == [30, 0] and "4 人" in got["scale"].note
+
+
+def test_capital_chart_writes_registered_and_paid_in_the_same_units():
+    company = CompanyProfile(name="杭州银行股份有限公司", status="存续", founded="1996-09-25", scope="银行业务",
+                             reg_capital=7_249_003_000, paid_capital=7_249_003_000)
+    cap = capital_chart(RuleExtractor().extract(""), company, [], {})
+    assert [p.display for p in cap.points] == ["72.49 亿", "72.49 亿"]
+    assert "实际交了 72.49 亿" in cap.note
 
 
 def test_every_point_and_event_points_back_to_a_record_in_the_case():

@@ -559,3 +559,14 @@ body.research-mode{--paper:#2b201a;--paper-hi:#38291f;--paper-lo:#453124;--ink:#
 .research-mode .as-x{display:block}
 .research-mode .as-sel{border-top-color:#685641}
 .research-mode.motion-paused .qi-sprite{animation-play-state:paused}
+
+/* Printable one-pager, opened from the report header. */
+.research-print-dialog .op-tools{margin-bottom:14px}
+.research-print-dialog .onepager{box-shadow:none}
+#printSheet{display:none}
+@media print{
+  body.printing-sheet>:not(#printSheet){display:none!important}
+  body.printing-sheet{background:#fff!important;color:#000}
+  body.printing-sheet #printSheet{display:block}
+  #printSheet .onepager{background:#fff;color:#000}
+}

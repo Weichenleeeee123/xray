@@ -2,29 +2,50 @@
  * ?classic=1 retains the original report. No generated scores or financial facts. */
 const isDesignReview = () => !new URLSearchParams(location.search).has('classic');
 const researchIcon = (kind = 'arrow') => {
-  const paths = { arrow:'M7 17 17 7M7 7h10v10', camera:'M8 6l2-3h4l2 3h4v14H4V6h4Zm8 7a4 4 0 1 0-8 0 4 4 0 0 0 8 0', scan:'M3 8V3h5m8 0h5v5M3 16v5h5m8 0h5v-5M7 12h10', spark:'m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z' };
+  const paths = { arrow:'M7 17 17 7M7 7h10v10', print:'M7 9V3h10v6M7 17H4v-8h16v8h-3M7 14h10v7H7v-7Z', camera:'M8 6l2-3h4l2 3h4v14H4V6h4Zm8 7a4 4 0 1 0-8 0 4 4 0 0 0 8 0', scan:'M3 8V3h5m8 0h5v5M3 16v5h5m8 0h5v-5M7 12h10', spark:'m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z' };
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.arrow}"/></svg>`;
 };
 function researchHeading(n, title, sub) { return `<div class="research-heading"><div><span class="research-eyebrow">${n}</span><h2>${title}</h2></div>${sub ? `<p>${sub}</p>` : ''}</div>`; }
 function researchHero(c,v) {
   const steps=[['overview','企业概况','六维雷达','基本面 · 资金面 · 风险'],['signals','四个信号','风险 · 财务','信用 · 口碑'],['inquiry','问询与复核','拍照复核',`${(v.questions||[]).length} 个待询问题`],['details','详细信息','时间线 · 股东 · 资本','用户评价']];
   return `<header class="research-hero">
-    <div class="research-topline"><a href="/" class="back-study">← 回到小企研究室</a><div class="research-actions"><button class="research-button ghost" data-act="supplement">＋ 补充信息</button><button class="research-button" data-act="section" data-section="photo">${researchIcon('camera')}拍照 · 二次查询</button></div></div>
+    <div class="research-topline"><a href="/" class="back-study">← 回到小企研究室</a><div class="research-actions"><button class="research-button ghost" data-act="print-open" aria-haspopup="dialog" aria-controls="printDlg">${researchIcon('print')}打印</button><button class="research-button ghost" data-act="supplement">＋ 补充信息</button><button class="research-button" data-act="section" data-section="photo">${researchIcon('camera')}拍照 · 二次查询</button></div></div>
     <div class="hero-title"><span class="research-eyebrow"><i></i> 小企查资料 / 企业研究档案</span><h1>${esc(c.case.company_name)}</h1><div class="hero-meta"><span>案卷 ${esc(c.id.slice(0,8).toUpperCase())}</span><span>${esc(v.created_at.slice(0,10))} 更新</span><span>第 ${v.no} 版</span><button data-act="tab" data-tab="raw">${v.raw_ids.length} 条来源记录 ${researchIcon()}</button></div></div>
     <nav class="research-flow" aria-label="报告章节导航"><svg class="flow-wire" viewBox="0 0 1200 110" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="flowGradient"><stop stop-color="#dfb477" stop-opacity="0"/><stop offset=".6" stop-color="#dfb477"/><stop offset="1" stop-color="#ddbf9a"/></linearGradient></defs><path class="wire-base" d="M0 26H270Q300 26 300 56Q300 86 330 86H640Q670 86 670 56Q670 26 700 26H920Q950 26 950 56Q950 86 980 86H1200"/><path class="wire-light" pathLength="100" d="M0 26H270Q300 26 300 56Q300 86 330 86H640Q670 86 670 56Q670 26 700 26H920Q950 26 950 56Q950 86 980 86H1200"/></svg>${steps.map(([id,label,desc,detail],i)=>`<button class="flow-stop ${i<2?'flow-primary':'flow-secondary'}" style="--order:${i}" data-act="section" data-section="${id}"><span class="flow-label"><b>0${i+1}</b>${label}<span>↗</span></span><span class="flow-preview"><strong>${id==='inquiry'?researchIcon('camera'):''}${desc}</strong><small>${detail}</small><span class="mini-trace"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></button>`).join('')}</nav>
     <div class="hero-foot"><button data-act="motion" aria-pressed="false">暂停动效 Ⅱ</button><button data-act="section" data-section="overview">向下阅读 ↓</button></div>
   </header>`;
 }
+// Every signal item belongs to exactly one axis, so the radar never drops a backend record.
+// Items not listed here fall back to their signal: risk → 经营资格, finance → 资金面, credit → 风险稳定性, reputation → 消息面.
+const RADAR_AXES = [['qualify','经营资格'],['basics','基本面'],['funds','资金面'],['stability','风险稳定性'],['news','消息面'],['claims','宣传承诺']];
+const RADAR_ITEM_AXIS = {
+  'credit.status':'basics','credit.abnormal':'basics','finance.paid_capital':'basics','finance.insured':'basics','finance.jobs':'basics',
+  'finance.amac_scale':'basics','risk.controller':'basics','risk.changes':'basics',
+  'risk.promise':'claims','risk.benchmark':'claims','risk.disclosure':'claims','risk.pressure':'claims',
+  'risk.payee':'claims','risk.refund':'claims','risk.upfront_fee':'claims'
+};
+const RADAR_SIGNAL_AXIS = {risk:'qualify',finance:'funds',credit:'stability',reputation:'news'};
+// An axis takes the most severe status among the items actually checked; it is uncovered only when nothing was checked.
+function researchRadarAxes(v) {
+  const axes=Object.fromEntries(RADAR_AXES.map(([id,label])=>[id,{id,label,status:'none',checked:0,unchecked:0}]));
+  for(const sig of v.signals || []) for(const it of sig.items || []){
+    const axis=axes[RADAR_ITEM_AXIS[`${sig.key}.${it.key}`] || RADAR_SIGNAL_AXIS[sig.key]];
+    if(!axis) continue;
+    if(it.status==='none'){axis.unchecked++;continue;}
+    axis.checked++;
+    if(axis.status==='none' || (SEV[it.status]||0)>(SEV[axis.status]||0)) axis.status=it.status;
+  }
+  return RADAR_AXES.map(([id])=>axes[id]);
+}
 function researchRadar(v) {
-  const item = (s,k) => v.signals.find(x=>x.key===s)?.items.find(x=>x.key===k);
-  const worst = s => { const a=v.signals.find(x=>x.key===s)?.items || []; return a.length ? a.reduce((w,x)=>SEV[x.status]>SEV[w]?x.status:w,'ok') : 'none'; };
-  const dimensions = [ ['基本面', item('credit','status')?.status || 'none','credit.status'], ['资金面',worst('finance'),'finance.pledges'], ['技术面','none',null], ['消息面',worst('reputation'),'reputation.web_complaint'], ['风险稳定性',worst('credit'),'credit.penalties'], ['行业表现','none',null] ];
+  const dimensions = researchRadarAxes(v);
   const pt=(i,r)=>[230+Math.sin(i*Math.PI/3)*r,205-Math.cos(i*Math.PI/3)*r];
   const coords=p=>p.map(n=>n.toFixed(1)).join(',');
-  const level={ok:115,warn:78,bad:46,miss:46};
-  const dots=dimensions.map((d,i)=>d[1]==='none'?null:pt(i,level[d[1]]||46));
-  const title = {ok:'记录较完整',warn:'有待关注',bad:'有异常记录',miss:'证据不足',none:'未覆盖'};
-  return `<div class="research-radar"><div class="radar-caption"><span>企业六维轮廓</span><span>定性示意 · 不设评分</span></div><svg viewBox="0 0 460 410" role="img" aria-label="六维雷达：${dimensions.map(d=>d[0]+title[d[1]]).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="230" y1="205" x2="${pt(i,132)[0]}" y2="${pt(i,132)[1]}" stroke="#b29a80" stroke-opacity=".22" ${d[1]==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${dots.map((p,i)=>p?`<path d="M230 205L${coords(p)}${dots[(i+1)%6]?'L'+coords(dots[(i+1)%6]):''}Z" fill="#dfb477" fill-opacity=".12" stroke="#dfb477" stroke-width="1.6"/>`:'').join('')}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<text x="${p[0]}" y="${p[1]-3}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d[0]}</text><text x="${p[0]}" y="${p[1]+17}" text-anchor="middle" fill="${d[1]==='none'?'#ac9781':d[1]==='bad'?'#ed9b89':'#d4b38b'}" font-size="12">${title[d[1]]}</text>${dots[i]?`<circle cx="${dots[i][0]}" cy="${dots[i][1]}" r="4" fill="#f1cd91"/>`:''}`;}).join('')}</svg><p>依据现有记录作定性展示。虚线为未覆盖维度，不代表能力低；不用于比较投资表现。</p></div>`;
+  const level={ok:115,warn:78,miss:62,bad:46};
+  const dots=dimensions.map((d,i)=>d.status==='none'?null:pt(i,level[d.status]||46));
+  const title = {ok:'未见异常',warn:'有待关注',bad:'有异常记录',miss:'缺应有记录',none:'未覆盖'};
+  const count = d => d.status==='none' ? '这一维没有查到数据' : `查了 ${d.checked} 项${d.unchecked?`，另有 ${d.unchecked} 项没查`:''}`;
+  return `<div class="research-radar"><div class="radar-caption"><span>企业六维轮廓</span><span>定性示意 · 不设评分</span></div><svg viewBox="0 0 460 410" role="img" aria-label="六维雷达：${dimensions.map(d=>`${d.label}${title[d.status]}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="230" y1="205" x2="${pt(i,132)[0]}" y2="${pt(i,132)[1]}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${dots.map((p,i)=>p?`<path d="M230 205L${coords(p)}${dots[(i+1)%6]?'L'+coords(dots[(i+1)%6]):''}Z" fill="#dfb477" fill-opacity=".12" stroke="#dfb477" stroke-width="1.6"/>`:'').join('')}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.status}"><title>${d.label}：${title[d.status]}，${count(d)}</title><text x="${p[0]}" y="${p[1]-3}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0]}" y="${p[1]+17}" text-anchor="middle" fill="${d.status==='none'?'#ac9781':d.status==='bad'?'#ed9b89':'#d4b38b'}" font-size="12">${title[d.status]}</text>${dots[i]?`<circle cx="${dots[i][0]}" cy="${dots[i][1]}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>依据现有记录作定性展示：越靠外越没发现问题，越靠里问题越多。虚线为未覆盖维度，不代表能力低；不用于比较投资表现。</p></div>`;
 }
 function researchOverview(v) {
   const html=document.createElement('div'); html.innerHTML=glanceHtml(v);
@@ -114,6 +135,15 @@ function openResearchQuestion(index) {
   dlg.innerHTML=`<div class="dlg-in"><div class="dlg-head"><span class="research-eyebrow">该问对方的 · ${String(index+1).padStart(2,'0')}</span><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭问题详情" autofocus>×</button></div><div class="dlg-body"><h3 id="research-question-title">${esc(q.ask)}</h3><div class="question-detail-grid"><div><span class="column-label">为什么要问</span><p>${esc(q.why)}</p>${q.linked.length?`<button class="research-text-link" data-act="goto" data-id="${esc(q.linked[0])}">查看相关线索 →</button>`:''}</div><div><span class="column-label">如何核对</span><p>${esc(q.check_where)}</p></div></div><div class="question-detail-actions"><button class="research-button ghost" data-act="copy-question" data-question="${index}">复制问题 ${researchIcon()}</button><button class="research-button" data-act="supplement" data-kind="reply" data-title="对 ${esc(q.id)} 的回复">填写回复 →</button></div></div></div>`;
   if(!dlg.open) dlg.showModal();
 }
+// The printable one-pager reuses the classic audience switch and /onepager endpoint.
+function openResearchPrint() {
+  const v=ver(), dlg=$('#printDlg');
+  if(!v || !dlg) return;
+  dlg.innerHTML=`<div class="dlg-in"><div class="dlg-head"><div><span class="research-eyebrow">一页结论 · 第 ${v.no} 版</span><h3 id="printTitle">打印一页结论</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭打印预览" autofocus>×</button></div><div class="dlg-body"><div class="op-tools"><div class="seg" role="group" aria-label="给谁看"><button type="button" data-act="aud" data-aud="family" aria-pressed="${S.audience==='family'}">给家人</button><button type="button" data-act="aud" data-aud="teller" aria-pressed="${S.audience==='teller'}">给网点柜员</button></div></div><article class="onepager" id="onepager">${opBody(currentOp(v),v)}</article></div><div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">取消</button><button type="button" class="btn sm" data-act="print">打印</button></div></div>`;
+  if(!dlg.open) dlg.showModal();
+  loadOnepager(v);
+}
+document.querySelector('#printDlg')?.addEventListener('close',()=>{ $('#printDlg').innerHTML=''; });
 function researchCapital(v) {
   const charts=(v.charts||[]).filter(c=>c.id==='capital');
   return `<div class="research-data-charts">${charts.map(c=>chartCard(c,v)).join('') || '<p class="research-empty">这份案卷尚无资本数据。</p>'}</div>`;
@@ -194,6 +224,7 @@ function researchNavigate(key,scroll=true) {
     if(target.tagName==='DETAILS') target.open=true;
     if(key==='questions' || key==='photo') target=$('#research-inquiry');
   } else target=$(`#research-${key}`);
+  if(key==='sources'){const list=$('.source-collection',target||document);if(list)list.open=true;}
   if(scroll) target?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
 }
 
@@ -276,6 +307,7 @@ function initResearchDesign() {
   researchCleanup();
   if($('#signalDlg')?.open) $('#signalDlg').close();
   if($('#questionDlg')?.open) $('#questionDlg').close();
+  if($('#printDlg')?.open) $('#printDlg').close();
   document.body.classList.toggle('research-mode',isDesignReview());
   if(!isDesignReview()) return;
   const sections=$$('.research-section');
@@ -294,6 +326,7 @@ document.addEventListener('click',async e=>{
   const el=e.target.closest('[data-act]');if(!el)return;
   if(el.dataset.act==='section') researchNavigate(el.dataset.section);
   if(el.dataset.act==='question-detail') openResearchQuestion(Number(el.dataset.question));
+  if(el.dataset.act==='print-open') openResearchPrint();
   if(el.dataset.act==='research-tab') activateResearchTab(el.dataset.group,el.dataset.key);
   if(el.dataset.act==='motion'){const paused=document.body.classList.toggle('motion-paused');el.setAttribute('aria-pressed',paused);el.textContent=paused?'播放动效 ▷':'暂停动效 Ⅱ';}
   if(el.dataset.act==='timeline-event') { const event=ver().charts.find(c=>c.kind==='timeline')?.events[Number(el.dataset.event)];if(event){ $$('.research-event').forEach(b=>{const active=b===el;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));}); $('#research-event-detail').innerHTML=researchEventDetail(event); } }
