@@ -216,20 +216,69 @@ def partner_review(claim: RawClaim, licenses: LicenseIndex) -> Review:
     return checks, Verdict.unverifiable, f"{lead}，无法核验；而且资金存管不等于担保。"
 
 
+EXCHANGES = {"上交所": r"上海证券交易所|上交所|沪", "深交所": r"深圳证券交易所|深交所|深市|深A", "北交所": r"北京证券交易所|北交所",
+             "港交所": r"香港|港交所|联交所|港股|H股"}
+LISTING_WORD = re.compile(r"上市|交易所|主板|A股|港股")
+STATE_WORD = re.compile(r"国资|国企|央企|国有|政府")
+
+
+def _exchange(text: str) -> str | None:
+    return next((k for k, p in EXCHANGES.items() if re.search(p, text or "")), None)
+
+
+def listing_check(claim: RawClaim, company: CompanyProfile | None) -> tuple[Check, Verdict | None, str]:
+    """宣称上市：对照上市信息里的交易所和股票代码。没查返回 (检查, None, "")。"""
+    if company is None or not company.known("listing"):
+        return Check(label="上市信息", result="没查：这次的数据来源不含上市信息", status=Status.none,
+                     source="registry"), None, ""
+    said = "".join(claim.quotes)
+    said_ex = _exchange("".join(re.findall(r"[^。；，,]{0,12}(?:交易所|上交所|深交所|北交所|港交所)", said)))
+    said_code = (re.search(r"(?:股票|证券)代码[:：为是]?\s*(\d{6})", said) or [None, None])[1]
+    lst = company.listing
+    if not lst:
+        return Check(label="上市信息", result="查了，上市信息里没有它", status=Status.bad, source="registry"),             Verdict.mismatch, "宣传说它上市了，上市信息里查不到它。"
+    ex = _exchange(" ".join(str(v) for k, v in lst.items() if "交易所" in k or "市场" in k or "板块" in k))
+    code = next((m.group(0) for k, v in lst.items() if "代码" in k and (m := re.search(r"\d{6}", str(v)))), None)
+    shown = "，".join(x for x in (ex and f"{ex}上市", code and f"股票代码 {code}", lst.get("上市日期") and
+                                  f"上市日期 {lst['上市日期']}") if x) or "有上市记录"
+    wrong = [w for w, a, b in (("交易所", said_ex, ex), ("股票代码", said_code, code)) if a and b and a != b]
+    if wrong:
+        return Check(label="上市信息", result=f"{shown}；宣传写的{'、'.join(wrong)}对不上", status=Status.bad,
+                     source="registry"), Verdict.mismatch, f"上市信息是{shown}，和宣传写的{'、'.join(wrong)}对不上。"
+    return Check(label="上市信息", result=shown, status=Status.ok, source="registry"), Verdict.consistent,         f"上市信息是{shown}，和宣传说的一致。"
+
+
 def background_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
     checks = []
     if any("上市" in w for w in claim.words):
-        checks.append(Check(label="上市公司", result="没查：上市公司名单还没接入", status=Status.none, source="registry"))
+        check, verdict, plain = listing_check(claim, company)
+        checks.append(check)
+        # 只说了上市，没说国资、集团注资：上市信息就是答案，不用再看股东
+        if verdict and all(LISTING_WORD.search(w) for w in claim.words):
+            return checks, verdict, plain
     if company is None or not company.shareholders:
-        checks.append(Check(label="股东", result=NOT_COVERED, status=Status.none, source="registry"))
-        return checks, Verdict.unverifiable, NO_DATA_PLAIN
+        known = company is not None and company.known("shareholders")
+        checks.append(Check(label="股东", result="查了，数据源没给股东" if known else
+                            NOT_COVERED if company is None else "没查：这次的数据来源不含股东",
+                            status=Status.none, source="registry"))
+        return checks, Verdict.unverifiable, NO_DATA_PLAIN if company is None else "没有股东数据，暂时无法核验。"
 
     holders = "、".join(f"{h.name} {h.pct:g}%" for h in company.shareholders)
     state = [h for h in company.shareholders if STATE_OWNED.search(h.name)]
+    group = any("集团" in w for w in claim.words) and not any(STATE_WORD.search(w) for w in claim.words)
     if all(h.type == "自然人" for h in company.shareholders):
+        if group:
+            checks.append(Check(label="股东", result=f"{holders}，均为自然人，没有企业股东", status=Status.bad,
+                                source="registry"))
+            return checks, Verdict.mismatch, f"{len(company.shareholders)} 个股东都是自然人，股东里没有宣传说的集团。"
         checks += [Check(label="股东", result=f"{holders}，均为自然人", status=Status.bad, source="registry"),
                    Check(label="股权穿透", result="无国有企业或政府机构持股", status=Status.bad, source="registry")]
         return checks, Verdict.mismatch, f"{len(company.shareholders)} 个股东都是自然人，没有任何国有持股。"
+    if group:
+        firms = [h for h in company.shareholders if h.type != "自然人"]
+        checks.append(Check(label="股东", result=f"{holders}；企业股东要再往上查，才知道是不是宣传说的集团",
+                            status=Status.warn, source="registry"))
+        return checks, Verdict.unverifiable,             f"企业股东有 {'、'.join(h.name for h in firms[:3])}，是不是宣传说的集团，要继续往上查。"
     if state:
         checks.append(Check(label="股东", result=f"{holders}；其中 {state[0].name} 疑似国有主体",
                             status=Status.warn, source="registry"))

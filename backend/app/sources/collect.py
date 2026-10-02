@@ -123,26 +123,16 @@ def collect(name: str, svc) -> Collected:
     real_amac = _real_amac(name, svc)
 
     pack: Pack | None = svc.packs.get(name)
+    # 证据包里有人工采集的登记信息就用它；没有（只摘了几份文书）才查商业接口
+    commercial = svc.commercial.fetch(name) if svc.commercial and not (pack and "registry" in pack.sections) else None
     if pack:
-        return _from_pack(pack, lic, others, real_amac, sources, records, svc)
+        return _from_pack(pack, lic, others, real_amac, sources, records, svc, commercial)
 
     company, as_of, note = None, svc.registry.as_of, None
-    commercial = svc.commercial.fetch(name) if svc.commercial else None
     if commercial is not None:
-        company = commercial.profile
-        src = commercial.source
-        sources["registry"] = src
-        sources["annual_report"] = src.model_copy(update={"id": "annual_report"})
-        records.append(_raw("registry", src.name, "commercial",
-                            Coverage.found if company else (Coverage.failed if not commercial.response
-                                                            else Coverage.not_found),
-                            commercial.record or commercial.response or None, retrieved_at=commercial.retrieved_at,
-                            as_of=commercial.retrieved_at[:10], url=src.url, note=commercial.note))
+        company = _use_commercial(commercial, sources, records)
         if company:
             as_of = commercial.retrieved_at[:10]
-            records.append(_raw("annual_report", "实缴资本、参保人数（商业接口）", "commercial", Coverage.found,
-                                {k: getattr(company, k) for k in ANNUAL_FIELDS}, retrieved_at=commercial.retrieved_at,
-                                url=src.url, note="来自同一次商业接口查询"))
     if company is None and (fixture := svc.registry.get(name)):
         company = fixture
         records += [_raw("registry", "企业登记信息", "demo", Coverage.found,
@@ -183,12 +173,23 @@ def collect(name: str, svc) -> Collected:
                      sources=sources, records=records, others=others, note=note, web=web)
 
 
+def _use_commercial(commercial, sources: dict[str, Source], records: list[RawRecord]) -> CompanyProfile | None:
+    """商业接口的结果：换掉登记、年报两个来源，记原始数据，返回公司记录（名称对不上或没查到是 None）。"""
+    src = commercial.source
+    sources["registry"] = src
+    sources["annual_report"] = src.model_copy(update={"id": "annual_report"})
+    records += commercial.records()
+    return commercial.profile
+
+
 def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], real_amac, sources: dict[str, Source],
-               records: list[RawRecord], svc) -> Collected:
+               records: list[RawRecord], svc, commercial=None) -> Collected:
     sec = pack.sections
     for sid, s in sec.items():
         sources[sid] = s.source
     company = None
+    if commercial is not None:
+        company = _use_commercial(commercial, sources, records)
     if "registry" in sec:
         data = dict(sec["registry"].data)
         if "annual_report" in sec:
@@ -209,7 +210,7 @@ def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], real_amac
     complaints = sec["complaints"].data if "complaints" in sec else None
 
     for sid in ("registry", "annual_report", "amac", "complaints"):
-        if sid == "amac" and real_amac:
+        if sid == "amac" and real_amac or sid in ("registry", "annual_report") and commercial is not None:
             continue
         if sid in sec:
             s = sec[sid]

@@ -1,5 +1,6 @@
 """把散在各处的记录归进赛题的四个信号：风险、财务、信用、口碑。"""
 import re
+from dataclasses import replace
 from datetime import date
 from urllib.parse import urlsplit
 
@@ -70,6 +71,27 @@ def official_pack_items(company_name: str, records: list[RawRecord]) -> list[Sig
     return sorted(items, key=lambda item: not item.label.startswith("行政处罚决定"))
 
 
+def add_pack_items(signals: list[Signal], pack_items: list[SignalItem], records: list[RawRecord],
+                   company: CompanyProfile | None, web: WebFindings | None, refs: dict[str, str]) -> None:
+    """证据包里的文书放进信用信号最前面，同一份文书不在别的条目里再算一次：
+    政府网站搜到的同一网址不再计数；商业数据里同一天的行政处罚不再单列。"""
+    if not pack_items:
+        return
+    credit = next(s for s in signals if s.key == "credit")
+    by_id = {r.id: r for r in records}
+    urls = tuple(by_id[i.ref].url for i in pack_items if i.ref in by_id and by_id[i.ref].url)
+    days = {i.value.split("：", 1)[0] for i in pack_items if i.label.startswith("行政处罚")}
+    items = []
+    for it in credit.items:
+        if it.key == "official_web":
+            it = official_web_item(web, refs, urls)
+        elif it.key == "penalties" and company and company.penalties and days and                 all(p.date in days for p in company.penalties) and company.n("penalties") == len(company.penalties):
+            continue                     # 商业数据里的处罚就是上面那份决定书，不重复列
+        items.append(it)
+    credit.items = pack_items + items
+    credit.flags = sum(i.status == "bad" for i in credit.items)
+
+
 def _hit_item(key: str, label: str, value: str, hit: WebHit, status: Status, refs: dict[str, str],
               source: str) -> SignalItem:
     date = f"{hit.date} " if hit.date else ""
@@ -77,7 +99,13 @@ def _hit_item(key: str, label: str, value: str, hit: WebHit, status: Status, ref
                       source=source, ref=refs.get(hit.url))
 
 
-def official_web_item(web: WebFindings | None, refs: dict[str, str]) -> SignalItem:
+def _same_url(a: str | None, b: str | None) -> bool:
+    key = lambda u: re.sub(r"^https?://", "", (u or "").strip().lower()).rstrip("/")
+    return bool(a and b) and key(a) == key(b)
+
+
+def official_web_item(web: WebFindings | None, refs: dict[str, str], listed: tuple[str, ...] = ()) -> SignalItem:
+    """listed：已经在别的条目里单独列出的文书网址（证据包摘录），这里不再重复计数。"""
     label = "政府网站点名"
     if web is None:
         return SignalItem(key="official_web", label=label, value="没查", detail=NO_WEB, status=Status.none,
@@ -86,14 +114,18 @@ def official_web_item(web: WebFindings | None, refs: dict[str, str]) -> SignalIt
         return SignalItem(key="official_web", label=label, value="查询失败", detail="；".join(web.errors),
                           status=Status.none, source="web_official")
     # 只算它是当事人的文件；正文里顺带提到它的（比如别家公司的处罚决定里写"员工在它那里兼职"）单独说
+    shown = [h for h in web.official if any(_same_url(h.url, u) for u in listed)]
+    if shown:
+        web = replace(web, official=[h for h in web.official if h not in shown])
     subject = [h for h in web.official if h.subject]
     mentioned = [h for h in web.official if not h.subject and h.category in ("penalty", "warning", "judicial")]
     also = f"；另有 {len(mentioned)} 份文件在正文里提到它，它不是当事人" if mentioned else ""
     bad = [h for h in subject if h.category in ("penalty", "warning")]
     judicial = [h for h in subject if h.category == "judicial"]
+    other = "另有 " if shown else ""
     if bad:
         kinds = "、".join(dict.fromkeys(h.category_label for h in bad))
-        item = _hit_item("official_web", label, f"{len(bad)} 份文件点名了它（{kinds}）", bad[0], Status.bad, refs,
+        item = _hit_item("official_web", label, f"{other}{len(bad)} 份文件点名了它（{kinds}）", bad[0], Status.bad, refs,
                          "web_official")
         if also:
             item.detail = (item.detail or "") + also
@@ -107,6 +139,10 @@ def official_web_item(web: WebFindings | None, refs: dict[str, str]) -> SignalIt
     if web.official:
         return _hit_item("official_web", label, f"{len(web.official)} 份文件提到它，没有处罚或警示", web.official[0],
                          Status.ok, refs, "web_official")
+    if shown:
+        return SignalItem(key="official_web", label=label, value=f"搜到的 {len(shown)} 份都已在上面单独列出",
+                          detail="搜索结果里没有别的点名它的处罚或警示；搜索覆盖有限，没搜到不等于没有",
+                          status=Status.none, source="web_official", ref=refs.get(shown[0].url))
     return SignalItem(key="official_web", label=label, value="没搜到",
                       detail="搜了监管、法院和政府网站，没找到点名它的处罚或警示；搜索覆盖有限，没搜到不等于没有",
                       status=Status.ok, source="web_official")
@@ -211,6 +247,9 @@ def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit
     return Signal(key="risk", title="风险", lede="最关键的一条：它有没有资格收你的钱。", flags=_flags(items), items=items)
 
 
+SHOWN_NONE = "明细没取到，只知道条数"
+
+
 def finance_signal(company: CompanyProfile | None, claimed_stores: float | None, amac: AmacHit | None = None) -> Signal:
     lede = "普通公司不公开财报。但缺钱的公司，会在登记记录里留下影子。"
     scale = amac_scale_item(amac) if amac else None
@@ -229,9 +268,9 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
     if not company.known("pledges"):
         items.append(SignalItem(key="pledges", label="股权出质", value="没查", detail="这次的数据来源不含这一项",
                                 status=Status.none, source="registry"))
-    elif company.pledges:
-        detail = "；".join(f"{p.date}，{p.pledgor}把 {p.share}押给「{p.pledgee}」" for p in company.pledges)
-        items.append(SignalItem(key="pledges", label="股权出质", value=f"{len(company.pledges)} 笔", detail=detail,
+    elif company.n("pledges"):
+        detail = "；".join(f"{p.date}，{p.pledgor}把 {p.share}押给「{p.pledgee}」" for p in company.pledges) or SHOWN_NONE
+        items.append(SignalItem(key="pledges", label="股权出质", value=f"{company.n('pledges')} 笔", detail=detail,
                                 status=Status.bad, source="registry"))
     else:
         items.append(SignalItem(key="pledges", label="股权出质", value="无", status=Status.ok, source="registry"))
@@ -250,8 +289,9 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
             items.append(SignalItem(key=key, label=label, value="没查", detail="这次的数据来源不含这一项",
                                     status=Status.none, source="registry"))
             continue
-        items.append(SignalItem(key=key, label=label, value=f"{len(rows)} 条" if rows else "无",
-                                status=bad if rows else Status.ok, source="registry"))
+        n = company.n(key)
+        items.append(SignalItem(key=key, label=label, value=f"{n} 条" if n else "无",
+                                status=bad if n else Status.ok, source="registry"))
     return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items)
 
 
@@ -271,18 +311,22 @@ def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings 
     if not company.known("penalties"):
         items.append(SignalItem(key="penalties", label="行政处罚", value="没查", detail="这次的数据来源不含这一项",
                                 status=Status.none, source="registry"))
-    elif company.penalties:
-        detail = "；".join(f"{p.date} {p.org}：{p.reason}，{p.result}" for p in company.penalties)
-        items.append(SignalItem(key="penalties", label="行政处罚", value=f"{len(company.penalties)} 条", detail=detail,
+    elif company.n("penalties"):
+        detail = "；".join(f"{p.date} {p.org}：{p.reason}，{p.result}" for p in company.penalties[:5]) or SHOWN_NONE
+        if company.n("penalties") > min(len(company.penalties), 5):
+            detail += f"（共 {company.n('penalties')} 条，这里列了前 {min(len(company.penalties), 5)} 条）"
+        items.append(SignalItem(key="penalties", label="行政处罚", value=f"{company.n('penalties')} 条", detail=detail,
                                 status=Status.bad, source="registry"))
     else:
         items.append(SignalItem(key="penalties", label="行政处罚", value="无", status=Status.ok, source="registry"))
     for key, label, hit, yes, no in [("abnormal", "经营异常名录", company.abnormal, "已列入", "未列入"),
                                      ("serious_illegal", "严重违法失信名单", company.serious_illegal, "已列入", "未列入"),
-                                     ("dishonest", "失信被执行人", company.dishonest, "有", "无")]:
+                                     ("dishonest", "失信被执行人", company.dishonest, "有", "无"),
+                                     ("restricted", "限制高消费", company.restricted, "有", "无")]:
         if not company.known(key):
-            items.append(SignalItem(key=key, label=label, value="没查", detail="这次的数据来源不含这一项",
-                                    status=Status.none, source="registry"))
+            if key != "restricted":  # 限制高消费只有商业接口给，没查就不占一行
+                items.append(SignalItem(key=key, label=label, value="没查", detail="这次的数据来源不含这一项",
+                                        status=Status.none, source="registry"))
             continue
         items.append(SignalItem(key=key, label=label, value=yes if hit else no,
                                 status=Status.bad if hit else Status.ok, source="registry"))

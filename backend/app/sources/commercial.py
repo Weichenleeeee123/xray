@@ -23,7 +23,7 @@ from pathlib import Path
 import httpx
 
 from app import config
-from app.models import CompanyProfile, Source
+from app.models import CompanyProfile, Coverage, RawRecord, Source
 from app.sources.licenses import normalize
 
 CST = timezone(timedelta(hours=8))
@@ -89,6 +89,20 @@ class CommercialResult:
     def source(self) -> Source:
         return Source(id="registry", name=TITLES[self.provider], kind="commercial", as_of=self.retrieved_at[:10],
                       url=SITES[self.provider], note="第三方商业数据，由工商公示等公开信息加工而来；有出入时以官方公示为准")
+
+
+    def records(self) -> list[RawRecord]:
+        src = self.source
+        cov = Coverage.found if self.profile else (Coverage.failed if not self.response else Coverage.not_found)
+        out = [RawRecord(id="", source_id="registry", title=src.name, kind="commercial", coverage=cov,
+                         retrieved_at=self.retrieved_at, as_of=self.retrieved_at[:10], url=src.url,
+                         content=self.record or self.response or None, note=self.note)]
+        if self.profile:
+            out.append(RawRecord(id="", source_id="annual_report", title="实缴资本、参保人数（商业接口）", kind="commercial",
+                                 coverage=Coverage.found, retrieved_at=self.retrieved_at, url=src.url,
+                                 content={"paid_capital": self.profile.paid_capital, "insured": self.profile.insured},
+                                 note="来自同一次商业接口查询"))
+        return out
 
 
 class CommercialClient:

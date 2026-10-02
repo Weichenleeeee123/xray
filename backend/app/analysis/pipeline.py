@@ -3,6 +3,7 @@
 结论全部来自 verify.py / signals.py 的确定性规则；这里只负责把数据、材料、场景接起来，
 并把每条检查指回它依据的原始数据（RawRecord）。
 """
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -14,7 +15,7 @@ from app.analysis.extract import ClaimExtractor, RuleExtractor
 from app.analysis.followup import build_questions
 from app.analysis.judgments import attach_disputes, build as build_judgments, update as update_judgments
 from app.analysis.report import onepager
-from app.analysis.signals import build_signals, official_pack_items
+from app.analysis.signals import add_pack_items, build_signals, official_pack_items
 from app.analysis.verify import verify
 from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, JudgmentChange, MissingItem, RawRecord,
                         ResolveIn, Signal, Source, SupplementIn, Version)
@@ -27,6 +28,7 @@ from app.sources.commercial import CommercialClient
 from app.sources.fixtures import FixtureAmac, FixtureComplaints, FixtureRegistry
 from app.sources.licenses import LicenseIndex
 from app.sources.packs import EvidencePacks
+from app.sources.qcc_agent import QccAgentClient
 from app.sources.registries import RegistryIndex, load_registries
 from app.sources.web import WebClient
 
@@ -45,7 +47,7 @@ class Services:
     extractor: ClaimExtractor
     sources: dict[str, Source]
     registries: dict[str, RegistryIndex] = field(default_factory=dict)  # 保险、期货、支付、私募等官方名单
-    commercial: CommercialClient | None = None                         # 企查查/天眼查，配置了才用
+    commercial: CommercialClient | QccAgentClient | None = None        # 企查查/天眼查，配置了才用
     web: WebClient | None = None                                       # 联网查证，网关配置了才用
     amac_detail: AmacDetailClient | None = None                        # 中基协公示详情页
 
@@ -55,7 +57,9 @@ def load_services() -> Services:
     amac, complaints = FixtureAmac.load(), FixtureComplaints.load()
     registries = load_registries()
     sources = build_sources(licenses.meta, registry.as_of, amac.as_of, complaints.as_of) | registry_sources(registries)
-    commercial, web = CommercialClient(), WebClient()
+    provider = os.getenv("XRAY_COMMERCIAL", "").strip().lower()
+    commercial = QccAgentClient() if provider == "qcc_agent" else CommercialClient(provider)
+    web = WebClient()
     return Services(licenses, registry, amac, complaints, EvidencePacks.load(), RuleExtractor(), sources, registries,
                     commercial if commercial.configured else None, web if web.configured else None,
                     AmacDetailClient(config.CACHE_DIR / "amac") if config.AMAC_DETAIL else None)
@@ -118,10 +122,7 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
                             collected.others, collected.web, web_refs, amount)
     pack_items = official_pack_items(inp.company_name, [raw_by_id[rid] for rid in collected_ids])
-    if pack_items:
-        credit = next(s for s in signals if s.key == "credit")
-        credit.items = pack_items + credit.items
-        credit.flags = sum(i.status == "bad" for i in credit.items)
+    add_pack_items(signals, pack_items, raw, company, collected.web, web_refs)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
     link_refs(assertions, missing, signals, by_source, texts)
     charts = build_charts(ext, company, assertions, by_source, collected.web, web_refs, collected.complaints,

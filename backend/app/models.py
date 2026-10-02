@@ -103,12 +103,20 @@ class CompanyProfile(BaseModel):
     abnormal: bool = False
     serious_illegal: bool = False
     dishonest: bool = False
+    restricted: bool = False            # 限制高消费
+    listing: dict | None = None         # 上市信息（交易所、股票代码……）；查了没有是 None，要配合 known("listing") 看
+    counts: dict[str, int] = Field(default_factory=dict)  # 数据源给的总条数；明细只取了前几条或没取到时，以它为准
     # 实际查过的字段。None 表示全部查过（演示数据）；商业接口、证据包只给了部分字段时，
     # 没列出的字段显示"没查"，不能因为默认是空列表就说成"无"
     checked: list[str] | None = None
 
     def known(self, field: str) -> bool:
         return self.checked is None or field in self.checked
+
+    def n(self, field: str) -> int:
+        """某类记录有几条：数据源报了总数就用总数，否则数明细。"""
+        rows = getattr(self, field)
+        return max(self.counts.get(field, 0), len(rows) if isinstance(rows, list) else 0)
 
 
 class LicenseRecord(BaseModel):
