@@ -65,7 +65,6 @@ const clamp = (n: number) => Math.max(0, Math.min(1, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export default function Home() {
   const [previewReady, setPreviewReady] = useState(false);
-  const images = useProgressiveImages(previewReady);
   const [query, setQuery] = useState(''),
     [need, setNeed] = useState(''),
     [selectedDemo, setSelectedDemo] = useState<DemoCase | null>(null),
@@ -92,6 +91,8 @@ export default function Home() {
     reconnect,
     canReconnect,
   } = useOfficeResearch();
+  const imagePhase = state.connection === 'idle' ? 'idle' : state.connection === 'saved' ? 'complete' : 'research';
+  const images = useProgressiveImages(previewReady, resolving ? 'research' : imagePhase);
   const idle = state.connection === 'idle',
     status = idle
       ? 'idle'
@@ -395,7 +396,7 @@ export default function Home() {
         )}
         <div className="report-transition" aria-hidden="true" />
         <div className="scene-brand" aria-label="企er 小企研究室">
-          <img src="/research-assets/qier-icon.png" width={43} height={43} alt="" />
+          <img src="/research-assets/qier-icon-96.webp" width={43} height={43} alt="" />
           <div>
             <strong>企er</strong>
             <small>小企研究室</small>

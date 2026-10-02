@@ -1,9 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { upgradeImages } from '../app/progressive-images.ts';
+import { upgradeImages, imageUpgradePlan, officeImages, previewSources } from '../app/progressive-images.ts';
 
 const assets = [{ id: 'background', full: '/background.webp' }, { id: 'actor', full: '/actor.webp' }];
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+test('the idle room upgrades only the artwork currently visible', () => {
+  assert.deepEqual(imageUpgradePlan('idle', previewSources).map(a => a.id), ['background', 'action', 'motion']);
+});
+
+test('research requests have priority over optional high resolution downloads', () => {
+  assert.deepEqual(imageUpgradePlan('research', previewSources), []);
+  assert.deepEqual(imageUpgradePlan('complete', previewSources).map(a => a.id), officeImages.map(a => a.id));
+});
+
+test('resuming upgrades never downloads an already upgraded image again', () => {
+  const sources = { ...previewSources, background: officeImages[0].full };
+  assert.deepEqual(imageUpgradePlan('idle', sources).map(a => a.id), ['action', 'motion']);
+  assert.equal(imageUpgradePlan('complete', sources).some(a => a.id === 'background'), false);
+});
 
 test('keeps the preview until decoded, then upgrades images one at a time', async () => {
   const started = [], applied = [], pending = [];

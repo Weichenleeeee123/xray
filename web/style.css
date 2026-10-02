@@ -392,7 +392,7 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
 .qi-perch{position:relative;height:100px;flex:0 0 100px}
 .qi-perch .qi-avatar{position:absolute;left:24px;bottom:-2px}
 .qi-perch .qi-sprite,.qi-welcome .qi-sprite{width:100px;height:100px}
-.qi-sprite{display:block;width:64px;height:64px;flex-shrink:0;background-image:url('/research-assets/xiaoqi-assistant-sprites.png');background-size:400% 200%;background-position:0 0;background-repeat:no-repeat;clip-path:var(--qi-clip-0);transform:translateY(var(--qi-foot-0));animation:qi-idle 7s step-end infinite}
+.qi-sprite{display:block;width:64px;height:64px;flex-shrink:0;background-image:url('/research-assets/xiaoqi-assistant-sprites.lossless.webp');background-size:400% 200%;background-position:0 0;background-repeat:no-repeat;clip-path:var(--qi-clip-0);transform:translateY(var(--qi-foot-0));animation:qi-idle 7s step-end infinite}
 .qi-sprite[data-qi-state="thinking"]{background-position:0 100%;clip-path:var(--qi-clip-4);transform:translateY(var(--qi-foot-4));animation:qi-think 1.8s step-end infinite}
 /* Each step selects one complete cell; the long neutral hold keeps reading calm. */
 @keyframes qi-idle{

@@ -1,6 +1,11 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+
+/* Only the research room and its two shared controls ship on this entry point. */
+@source './';
+@source '../components/ui/button.tsx';
+@source '../components/ui/input.tsx';
 
 @custom-variant dark (&:is(.dark *));
 

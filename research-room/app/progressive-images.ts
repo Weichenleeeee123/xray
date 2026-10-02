@@ -13,6 +13,16 @@ export const previewSources = Object.fromEntries(
   officeImages.map(({ id, preview }) => [id, preview]),
 ) as Record<OfficeImageId, string>;
 
+export type ImageUpgradePhase = 'idle' | 'research' | 'complete';
+
+/** Keep bandwidth available for the query; unseen animation sheets can wait. */
+export function imageUpgradePlan(phase: ImageUpgradePhase, sources: Record<OfficeImageId, string>) {
+  if (phase === 'research') return [];
+  return officeImages.filter(asset => sources[asset.id] !== asset.full && (
+    phase === 'complete' || asset.id === 'background' || asset.id === 'action' || asset.id === 'motion'
+  ));
+}
+
 // Keep the preview in place until decoding succeeds, with one upgrade in flight.
 export async function upgradeImages<T extends { id: string; full: string }>(
   assets: readonly T[],

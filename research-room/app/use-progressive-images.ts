@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { officeImages, previewSources, upgradeImages } from './progressive-images';
+import { useEffect, useRef, useState } from 'react';
+import { imageUpgradePlan, previewSources, upgradeImages } from './progressive-images';
+import type { ImageUpgradePhase } from './progressive-images';
 
 function decodeImage(url: string, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -27,52 +28,77 @@ function decodeImage(url: string, signal: AbortSignal): Promise<void> {
   });
 }
 
-export function useProgressiveImages(previewReady: boolean) {
+export function useProgressiveImages(previewReady: boolean, phase: ImageUpgradePhase = 'idle') {
   const [sources, setSources] = useState(previewSources);
+  const sourcesRef = useRef(sources);
   useEffect(() => {
-    if (!previewReady) return;
-    const controller = new AbortController();
-    let frame = 0, idle = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let paintObserver: PerformanceObserver | undefined;
-    const upgrade = () => {
-      void upgradeImages(officeImages, decodeImage, ({ id, full }) => {
-        setSources((previous) => ({ ...previous, [id]: full }));
-      }, controller.signal);
-    };
-    const schedule = () => {
-      frame = requestAnimationFrame(() => {
+    if (!previewReady || phase === 'research') return;
+    const startVisibleQueue = () => {
+      if (document.hidden) return;
+      // Each visible interval owns its controller and pending callbacks. A
+      // cancelled queue's finally cannot unlock a newer queue after resuming.
+      const controller = new AbortController();
+      let frame = 0, idle = 0;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let paintObserver: PerformanceObserver | undefined;
+      let upgrading = false;
+      const upgrade = () => {
+        if (document.hidden || controller.signal.aborted || upgrading) return;
+        upgrading = true;
+        void upgradeImages(imageUpgradePlan(phase, sourcesRef.current), decodeImage, ({ id, full }) => {
+          sourcesRef.current = { ...sourcesRef.current, [id]: full };
+          setSources(sourcesRef.current);
+        }, controller.signal).finally(() => { upgrading = false; });
+      };
+      const schedule = () => {
         frame = requestAnimationFrame(() => {
-          if ('requestIdleCallback' in window) {
-            idle = window.requestIdleCallback(upgrade, { timeout: 1500 });
-          } else timer = globalThis.setTimeout(upgrade, 200);
+          frame = requestAnimationFrame(() => {
+            if ('requestIdleCallback' in window) {
+              idle = window.requestIdleCallback(upgrade, { timeout: 3000 });
+            } else timer = globalThis.setTimeout(upgrade, 500);
+          });
         });
-      });
+      };
+      // Two animation frames alone do not guarantee a contentful paint under load.
+      const start = () => {
+        if (typeof PerformanceObserver !== 'undefined' &&
+            PerformanceObserver.supportedEntryTypes.includes('paint') &&
+            !performance.getEntriesByName('first-contentful-paint').length) {
+          paintObserver = new PerformanceObserver((list) => {
+            if (list.getEntries().some(({ name }) => name === 'first-contentful-paint')) {
+              paintObserver?.disconnect();
+              schedule();
+            }
+          });
+          paintObserver.observe({ type: 'paint', buffered: true });
+        } else schedule();
+      };
+      // Let the first interaction and example data finish before cosmetic downloads.
+      const delayedStart = () => {
+        clearTimeout(timer);
+        timer = globalThis.setTimeout(start, 2500);
+      };
+      if (document.readyState === 'complete') delayedStart();
+      else window.addEventListener('load', delayedStart, { once: true });
+      return () => {
+        controller.abort();
+        paintObserver?.disconnect();
+        window.removeEventListener('load', delayedStart);
+        cancelAnimationFrame(frame);
+        if (idle) window.cancelIdleCallback(idle);
+        clearTimeout(timer);
+      };
     };
-    // Two animation frames alone do not guarantee a contentful paint under load.
-    const start = () => {
-      if (typeof PerformanceObserver !== 'undefined' &&
-          PerformanceObserver.supportedEntryTypes.includes('paint') &&
-          !performance.getEntriesByName('first-contentful-paint').length) {
-        paintObserver = new PerformanceObserver((list) => {
-          if (list.getEntries().some(({ name }) => name === 'first-contentful-paint')) {
-            paintObserver?.disconnect();
-            schedule();
-          }
-        });
-        paintObserver.observe({ type: 'paint', buffered: true });
-      } else schedule();
+    let stopQueue = startVisibleQueue();
+    const updateVisibility = () => {
+      stopQueue?.();
+      stopQueue = startVisibleQueue();
     };
-    if (document.readyState === 'complete') start();
-    else window.addEventListener('load', start, { once: true });
+    document.addEventListener('visibilitychange', updateVisibility);
     return () => {
-      controller.abort();
-      paintObserver?.disconnect();
-      window.removeEventListener('load', start);
-      cancelAnimationFrame(frame);
-      if (idle) window.cancelIdleCallback(idle);
-      clearTimeout(timer);
+      stopQueue?.();
+      document.removeEventListener('visibilitychange', updateVisibility);
     };
-  }, [previewReady]);
+  }, [previewReady, phase]);
   return sources;
 }
