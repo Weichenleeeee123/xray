@@ -30,7 +30,9 @@ def _claim_line(a: Assertion) -> OnePagerLine:
 def _columns(assertions: list[Assertion], missing: list[MissingItem], signals: list[Signal]):
     """哪里对不上 = 它的说法和记录对照的结果；查到了什么 = 记录本身；还不知道什么 = 没查和核不了的。"""
     claim_ids = {a.id for a in assertions} | {m.id for m in missing}
-    items = [(s, i) for s in signals for i in s.items if DUP_OF_CLAIM.get(f"{s.key}.{i.key}") not in claim_ids]
+    # 用户评价不进这一页：这一页写的是记录，评价是别人说的、没核实
+    items = [(s, i) for s in signals for i in s.items
+             if DUP_OF_CLAIM.get(f"{s.key}.{i.key}") not in claim_ids and i.source != "user_reviews"]
 
     mismatch = [_claim_line(a) for a in assertions if a.color == "red"]
     mismatch += [OnePagerLine(text=f"该写的没写：\"{m.text}\"", refs=[m.id, *m.refs]) for m in missing]

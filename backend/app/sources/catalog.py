@@ -40,6 +40,8 @@ def build_sources(license_meta: dict, registry_as_of: str, amac_as_of: str, comp
                note="官网、招聘页、宣传页上公司自己写的话；只当作\"宣称\"，不当作事实"),
         Source(id="material", name="用户提供的材料", kind="user_material",
                note="宣传单、合同、聊天记录、对方回复；系统只读取上面的文字，不判断材料本身的真伪"),
+        Source(id="user_reviews", name="用户评价", kind="user_review",
+               note="用户自己写的评价，未经核实，系统不判断真假；只看差评是否集中，好评不算放心的理由"),
         Source(id="reg_amr", name="《关于规范金融机构资产管理业务的指导意见》", kind="regulation", as_of="2018",
                note="资产管理产品不得承诺保本保收益"),
         Source(id="reg_wm_sales", name="《商业银行理财业务监督管理办法》", kind="regulation", as_of="2018",

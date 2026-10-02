@@ -29,6 +29,8 @@ _load_env(BASE_DIR / ".env")
 
 # 运行时数据，git 忽略；测试时用环境变量指到临时目录
 CASES_DIR = Path(os.getenv("XRAY_CASES_DIR", DATA_DIR / "cases"))
+# 用户评价：按公司存；演示评价在 fixtures/reviews.json（只读）
+REVIEWS_DIR = Path(os.getenv("XRAY_REVIEWS_DIR", DATA_DIR / "reviews"))
 CACHE_DIR = Path(os.getenv("XRAY_CACHE_DIR", DATA_DIR / "cache"))
 # 名单里查到的私募管理人，再取一次中基协公示详情页（公开页面，没有验证码）；测试里关掉
 AMAC_DETAIL = os.getenv("XRAY_AMAC_DETAIL", "1") == "1"

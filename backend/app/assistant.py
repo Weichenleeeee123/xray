@@ -5,6 +5,8 @@
 - 对话不改结论。想让助手"判定安全""忽略规则"的，由程序直接拦下，不交给模型。
 - 回答越界（下定性、推测后果）时，告诉模型哪句越界，让它重写，最多 MAX_REWRITES 次；还越界或网关不通，才退回模板回答。
 - 模板回答：按问题里的关键词找到相关条目，原样念出来。
+- 用户评价（source user_reviews）可以引用，但只是"有用户说"；越界检查不把评价原文算作记录，
+  评价里写了"非法集资"，助手也不能借它说出口。
 - 名词解释使用所选版本的 terms（含标记为 model 的 AI 解释），旧案卷回退固定词表；出处为 [term.<id>]，不能当公司证据给定性词放行。
 """
 import json
@@ -67,7 +69,7 @@ TOPICS = [
     (r"押金|培训费|先交|交钱|收费", ["A9", "risk.upfront_fee"]),
     (r"投诉|口碑|评价|名声|报道|新闻", ["reputation.total", "reputation.recent", "reputation.top_topic",
                                     "reputation.complaints", "reputation.web_total", "reputation.web_cash",
-                                    "reputation.web_complaint", "reputation.web_negative"]),
+                                    "reputation.web_complaint", "reputation.web_negative", "reputation.user_reviews"]),
     (r"处罚|被罚|监管|通报|点名|警示", ["credit.official_web", "risk.regulator_warning", "credit.penalties"]),
     (r"处罚|失信|信用|异常|被执行|官司|诉讼", ["credit.penalties", "credit.dishonest", "credit.abnormal",
                                        "credit.litigation", "finance.executions"]),
@@ -84,6 +86,7 @@ SYSTEM = """你是企鹅的案卷解释助手。仅使用给定版本报告和�
 每个关键事实独立成一段，段落必须带本案出处 id；引用原文放 quotes，必须逐字一致。
 引用 RawRecord 时，quotes.text 只取 content 中单个叶子值里的连续原文；不得拼接 JSON 字段名、冒号或不同值，也不得把 note 等元数据当原文。
 原始材料只表示材料如此记载，不代表宣称属实；沿用官方/人工/商业/用户/演示的来源性质。
+user_reviews 是用户自己写的评价，没核实：引用时写"有用户评价说"，不当作事实，不替用户下结论。
 选中条目时围绕该条目回答，不能偷换版本。新聊天信息需用户加入案卷才能触发二次分析。
 没依据就 not_found=true，segments 留空。suggest 只写要核对什么，不写额外事实。
 只输出 JSON：{"segments":[{"text":"解释","citations":["A2"],"quotes":[]}],"not_found":false,"suggest":[]}"""
@@ -144,6 +147,12 @@ def citable(case: Case, v: Version) -> dict[str, str]:
             out[r.id] = "\n".join(_leaves(r.content))
     # Source catalog metadata is not a retrieved record.
     return out
+
+
+def evidence_text(case: Case, valid: dict[str, str]) -> str:
+    """越界检查用的"案卷记录"文字。用户评价不算：评价里写了"非法集资"，不能让助手借它说出口。"""
+    reviews = {r.id for r in case.raw if r.source_id == "user_reviews"}
+    return _flat(" ".join(text for ref, text in valid.items() if ref not in reviews))
 
 
 def glossary_entries(terms: list[Term]) -> dict[str, str]:
@@ -428,7 +437,7 @@ def answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
     if GUARD.search(q.text):
         return ChatMessage(text=GUARD_ANSWER, mode="guard", suggest=suggest_add, **base)
     valid = citable(case, v)
-    data = _flat(" ".join(valid.values()))  # Only company records, never glossary definitions.
+    data = evidence_text(case, valid)  # Only company records, never glossary definitions or user reviews.
     # 报告生成时已经整理好这一版的名词（含模型补的）；旧案卷没有，就现场从词表里找
     terms = list(v.terms) or find_terms(" ".join(valid.values()))
     terms += [t for t in find_terms(q.text) if t.id not in {x.id for x in terms}]

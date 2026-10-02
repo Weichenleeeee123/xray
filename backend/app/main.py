@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import config
-from app.analysis.pipeline import load_services, new_case, resolve, supplement
+from app.analysis.pipeline import NoNewReviews, load_services, new_case, refresh_reviews, resolve, supplement
 from app.analysis.report import onepager
 from app.assistant import answer
 from app.glossary import load_glossary
@@ -20,8 +20,9 @@ from app.intake import run_intake
 from app.llm import LLM
 from app.plain import finish_version
 from app.models import (Case, CaseIn, CaseSummary, ChatIn, ChatMessage, Intake, IntakeIn, LicenseHit, OnePager,
-                        ReadResult, ResolveIn, Scenario, Source, SupplementIn, Term)
+                        ReadResult, ResolveIn, ReviewIn, ReviewList, Scenario, Source, SupplementIn, Term)
 from app.readers import read_upload
+from app.reviews import DuplicateReview
 from app.scenarios import get_scenario, load_scenarios
 from app.sources.collect import collect
 from app.store import CaseStore
@@ -126,6 +127,32 @@ def resolve_judgment(case_id: str, body: ResolveIn) -> Case:
         return store.save(resolve(case, body))
     except KeyError:
         raise HTTPException(status_code=404, detail=f"案卷里没有这条判断：{body.judgment_id}") from None
+
+
+@app.post("/api/cases/{case_id}/reviews")
+def refresh_case_reviews(case_id: str) -> Case:
+    """把这家公司最新的用户评价放进案卷，出一版新报告。评价没变就不出。"""
+    case = _case(case_id)
+    try:
+        return store.save(finish_version(refresh_reviews(case, svc), llm))
+    except NoNewReviews:
+        raise HTTPException(status_code=409, detail="没有新评价：这一版报告里已经是最新的评价") from None
+
+
+# ---------- 用户评价：按公司存，别人说的，未核实 ----------
+
+@app.get("/api/reviews")
+def list_reviews(company: str = Query(..., min_length=2, max_length=80),
+                 author: str | None = Query(None, description="浏览器的匿名编号，用来标出哪条是自己写的")) -> ReviewList:
+    return svc.reviews.listing(company.strip(), author)
+
+
+@app.post("/api/reviews")
+def add_review(body: ReviewIn) -> ReviewList:
+    try:
+        return svc.reviews.add(body)
+    except DuplicateReview:
+        raise HTTPException(status_code=409, detail="你已经给这家公司写过一条评价了") from None
 
 
 @app.post("/api/cases/{case_id}/chat")

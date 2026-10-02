@@ -392,11 +392,32 @@ def reputation_signal(data: dict | None, web: WebFindings | None = None, refs: d
     return Signal(key="reputation", title="口碑", lede=lede, flags=_flags(items), items=items, extra=extra)
 
 
+REVIEW_MIN = 3   # 少于这么多条，只作参考
+
+
+def review_item(reviews: list[dict] | None) -> SignalItem | None:
+    """用户评价：别人说的，未核实。差评集中才标"要留意"；好评不标绿（会刷好评的，往往正是要查的公司），
+    也不标"有问题"（那是留给官方记录的）。没有评价就不出这一条。"""
+    if not reviews:
+        return None
+    n, low = len(reviews), sum(r["stars"] <= 2 for r in reviews)
+    dist = "、".join(f"{s} 星 {c} 条" for s in range(5, 0, -1) if (c := sum(r["stars"] == s for r in reviews)))
+    if n < REVIEW_MIN:
+        status, detail = Status.none, f"只有 {n} 条，太少，只作参考。用户自己写的，系统不判断真假"
+    elif low * 2 >= n:
+        status, detail = Status.warn, (f"{n} 条里有 {low} 条打了 1–2 星，差评集中。用户自己写的，没核实；"
+                                       "点开看他们说的具体是什么事，再拿去问对方")
+    else:
+        status, detail = Status.none, "差评不集中，只作参考。好评多不代表没问题；用户自己写的，系统不判断真假"
+    return SignalItem(key="user_reviews", label="用户评价（未核实）", value=f"{n} 条：{dist}", detail=detail,
+                      status=status, source="user_reviews")
+
+
 def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
                   complaints: dict | None, as_of: date, scenario: Scenario,
                   assertions: list[Assertion] = (), others: list[RegistryHit] = (),
                   web: WebFindings | None = None, web_refs: dict[str, str] | None = None,
-                  amount: float | None = None) -> list[Signal]:
+                  amount: float | None = None, reviews: list[dict] | None = None) -> list[Signal]:
     """四个信号的内容不随场景变；场景只改排序和开头那句话。"""
     scale = ext.claims.get(ClaimKind.scale)
     stores = scale.numbers.get("stores") if scale else None
@@ -405,6 +426,10 @@ def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseH
                                               amount),
                                   finance_signal(company, stores, amac), credit_signal(company, as_of, web, refs, amac),
                                   reputation_signal(complaints, web, refs)]}
+    if item := review_item(reviews):
+        rep = signals["reputation"]
+        rep.items.append(item)
+        rep.flags = _flags(rep.items)
     for key, lede in scenario.signal_ledes.items():
         if key in signals:
             signals[key].lede = lede

@@ -1,0 +1,28 @@
+{
+  "_note": "演示评价：只给虚构公司，公司和评价都是编的，页面上标\"演示数据\"。不要给真实公司写演示评价。",
+  "companies": {
+    "杭州满盈禾康养健康咨询有限公司": [
+      {"stars": 5, "relation": "customer", "nickname": "王阿姨",
+       "text": "客户经理小刘很热情，逢年过节都送东西，每个月利息按时到账，我已经介绍两个老姐妹来买了。",
+       "created_at": "2026-07-12T10:20:00"},
+      {"stars": 5, "relation": "customer", "nickname": null,
+       "text": "门店环境好，经常组织免费体检和一日游，收益比银行定期高多了。",
+       "created_at": "2026-07-28T15:02:00"},
+      {"stars": 1, "relation": "customer", "nickname": "老陈",
+       "text": "签的时候说随时能取。今年三月想取 5 万给孙子交学费，业务员一直拖，说要排队审批，到现在没拿到。",
+       "created_at": "2026-08-19T09:41:00"},
+      {"stars": 2, "relation": "customer", "nickname": null,
+       "text": "当时口头说保本保息，回家仔细看合同，里面一个字都没写保本。再去问，说是公司的心意不写进合同。",
+       "created_at": "2026-08-30T20:13:00"},
+      {"stars": 1, "relation": "customer", "nickname": "小周",
+       "text": "替我爸转的钱，收款户名是个人名字，不是公司。问了说是财务的卡，走账方便。",
+       "created_at": "2026-09-06T11:30:00"},
+      {"stars": 1, "relation": "employee", "nickname": null,
+       "text": "在门店做过三个月业务员。培训时让我们跟老人说年化 9% 稳赚，提成按拉来的钱算，完不成指标扣工资。",
+       "created_at": "2026-09-15T22:08:00"},
+      {"stars": 1, "relation": "customer", "nickname": null,
+       "text": "我看就是骗子公司，大家千万别上当，钱进去就出不来了。",
+       "created_at": "2026-09-27T18:45:00"}
+    ]
+  }
+}

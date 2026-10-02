@@ -13,7 +13,7 @@ import re
 
 from pydantic import BaseModel, Field
 
-from app.assistant import SPECULATION, VERDICT_WORDS, _flat, citable, overreach
+from app.assistant import SPECULATION, VERDICT_WORDS, citable, evidence_text, overreach
 from app.glossary import find_terms, load_glossary
 from app.llm import LLM, LLMError
 from app.models import Case, Glance, Status, Term, Version
@@ -129,7 +129,7 @@ def _gen_id(name: str) -> str:
 def build_glance(case: Case, v: Version, llm: LLM, prev: Version | None = None) -> tuple[Glance, list[Term]]:
     sources = short_sources(v)
     visible = visible_text(v)
-    data = _flat(" ".join(citable(case, v).values()))
+    data = evidence_text(case, citable(case, v))
     glossary_names = {n for t in load_glossary() for n in (t.term, *t.aliases)}
 
     # 上一版写好、原句没变的，直接沿用

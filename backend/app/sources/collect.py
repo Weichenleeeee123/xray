@@ -2,11 +2,13 @@
 
 官方名单（真实，每家公司都查）：银行业、保险、期货、支付机构名单，中基协私募管理人名单。
 企业登记按顺序找：证据包（人工采集的官方记录）→ 商业接口（企查查/天眼查，配置了才用）→ 演示数据 → 记"没查"。
+用户评价：有就记一条快照（别人说的，未核实）；没有不记。
 """
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from app.models import AmacHit, CompanyProfile, Coverage, LicenseHit, RawRecord, RegistryHit, Source
+from app.reviews import review_record
 from app.sources.amac_detail import summary as amac_summary
 from app.sources.packs import SECTIONS, Pack
 from app.sources.registries import AMAC_ID, LICENSE_LISTS
@@ -31,6 +33,7 @@ class Collected:
     others: list[RegistryHit] = field(default_factory=list)  # 银行业以外的持牌名单
     note: str | None = None              # 证据包的说明：资料截止日期、话术出处
     web: WebFindings | None = None       # 联网查证；没开或是虚构公司时为 None
+    reviews: list[dict] = field(default_factory=list)  # 用户评价（含作者哈希，只在后端用；原始数据里不带）
 
 
 def _raw(source_id: str, title: str, kind: str, coverage: Coverage, content=None, *, retrieved_at: str | None = None,
@@ -116,6 +119,16 @@ def _web_records(web: WebFindings) -> list[RawRecord]:
 
 
 def collect(name: str, svc) -> Collected:
+    collected = _collect(name, svc)
+    store = getattr(svc, "reviews", None)
+    if store is not None:
+        collected.reviews = store.all(name)
+        if record := review_record(collected.reviews):
+            collected.records.append(record)
+    return collected
+
+
+def _collect(name: str, svc) -> Collected:
     sources = dict(svc.sources)
     lic = svc.licenses.lookup(name)
     others, list_records = _official_lists(name, svc)

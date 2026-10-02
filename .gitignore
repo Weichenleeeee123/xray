@@ -22,3 +22,6 @@ backend/data/cache/
 Thumbs.db
 desktop.ini
 node_modules/
+
+# 用户评价（真实用户写的，不进仓库）
+backend/data/reviews/

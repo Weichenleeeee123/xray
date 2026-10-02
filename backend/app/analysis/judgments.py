@@ -324,6 +324,8 @@ def build(company_name: str, scenario: Scenario, version_no: int, assertions: li
             key = f"{sig.key}.{it.key}"
             if it.value in plain_set or it.detail in plain_set:
                 continue
+            if it.source == "user_reviews":   # 评价是别人说的、没核实，不是"现实中确认了的事"
+                continue
             keep = it.status in (Status.bad, Status.warn) or key in scenario.first_items
             if not keep:
                 continue

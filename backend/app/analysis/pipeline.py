@@ -21,6 +21,7 @@ from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, Judgmen
                         ResolveIn, Signal, Source, SupplementIn, Version)
 from app.scenarios import claim_rank, get_scenario
 from app import config
+from app.reviews import SOURCE_ID as REVIEW_SOURCE, ReviewStore, review_record
 from app.sources.amac_detail import AmacDetailClient
 from app.sources.catalog import build_sources, registry_sources
 from app.sources.collect import Collected, collect, now
@@ -50,6 +51,7 @@ class Services:
     commercial: CommercialClient | QccAgentClient | None = None        # 企查查/天眼查，配置了才用
     web: WebClient | None = None                                       # 联网查证，网关配置了才用
     amac_detail: AmacDetailClient | None = None                        # 中基协公示详情页
+    reviews: ReviewStore | None = None                                 # 用户评价（按公司存）
 
 
 def load_services() -> Services:
@@ -62,7 +64,8 @@ def load_services() -> Services:
     web = WebClient()
     return Services(licenses, registry, amac, complaints, EvidencePacks.load(), RuleExtractor(), sources, registries,
                     commercial if commercial.configured else None, web if web.configured else None,
-                    AmacDetailClient(config.CACHE_DIR / "amac") if config.AMAC_DETAIL else None)
+                    AmacDetailClient(config.CACHE_DIR / "amac") if config.AMAC_DETAIL else None,
+                    ReviewStore(config.REVIEWS_DIR, config.FIXTURES_DIR / "reviews.json"))
 
 
 # ---------- 原始数据 ----------
@@ -120,7 +123,7 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     web_refs = {raw_by_id[rid].url: rid for rid in collected_ids if raw_by_id[rid].source_id.startswith("web_")}
     amount = inp.amount or intake.amount
     signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
-                            collected.others, collected.web, web_refs, amount)
+                            collected.others, collected.web, web_refs, amount, collected.reviews)
     pack_items = official_pack_items(inp.company_name, [raw_by_id[rid] for rid in collected_ids])
     add_pack_items(signals, pack_items, raw, company, collected.web, web_refs)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
@@ -207,6 +210,37 @@ def supplement(case: Case, body: SupplementIn, intake: Intake | None, svc: Servi
         prev.judgments, cur.judgments, new_texts, cur.no)
     case.versions.append(cur)
     case.case, case.scenario, case.focus, case.current = inp, cur.scenario, cur.focus, cur.no
+    case.sources = collected.sources
+    return case
+
+
+class NoNewReviews(Exception):
+    """这家公司的评价和这一版报告里的一样，不用再出一版。"""
+
+
+def _review_raw(case: Case, v: Version) -> RawRecord | None:
+    return next((r for r in case.raw if r.id in v.raw_ids and r.source_id == REVIEW_SOURCE), None)
+
+
+def refresh_reviews(case: Case, svc: Services) -> Case:
+    """把这家公司最新的用户评价放进案卷，出新一版。别的数据照常重查一遍，和补充材料一样逐条比对。"""
+    prev = case.versions[-1]
+    before = _review_raw(case, prev)
+    draft = review_record(svc.reviews.all(case.case.company_name)) if svc.reviews else None
+    if draft is None or (before is not None and before.content == draft.content):
+        raise NoNewReviews(case.id)
+    intake = Intake(scenario=prev.scenario, scenario_label=prev.scenario_label, focus=prev.focus,
+                    for_whom=prev.for_whom, amount=prev.amount, method="user")
+    collected, ids = _collect_into(case.raw, case.case.company_name, svc)
+    cur = build_version(prev.no + 1, "reviews", case.case, intake, collected, ids, case.raw, svc)
+    after = _review_raw(case, cur)
+    cur.changes, base = diff(prev, cur, {after.id: ""} if after else {})
+    n_before = len(before.content) if before else 0
+    cur.change_summary = (f"这一版放进了新写的用户评价：上一版 {n_before} 条，现在 {len(after.content)} 条。"
+                          "评价是用户自己写的，没核实，只影响口碑里\"用户评价\"这一条。" + base)
+    cur.judgments, cur.judgment_changes, cur.judgment_summary = update_judgments(prev.judgments, cur.judgments, {}, cur.no)
+    case.versions.append(cur)
+    case.current = cur.no
     case.sources = collected.sources
     return case
 

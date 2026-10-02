@@ -6,7 +6,7 @@
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Coverage(StrEnum):
@@ -46,7 +46,9 @@ class Verdict(StrEnum):
 
 
 # official 官方记录（程序直接取）；collected 人工采集的官方记录；commercial 商业数据（企查查等，第三方加工）
-SourceKind = Literal["official", "collected", "commercial", "regulation", "demo", "user_material", "web", "parameter"]
+# user_review 用户评价：别人说的，未核实
+SourceKind = Literal["official", "collected", "commercial", "regulation", "demo", "user_material", "web", "parameter",
+                     "user_review"]
 
 # 判断依据的级别：material 是用户给的材料（只代表文字读对了），其余是可核来源
 BasisGrade = Literal["official", "collected", "commercial", "web", "material", "regulation", "parameter", "demo"]
@@ -164,7 +166,7 @@ class RawRecord(BaseModel):
     id: str                              # R1、R2……同一案卷内唯一
     source_id: str                       # 指回 Source
     title: str
-    kind: Literal["official", "collected", "commercial", "user_material", "web", "demo"]
+    kind: Literal["official", "collected", "commercial", "user_material", "web", "demo", "user_review"]
     coverage: Coverage = Coverage.found
     retrieved_at: str
     as_of: str | None = None             # 数据本身的截止日期
@@ -358,7 +360,7 @@ class Scenario(BaseModel):
 
 
 TRIGGER_LABELS = {"initial": "首次分析", "material": "补充材料", "reply": "对方回复", "need": "修改需求",
-                  "resolve": "核实结论"}
+                  "resolve": "核实结论", "reviews": "更新用户评价"}
 
 
 # ---------- 可追踪的判断 ----------
@@ -417,7 +419,7 @@ class JudgmentChange(BaseModel):
 class Version(BaseModel):
     no: int
     created_at: str
-    trigger: Literal["initial", "material", "reply", "need", "resolve"]
+    trigger: Literal["initial", "material", "reply", "need", "resolve", "reviews"]
     trigger_label: str
     need: str
     for_whom: str | None = None
@@ -518,3 +520,37 @@ class ReadResult(BaseModel):
     text: str
     method: Literal["text", "pdf", "vision", "failed"]
     note: str | None = None
+
+
+# ---------- 用户评价（按公司存，不按案卷存；别人说的，未核实） ----------
+
+REVIEW_RELATIONS = {"customer": "客户", "employee": "员工", "applicant": "求职者", "other": "其他"}
+
+
+class ReviewIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    company: str = Field(min_length=2, max_length=80)
+    stars: int = Field(ge=1, le=5)
+    relation: Literal["customer", "employee", "applicant", "other"]
+    text: str = Field(min_length=10, max_length=500)
+    nickname: str | None = Field(None, max_length=20)
+    author: str = Field(min_length=8, max_length=64)  # 浏览器里随机生成的匿名编号；后端只存哈希
+
+
+class Review(BaseModel):
+    id: str
+    stars: int
+    relation: str
+    relation_label: str
+    text: str
+    nickname: str | None = None          # 空着显示"匿名用户"
+    created_at: str
+    demo: bool = False                   # 演示数据（只给虚构公司）
+    mine: bool = False                   # 是不是这个浏览器写的
+
+
+class ReviewList(BaseModel):
+    company: str
+    count: int
+    dist: dict[str, int]                 # "5" → 条数 … "1" → 条数；不算平均分
+    reviews: list[Review]                # 新的在前
