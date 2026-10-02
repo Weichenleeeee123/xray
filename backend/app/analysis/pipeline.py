@@ -19,6 +19,8 @@ from app.analysis.verify import verify
 from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, JudgmentChange, MissingItem, RawRecord,
                         ResolveIn, Signal, Source, SupplementIn, Version)
 from app.scenarios import claim_rank, get_scenario
+from app import config
+from app.sources.amac_detail import AmacDetailClient
 from app.sources.catalog import build_sources, registry_sources
 from app.sources.collect import Collected, collect, now
 from app.sources.commercial import CommercialClient
@@ -45,6 +47,7 @@ class Services:
     registries: dict[str, RegistryIndex] = field(default_factory=dict)  # 保险、期货、支付、私募等官方名单
     commercial: CommercialClient | None = None                         # 企查查/天眼查，配置了才用
     web: WebClient | None = None                                       # 联网查证，网关配置了才用
+    amac_detail: AmacDetailClient | None = None                        # 中基协公示详情页
 
 
 def load_services() -> Services:
@@ -54,7 +57,8 @@ def load_services() -> Services:
     sources = build_sources(licenses.meta, registry.as_of, amac.as_of, complaints.as_of) | registry_sources(registries)
     commercial, web = CommercialClient(), WebClient()
     return Services(licenses, registry, amac, complaints, EvidencePacks.load(), RuleExtractor(), sources, registries,
-                    commercial if commercial.configured else None, web if web.configured else None)
+                    commercial if commercial.configured else None, web if web.configured else None,
+                    AmacDetailClient(config.CACHE_DIR / "amac") if config.AMAC_DETAIL else None)
 
 
 # ---------- 原始数据 ----------
@@ -116,7 +120,7 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
     link_refs(assertions, missing, signals, by_source, texts)
     charts = build_charts(ext, company, assertions, by_source, collected.web, web_refs, collected.complaints,
-                          collected.as_of)
+                          collected.as_of, amac)
 
     colors = Counter(a.color for a in assertions)
     tally = {c: colors.get(c, 0) for c in ("red", "amber", "grey", "green")} | {"missing": len(missing)}

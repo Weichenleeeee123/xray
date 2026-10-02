@@ -10,6 +10,7 @@ from app.analysis.fmt import money, wan
 from app.config import HIGH_RETURN_RATIO, LOW_PAID_RATIO, REF_DEPOSIT_RATE
 from app.models import (AmacHit, Assertion, Check, ClaimKind, CompanyProfile, Coverage, LicenseHit,
                         MissingItem, RegistryHit, Status, Verdict)
+from app.sources.amac_detail import scale_upper
 from app.sources.licenses import LicenseIndex, normalize
 
 KIND_META = {
@@ -17,7 +18,7 @@ KIND_META = {
     ClaimKind.return_promise: ("A2", "收益承诺"),
     ClaimKind.partner: ("A3", "合作机构"),
     ClaimKind.background: ("A4", "背景"),
-    ClaimKind.capital: ("A5", "规模"),
+    ClaimKind.capital: ("A5", "注册资本"),
     ClaimKind.scale: ("A6", "规模"),
     ClaimKind.payee: ("A7", "收款信息"),
     ClaimKind.refund: ("A8", "退款承诺"),
@@ -97,6 +98,31 @@ def _amac_check(amac: AmacHit) -> Check:
     return Check(label="私募基金管理人登记", result=f"未登记{scope}", status=Status.bad, source=amac.source)
 
 
+# 宣称的牌照类型 → 能查的名单；没有对应名单的（证券、公募、股权投资……）判"无法核验"
+LICENSE_LISTS_BY_TYPE = {"信托": "nfra_bank_list", "银行": "nfra_bank_list", "保险": "nfra_insurance",
+                         "期货": "csrc_futures", "支付": "pbc_payment", "私募": "amac", "基金": "amac"}
+LIST_NAMES = {"nfra_bank_list": "银行业金融机构名单（含信托公司）", "nfra_insurance": "保险机构名单",
+              "csrc_futures": "期货公司名录", "pbc_payment": "支付机构名单", "amac": "私募基金管理人登记"}
+
+
+def claimed_licenses_check(types: list[str], lic: LicenseHit, amac: AmacHit, others: list[RegistryHit]) -> Check:
+    found = {"nfra_bank_list": lic.found, "amac": bool(amac.registered)} | {h.registry: h.found for h in others}
+    have, missing, unknown = [], [], []
+    for t in types:
+        rid = LICENSE_LISTS_BY_TYPE.get(t)
+        (unknown if rid is None or rid not in found else have if found[rid] else missing).append(t)
+    parts = []
+    if have:
+        parts.append(f"{'、'.join(have)}：有（{'、'.join(dict.fromkeys(LIST_NAMES[LICENSE_LISTS_BY_TYPE[t]] for t in have))}）")
+    if missing:
+        parts.append(f"{'、'.join(missing)}：查了{'、'.join(dict.fromkeys(LIST_NAMES[LICENSE_LISTS_BY_TYPE[t]] for t in missing))}，没有它")
+    if unknown:
+        parts.append(f"{'、'.join(unknown)}：没有可查的名单")
+    status = Status.bad if missing else Status.warn if unknown else Status.ok
+    return Check(label="宣称的牌照", result=f"说有 {len(types)} 类：" + "；".join(parts), status=status,
+                 source=LICENSE_LISTS_BY_TYPE.get((missing or have or ["信托"])[0], "nfra_bank_list"))
+
+
 def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
                          others: list[RegistryHit] = ()) -> Review:
     others = list(others)
@@ -108,6 +134,10 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
     if amac.registered and license_check.status is Status.bad:
         license_check = license_check.model_copy(update={"status": Status.warn})  # 私募本来就没有这几类牌照
     checks = [license_check, amac_check]
+    claim = ext.claims.get(ClaimKind.qualification)
+    licenses_check = claimed_licenses_check(claim.licenses, lic, amac, others) if claim and claim.licenses else None
+    if licenses_check:
+        checks.insert(0, licenses_check)
 
     if ext.product_codes:
         checks.append(Check(label="理财产品登记编码", result=f"材料上写了 {'、'.join(ext.product_codes)}，待到中国理财网核验",
@@ -127,6 +157,12 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
         checks.append(Check(label="经营范围", result=f"{_short(company.scope)}不含任何金融业务",
                             status=Status.bad, source="registry"))
 
+    if licenses_check and licenses_check.status is Status.bad:
+        missing = licenses_check.result.split("；")
+        own = "只登记了私募基金管理人" if amac.registered else "在这几份名单里都查不到"
+        lacking = next((p.split("：")[0] for p in missing if "没有它" in p), "")
+        return (checks, Verdict.misleading if (amac.registered or lic.found or any(h.found for h in others)) else Verdict.mismatch,
+                f"它自己{own}；{lacking}的名单里都没有它。宣传里的牌照如果属于股东集团的其他公司，跟它不是一回事。")
     if lic.found:
         return checks, Verdict.consistent, f"它在银行业金融机构名单里（{lic.record.type}），是持牌机构。"
     if other_hit and other_hit.registry == "pbc_payment":
@@ -203,7 +239,29 @@ def background_review(claim: RawClaim, company: CompanyProfile | None) -> Review
     return checks, Verdict.unverifiable, "股东是企业，要继续往上查才能确认有没有国资。"
 
 
-def capital_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
+def _wan_number(s: str | None) -> float | None:
+    try:
+        return float(str(s).replace(",", "")) * 1e4
+    except (TypeError, ValueError):
+        return None
+
+
+def capital_review(claim: RawClaim, company: CompanyProfile | None, amac: AmacHit | None = None) -> Review:
+    d = (amac.record or {}).get("detail") if amac and amac.registered else None
+    if company is None and d and (reg := _wan_number(d.get("注册资本(万元)(人民币)"))):
+        paid, claimed = _wan_number(d.get("实缴资本(万元)(人民币)")), claim.numbers.get("capital")
+        when = d.get("机构信息最后更新时间", "")
+        checks = [Check(label="注册资本（中基协公示）", result=f"{wan(reg)}（管理人填报，{when} 更新）",
+                        status=Status.ok if claimed is None or claimed <= reg * 1.01 else Status.bad, source="amac_detail")]
+        if paid is not None:
+            checks.append(Check(label="实缴资本（中基协公示）", result=f"{wan(paid)}（{d.get('注册资本实缴比例', '')}）",
+                                status=Status.bad if paid < reg * LOW_PAID_RATIO else Status.ok, source="amac_detail"))
+        if claimed is not None and claimed > reg * 1.01:
+            return checks, Verdict.mismatch, f"宣传写注册资本 {wan(claimed)}，中基协公示的是 {wan(reg)}。"
+        if paid is not None and paid < reg * LOW_PAID_RATIO:
+            return checks, Verdict.misleading, f"{wan(reg)}是\"承诺\"，中基协公示实缴 {wan(paid)}。"
+        tail = f"、实缴 {wan(paid)}" if paid is not None else ""
+        return checks, Verdict.consistent, f"中基协公示注册资本 {wan(reg)}{tail}，和宣传说的不矛盾（管理人自行填报）。"
     if company is None:
         return ([Check(label="注册资本", result=NOT_COVERED, status=Status.none, source="registry")],
                 Verdict.unverifiable, NO_DATA_PLAIN)
@@ -230,12 +288,46 @@ def capital_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
     return checks, Verdict.consistent, f"注册资本 {wan(reg)}，实缴 {wan(paid)}，与宣传相符。"
 
 
-def scale_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
+def _amac_scale_checks(claim: RawClaim, amac: AmacHit | None) -> tuple[list[Check], list[str]]:
+    """宣称的管理规模、员工人数，对中基协公示的管理规模区间、全职员工人数。"""
+    d = (amac.record or {}).get("detail") if amac and amac.registered else None
+    if not d:
+        return [], []
+    checks, gaps = [], []
+    aum, staff, when = claim.numbers.get("aum"), claim.numbers.get("staff"), d.get("机构信息最后更新时间", "")
+    band = d.get("管理规模区间")
+    if aum is not None and band:
+        upper = scale_upper(band)
+        over = upper is not None and aum > upper
+        checks.append(Check(label="管理规模（中基协公示）", result=f"{band}（管理人自行填报，{when} 更新）",
+                            status=Status.bad if over else Status.ok, source="amac_detail"))
+        if over:
+            gaps.append(f"它自己在中基协登记的管理规模是 {band}" + ("（宣传说的是\"集团\"）" if claim.numbers.get("aum_group") else ""))
+    if staff is not None and d.get("全职员工人数", "").isdigit():
+        n = int(d["全职员工人数"])
+        few = n < staff / 2
+        checks.append(Check(label="全职员工（中基协公示）", result=f"{n} 人，取得基金从业资格 {d.get('取得基金从业人数', '?')} 人",
+                            status=Status.warn if few else Status.ok, source="amac_detail"))
+        if few:
+            gaps.append(f"中基协登记的全职员工 {n} 人")
+    return checks, gaps
+
+
+def scale_review(claim: RawClaim, company: CompanyProfile | None, amac: AmacHit | None = None) -> Review:
     stores, members = claim.numbers.get("stores"), claim.numbers.get("members")
+    aum, staff = claim.numbers.get("aum"), claim.numbers.get("staff")
+    said = "；".join(filter(None, [f"宣称 {stores:g} 家门店" if stores is not None else None,
+                                  f"宣称{'集团' if claim.numbers.get('aum_group') else ''}管理资产 {wan(aum)}" if aum else None,
+                                  f"宣称规模 {staff:g} 人以上" if staff else None]))
+    amac_checks, amac_gaps = _amac_scale_checks(claim, amac)
     if company is None:
+        if amac_checks:
+            if amac_gaps:
+                return amac_checks, Verdict.misleading, f"{said}；{'，'.join(amac_gaps)}。"
+            return amac_checks, Verdict.consistent, "中基协公示的规模和宣传大致相符。"
         return ([Check(label="规模", result=NOT_COVERED, status=Status.none, source="registry")],
                 Verdict.unverifiable, NO_DATA_PLAIN)
-    checks, gaps = [], []
+    checks, gaps = list(amac_checks), list(amac_gaps)
     if company.insured is None:
         checks.append(Check(label="参保人数（年报）", result="未公示（企业可选择不公示）", status=Status.none, source="annual_report"))
     else:
@@ -254,7 +346,7 @@ def scale_review(claim: RawClaim, company: CompanyProfile | None) -> Review:
         checks.append(Check(label="会员数", result="没有公开来源，无法核验", status=Status.miss, source="material"))
 
     if gaps:
-        return checks, Verdict.misleading, f"宣称 {stores:g} 家门店；{'，'.join(gaps)}。"
+        return checks, Verdict.misleading, f"{said}；{'，'.join(gaps)}。"
     if stores is None:
         return checks, Verdict.unverifiable, "会员数没有公开来源，无法核验。"
     return checks, Verdict.consistent, "登记的规模和宣传大致相符。"
@@ -322,9 +414,9 @@ def review(kind: ClaimKind, claim: RawClaim, ext: Extraction, company: CompanyPr
         case ClaimKind.background:
             return background_review(claim, company)
         case ClaimKind.capital:
-            return capital_review(claim, company)
+            return capital_review(claim, company, amac)
         case ClaimKind.scale:
-            return scale_review(claim, company)
+            return scale_review(claim, company, amac)
         case ClaimKind.payee:
             return payee_review(claim, company_name)
         case ClaimKind.refund:

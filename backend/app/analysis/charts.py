@@ -11,7 +11,8 @@ from datetime import date
 from app.analysis.extract import Extraction
 from app.analysis.fmt import money, wan
 from app.config import REF_DEPOSIT_RATE
-from app.models import Assertion, Chart, ChartPoint, ClaimKind, CompanyProfile, TimelineEvent
+from app.models import AmacHit, Assertion, Chart, ChartPoint, ClaimKind, CompanyProfile, TimelineEvent
+from app.sources.amac_detail import scale_upper
 from app.sources.web import WebFindings
 
 LETTERS = "ABCDEFGH"
@@ -76,6 +77,42 @@ def scale_chart(ext: Extraction, company: CompanyProfile | None, assertions: lis
                                     ref=a.refs[0] if a and a.refs else None, source="material"),
                          ChartPoint(label="登记的分支机构", value=company.branches, display=f"{company.branches} 家",
                                     ref=refs.get("registry"), source="registry")])
+
+
+def _amac_fields(amac: AmacHit | None) -> dict:
+    return ((amac.record or {}).get("detail") or {}) if amac and amac.registered else {}
+
+
+def aum_chart(ext: Extraction, amac: AmacHit | None, assertions: list[Assertion], refs: dict[str, str]) -> Chart | None:
+    claim = ext.claims.get(ClaimKind.scale)
+    aum = claim.numbers.get("aum") if claim else None
+    band = _amac_fields(amac).get("管理规模区间")
+    upper = scale_upper(band)
+    if aum is None or upper is None:
+        return None
+    a = _claim(assertions, ClaimKind.scale)
+    group = "集团" if claim.numbers.get("aum_group") else ""
+    return Chart(id="aum", kind="compare", title="管理资产：说的 vs 协会登记的", item=a.id if a else "finance.amac_scale",
+                 note=f"宣传说的是{group}管理资产 {wan(aum)}；它自己在中基协登记的管理规模区间是 {band}（管理人自行填报）。",
+                 points=[ChartPoint(label=f"宣传的{group}管理资产", value=aum, display=wan(aum), side="said",
+                                    ref=a.refs[0] if a and a.refs else None, source="material"),
+                         ChartPoint(label="中基协登记的管理规模（区间上限）", value=upper, display=band,
+                                    ref=refs.get("amac_detail"), source="amac_detail")])
+
+
+def staff_chart(ext: Extraction, amac: AmacHit | None, assertions: list[Assertion], refs: dict[str, str]) -> Chart | None:
+    claim = ext.claims.get(ClaimKind.scale)
+    staff = claim.numbers.get("staff") if claim else None
+    n = _amac_fields(amac).get("全职员工人数", "")
+    if staff is None or not n.isdigit():
+        return None
+    a = _claim(assertions, ClaimKind.scale)
+    return Chart(id="staff", kind="compare", title="员工：说的 vs 协会登记的", item=a.id if a else "finance.amac_scale",
+                 note=f"中基协登记的全职员工 {n} 人，取得基金从业资格 {_amac_fields(amac).get('取得基金从业人数', '?')} 人。",
+                 points=[ChartPoint(label="宣传的公司规模（下限）", value=staff, display=f"{staff:g} 人以上", side="said",
+                                    ref=a.refs[0] if a and a.refs else None, source="material"),
+                         ChartPoint(label="中基协登记的全职员工", value=int(n), display=f"{n} 人",
+                                    ref=refs.get("amac_detail"), source="amac_detail")])
 
 
 def holders_chart(company: CompanyProfile | None, assertions: list[Assertion], refs: dict[str, str]) -> Chart | None:
@@ -157,8 +194,9 @@ def timeline_chart(company: CompanyProfile | None, web: WebFindings | None, web_
 
 def build_charts(ext: Extraction, company: CompanyProfile | None, assertions: list[Assertion],
                  refs: dict[str, str], web: WebFindings | None, web_refs: dict[str, str],
-                 complaints: dict | None, today: date) -> list[Chart]:
+                 complaints: dict | None, today: date, amac: AmacHit | None = None) -> list[Chart]:
     charts = [capital_chart(ext, company, assertions, refs), return_chart(ext, assertions),
+              aum_chart(ext, amac, assertions, refs), staff_chart(ext, amac, assertions, refs),
               scale_chart(ext, company, assertions, refs), holders_chart(company, assertions, refs),
               complaints_chart(complaints, refs),
               timeline_chart(company, web, web_refs, complaints, refs, today)]

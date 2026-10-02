@@ -3,6 +3,8 @@
 来源有三类：对不上或核不了的说法、"该有的没有"和"没查"的项、场景模板里的必问清单。
 每个问题都写明拿到答案后去哪里查；同一主题只问一次，最多 5 个。
 """
+import re
+
 from app.models import Assertion, ClaimKind, MissingItem, Question, Scenario, Signal, Status
 
 LIMIT = 5
@@ -54,6 +56,12 @@ def build_questions(assertions: list[Assertion], missing: list[MissingItem], sig
         if a.color == "green" or a.kind not in CLAIM_QUESTIONS:
             continue
         ask, where = CLAIM_QUESTIONS[a.kind]
+        if a.kind is ClaimKind.background and not re.search(r"国资|国企|央企|国有|政府", a.text):
+            if "上市" in a.text:   # 说的是它自己上市，不是股东背景
+                ask, where = ("在哪个交易所上市？股票代码是多少",
+                              "上交所、深交所、北交所官网按股票代码查，核对公司全称是不是同一家")
+            else:
+                ask = "说的\"金融集团注资\"是哪一家？持股多少"
         rank = 0 if a.kind.value in focus_about else (1 if a.color == "red" else 2)
         candidates.append((rank, a.kind.value, Question(id="", ask=ask, why=a.plain, check_where=where, linked=[a.id])))
 

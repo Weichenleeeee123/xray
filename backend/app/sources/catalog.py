@@ -30,6 +30,8 @@ def build_sources(license_meta: dict, registry_as_of: str, amac_as_of: str, comp
         Source(id="amac", name="私募基金管理人公示", kind="demo", as_of=amac_as_of,
                note="演示快照；中基协实时查询待对接"),
         Source(id="complaints", name="投诉平台", kind="demo", as_of=complaints_as_of, note="演示数据"),
+        Source(id="amac_detail", name="中基协私募基金管理人公示详情页", kind="official", url="https://gs.amac.org.cn",
+               note="管理规模、员工人数、资本由管理人自行填报；诚信信息、行政处罚、提示信息由协会公示"),
         Source(id="web_official", name="监管、法院、政府网站（联网搜索）", kind="official",
                note="通过比赛网关的联网搜索，只搜监管、法院、地方政府网站；只保留摘要里有公司全称的页面"),
         Source(id="web_news", name="公开报道和投诉（联网搜索）", kind="web",
