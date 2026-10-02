@@ -28,6 +28,16 @@ copy .env.example .env      # 填模型网关和企查查的 Key；不填也能�
 
 打开 http://localhost:8000 ，点"演示案例"一键填入。
 
+小企办公室全景动画已接入同一个后端的真实进度流。保持后端运行，另开终端：
+
+```sh
+cd research-room
+npm ci
+npm run dev -- --port 3000
+```
+
+打开 http://localhost:3000 。默认后端为 `http://127.0.0.1:8000`；使用其他端口时，可在 `research-room/.env.local` 中设置 `XRAY_BACKEND_URL`。查询后输入框隐藏，五类资料标识按后端事件更新，暂停只控制动画。报告经保存校验后即可查看。`?animationTest=fast` 等本地测试入口使用合成事件，页面会明确标注。
+
 - 不配 Key 也能用：规则照常出结论，需求识别退回关键词，小企退回模板回答，工商登记显示"没查"。
 - 测试：`backend` 里跑 `.venv\Scripts\python -m pytest`（304 个，不连网、不扣费）；仓库根目录跑 `node --test web/tests/*.test.cjs`（27 个）。独立动画原型另有 `node --test research-room/tests/*.test.mjs`（9 个）。
 - 断网演示：`.env` 里设 `XRAY_LLM_MODE=replay`，只用录好的模型响应，界面标"离线回放"。
@@ -66,7 +76,7 @@ backend/        FastAPI 后端：规则、数据汇集、报告、小企
   tools/        更新名单、探测网关、浏览器验收的脚本
 web/            前端：原生 JS，不打包，由后端同端口挂载
 demo/           早期的静态演示页，断网时的最后备用（/demo/）
-research-room/  "小企研究室"独立 React 动画原型；主站已复用旧版素材接真实进度，新版完整动画仍待适配
+research-room/  "小企研究室"全景动画前端；通过 /api/cases/stream 接真实进度，报告复用 web/ 页面
 docs/           文档，先看 docs/README.md
 ```
 

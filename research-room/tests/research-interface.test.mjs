@@ -1,99 +1,245 @@
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { phases, motionAt, doorAt, DURATION } from '../app/office-motion.ts';
-
-const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
-const styles = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
-
-test('research controls do not exist during the idle query state', () => {
-  assert.match(page, /\{status !== 'idle' && \([\s\S]*?<div className="research-hud">/);
-  assert.match(page, /const restart = \(\) => \{\s*if \(!activeQuery\) return;/);
+import assert from 'node:assert/strict';
+import {
+  emptyResearch,
+  reduceEvent,
+  stationState,
+  collectionFinished,
+  readCaseStream,
+  validateCase,
+} from '../app/research-events.ts';
+import { OfficeDirector, routeBetween } from '../app/office-director.ts';
+import { motionAt, SEAT } from '../app/office-motion.ts';
+const begin = {
+  type: 'begin',
+  company: '测试公司',
+  steps: [
+    ['lists', '名单'],
+    ['registry', '工商'],
+    ['pack', '文书'],
+    ['web', '报道'],
+    ['amac', '私募'],
+    ['reviews', '评价'],
+  ].map(([id, label]) => ({ id, label, lookup: true })),
+};
+const event = (id, phase = 'done', coverage = 'found') => ({
+  type: 'step',
+  id,
+  label: id,
+  phase,
+  coverage,
+  counts: { [coverage]: 1 },
 });
-
-test('pause freezes every animated office element and any in-flight scene transition', () => {
-  for (const selector of [
-    '.status-paused .window-breeze',
-    '.status-paused .visitor-goose',
-    '.status-paused .visitor-sprite',
-    '.status-paused .evidence-paper',
-    '.status-paused .xiaoqi-actor',
-  ]) {
-    assert.ok(styles.includes(selector), `missing paused-state rule for ${selector}`);
-  }
-  assert.match(styles, /animation-play-state:\s*paused/);
-  assert.match(styles, /\.status-paused \.evidence-paper[\s\S]*transition-duration:\s*0s/);
-});
-
-test('the query bar exposes a keyboard-visible focus treatment', () => {
-  assert.match(styles, /\.prompt-bar:focus-within\s*\{[\s\S]*?(border-color|outline|box-shadow):/);
-});
-
-test('only phase copy is live while progress uses non-live progress semantics', () => {
-  assert.doesNotMatch(page, /className="phase-caption"[^>]*aria-live/);
-  assert.match(page, /className="phase-copy"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
-  assert.match(page, /<progress[^>]*className="progress-track"[^>]*max=\{100\}[^>]*value=\{progress\}/);
-});
-
-test('the windy office treatment is always part of the fixed panorama', () => {
-  assert.match(page, /className=\{`office-stage status-\$\{status\} breeze-active`\}/);
-  assert.match(page, /breezeItems\.map/);
-});
-
-test('the goose clears both desk corners with body-width clearance', () => {
-  for (const p of phases.filter(p => p.mode === 'walk')) {
-    for (let t=p.start; t<p.end; t+=16) {
-      const {x,y}=motionAt(p,t).position;
-      const inDesk = x>27.5 && x<72.5 && y>71 && y<95;
-      assert.ok(!inDesk, `${p.id} intersects desk at ${x},${y}`);
+const state = () => reduceEvent(emptyResearch(), begin);
+test('a social start cannot invent a visitor before a found result, including en-route failures', () => {
+  for (const coverage of ['not_found', 'not_covered', 'failed', 'found']) {
+    const d = new OfficeDirector();
+    let s = reduceEvent(emptyResearch(), {
+      ...begin,
+      steps: [{ id: 'reviews', label: '评价', lookup: true }],
+    });
+    s = reduceEvent(s, {
+      type: 'step',
+      id: 'reviews',
+      label: '评价',
+      phase: 'start',
+    });
+    d.tick(900, s);
+    // Complete while the actor has already queued its journey.
+    s = {
+      ...reduceEvent(s, event('reviews', 'done', coverage)),
+      connection: 'saved',
+    };
+    let sawVisitor = false;
+    for (let i = 0; i < 3000 && !d.finished; i++) {
+      d.tick(40, s);
+      if (d.sample().door > 0) sawVisitor = true;
     }
+    assert.equal(sawVisitor, coverage === 'found', coverage);
   }
+  const d = new OfficeDirector();
+  let s = reduceEvent(emptyResearch(), {
+    ...begin,
+    steps: [{ id: 'reviews', label: '评价', lookup: true }],
+  });
+  s = reduceEvent(s, {
+    type: 'step',
+    id: 'reviews',
+    label: '评价',
+    phase: 'start',
+  });
+  for (let i = 0; i < 600; i++) {
+    d.tick(40, s);
+    assert.equal(d.sample().door, 0);
+  }
+  assert.equal(d.sample().motion.distance, 0);
 });
-
-test('action phases keep feet stationary and phase boundaries never teleport', () => {
-  for (const [i,p] of phases.entries()) {
-    if(p.mode==='action') {
-      assert.deepEqual(motionAt(p,p.start).position,motionAt(p,p.end).position);
-      assert.equal(motionAt(p,p.start+300).frame,0);
+test('parallel starts remain visible and mixed failures are not hidden by found records', () => {
+  let s = state();
+  s = reduceEvent(s, event('lists', 'start'));
+  s = reduceEvent(s, event('web', 'start'));
+  assert.equal(stationState(s, 'enterprise').label, '查询中');
+  assert.equal(stationState(s, 'news').label, '查询中');
+  s = reduceEvent(s, event('lists'));
+  s = reduceEvent(s, event('registry', 'done', 'failed'));
+  assert.equal(stationState(s, 'enterprise').label, '已查到 · 查询失败');
+  assert.equal(stationState(s, 'enterprise').failed, true);
+  for (const [id, cov] of [
+    ['pack', 'not_covered'],
+    ['web', 'not_found'],
+    ['amac', 'failed'],
+    ['reviews', 'found'],
+  ])
+    s = reduceEvent(s, event(id, 'done', cov));
+  assert.equal(stationState(s, 'library').label, '未查询');
+  assert.equal(stationState(s, 'news').label, '未找到');
+  assert.equal(collectionFinished(s), true);
+});
+test('slow lookup waits on planted feet until the done event', () => {
+  const d = new OfficeDirector();
+  let s = reduceEvent(state(), event('lists', 'start'));
+  for (let i = 0; i < 1500; i++) d.tick(40, s);
+  assert.equal(d.action.id, 'research');
+  assert.equal(d.sample().motion.distance, 0);
+  assert.equal(d.sample().motion.frame, 0);
+  const pos = d.sample().motion.position;
+  s = reduceEvent(s, event('lists'));
+  d.tick(40, s);
+  assert.deepEqual(d.sample().motion.position, pos);
+});
+test('fast result never teleports and completes gather, sorting and sitting in order', () => {
+  const d = new OfficeDirector();
+  let s = state();
+  for (const step of s.steps) s = reduceEvent(s, event(step.id));
+  s = { ...s, connection: 'saved' };
+  let prior = d.sample().motion.position;
+  const seen = [];
+  for (let i = 0; i < 5000 && !d.finished; i++) {
+    d.tick(20, s);
+    const current = d.sample();
+    assert.ok(
+      Math.hypot(
+        (current.motion.position.x - prior.x) * 16.72,
+        (current.motion.position.y - prior.y) * 9.41,
+      ) < 10,
+      'teleport',
+    );
+    if (seen.at(-1) !== current.phase.id) seen.push(current.phase.id);
+    prior = current.motion.position;
+    if (current.phase.id === 'sort')
+      assert.ok(
+        current.motion.position.x < 40,
+        'sorting must happen beside the desk, not inside the chair',
+      );
+  }
+  assert.equal(d.finished, true);
+  assert.ok(seen.indexOf('gather-left') < seen.indexOf('gather-right'));
+  assert.ok(seen.indexOf('sort') < seen.indexOf('sit'));
+  assert.deepEqual(d.sample().motion.position, SEAT);
+});
+test('all waypoint routes stay outside the desk footprint', () => {
+  const points = [
+    SEAT,
+    { x: 24, y: 44 },
+    { x: 15, y: 62 },
+    { x: 70, y: 43 },
+    { x: 76, y: 67 },
+    { x: 45, y: 42 },
+    { x: 24, y: 98 },
+    { x: 76, y: 98 },
+  ];
+  for (const from of points)
+    for (const to of points) {
+      const p = {
+        from,
+        to,
+        start: 0,
+        end: 1000,
+        route: routeBetween(from, to),
+      };
+      for (let t = 0; t <= 1000; t += 5) {
+        const { x, y } = motionAt(p, t).position;
+        assert.ok(
+          !(x > 28 && x < 72 && y > 70 && y < 95),
+          `desk collision ${x},${y}`,
+        );
+        assert.ok(Number.isFinite(x) && Number.isFinite(y));
+      }
     }
-    if(i) {
-      const a=motionAt(phases[i-1],p.start).position,b=motionAt(p,p.start).position;
-      assert.ok(Math.hypot(a.x-b.x,a.y-b.y)<.001);
-    }
-  }
 });
-
-test('footsteps advance with traveled distance, not with idle time', () => {
-  const walk={...phases[2],start:0,end:1000,route:[{x:0,y:0},{x:10,y:0}]};
-  const halfway=motionAt(walk,500);
-  assert.equal(halfway.position.x,5);
-  assert.equal(halfway.facing,'right');
-  assert.equal(halfway.frame,3);
-  assert.equal(motionAt({...walk,route:undefined,to:{x:5,y:0}},500).frame,0);
+test('NDJSON parser tolerates split UTF8, CRLF, final line and validates real terminal result', async () => {
+  const c = { id: 'abc', current: 1, versions: [{ no: 1 }] };
+  const text =
+    JSON.stringify(begin) +
+    '\r\n' +
+    JSON.stringify(event('lists')) +
+    '\n' +
+    JSON.stringify({ type: 'case', case: c });
+  const bytes = new TextEncoder().encode(text),
+    events = [];
+  const fetchImpl = async () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          for (let i = 0; i < bytes.length; i += 7)
+            controller.enqueue(bytes.slice(i, i + 7));
+          controller.close();
+        },
+      }),
+    );
+  assert.deepEqual(
+    await readCaseStream(
+      '/api/cases/stream',
+      {},
+      { onEvent: (e) => events.push(e), fetchImpl },
+    ),
+    c,
+  );
+  assert.equal(events.length, 2);
 });
-
-test('door stays open for the conversation and closes before returning', () => {
-  assert.equal(doorAt(0),0);
-  assert.equal(doorAt(25500),1);
-  assert.equal(doorAt(DURATION),0);
+test('disconnect and backend errors cannot synthesize saved reports', async () => {
+  for (const text of [
+    JSON.stringify(begin) + '\n',
+    JSON.stringify({ type: 'error', message: '数据源失败' }) + '\n',
+  ])
+    await assert.rejects(
+      readCaseStream(
+        '/api/cases/stream',
+        {},
+        { onEvent: () => {}, fetchImpl: async () => new Response(text) },
+      ),
+    );
+  assert.throws(() =>
+    validateCase({ id: 'x', current: 2, versions: [{ no: 1 }] }),
+  );
 });
-
-test('five source markers report active and completed research locations', () => {
-  for (const source of ['企业资料', '图书年报', '新闻摘要', '经营数据', '社会舆情']) {
-    assert.ok(page.includes(source), `missing source marker: ${source}`);
-  }
-  assert.match(page, /source-markers/);
-  assert.match(page, /source\.activeIds\.includes\(phase\.id\)/);
+test('interrupted lookups are uncertain, and not-found results never get a success check', () => {
+  let s = reduceEvent(state(), event('web', 'start'));
+  for (const connection of ['disconnected', 'error'])
+    assert.equal(
+      stationState({ ...s, connection }, 'news').label,
+      '状态待确认',
+    );
+  s = reduceEvent(s, event('web', 'done', 'not_found'));
+  assert.equal(stationState(s, 'news').successful, false);
+  s = reduceEvent(s, event('web', 'done', 'found'));
+  assert.equal(stationState(s, 'news').successful, true);
 });
-
-test('the visitor is clipped by the real doorway and uses Xiaoqi scale', () => {
-  assert.match(styles, /\.visitor-goose\s*\{[\s\S]*?overflow:\s*hidden/);
-  assert.match(styles, /\.visitor-sprite\s*\{[\s\S]*?width:\s*104%/);
-  assert.match(styles, /\.xiaoqi-actor\s*\{[\s\S]*?width:\s*12%/);
-});
-
-test('source markers use a non-overlapping labeled rail on narrow screens', () => {
-  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.source-marker\s*\{[\s\S]*?min-width:\s*64px/);
-  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.source-enterprise\s*\{[^}]*top:\s*12%[^}]*left:\s*12%/);
-  assert.match(styles, /@media \(max-width: 640px\)[\s\S]*?\.source-data\s*\{[^}]*top:\s*80%[^}]*left:\s*12%/);
+test('paused animation does not own progress state; resume uses new results without snapping', () => {
+  const d = new OfficeDirector();
+  let s = reduceEvent(state(), event('lists', 'start'));
+  d.tick(1000, s);
+  d.tick(300, s);
+  const before = d.sample();
+  for (const step of s.steps) s = reduceEvent(s, event(step.id));
+  s = { ...s, connection: 'saved' };
+  assert.deepEqual(d.sample(), before);
+  d.tick(16, s);
+  const after = d.sample();
+  assert.ok(
+    Math.hypot(
+      after.motion.position.x - before.motion.position.x,
+      after.motion.position.y - before.motion.position.y,
+    ) < 1,
+  );
 });
