@@ -26,3 +26,11 @@ test('editing need retains company material but clears stale scenario, amount an
 test('ordinary input and removing a preset do not attach material', () => {
   assert.deepEqual(researchInput('示例公司'), {company_name:'示例公司', need:'了解这家公司的登记、资质与公开资料'});
 });
+
+test('explicit source refresh choice is retained for the same company only', () => {
+  for (const refresh_sources of [true, false]) {
+    const input = {...preset, refresh_sources};
+    assert.equal(researchInput(preset.company_name, preset.need, input).refresh_sources, refresh_sources);
+    assert.equal(researchInput('另一家公司', preset.need, input).refresh_sources, undefined);
+  }
+});
