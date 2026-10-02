@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyResearch, reduceEvent, researchProgress } from '../app/research-events.ts';
 
+test('an unplanned processing stage is never presented as waiting after the saved result arrives', () => {
+  let state=reduceEvent(emptyResearch(),{type:'begin',company:'公司',steps:[{id:'registry',label:'工商',lookup:true}]});
+  state=reduceEvent(state,{type:'step',id:'registry',label:'工商',phase:'done',coverage:'found'});
+  state={...state,connection:'saved',result:{id:'c1',current:1,versions:[{no:1}]}};
+  const progress=researchProgress(state);
+  assert.equal(progress.stages.find(s=>s.id==='intake').label,'未安排');
+  assert.equal(progress.stages.find(s=>s.id==='collect').label,'已完成');
+  assert.equal(progress.stages.find(s=>s.id==='save').label,'已完成');
+  assert.equal(progress.percent,100);
+});
+
 test('clock follows actual completed events and needs read-back confirmation for 100 percent', () => {
   let s=reduceEvent(emptyResearch(),{type:'begin',company:'公司',steps:[{id:'registry',label:'工商',lookup:true},{id:'plain',label:'报告',lookup:false}]});
   assert.equal(researchProgress(s).percent,0);

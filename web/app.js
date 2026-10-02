@@ -18,7 +18,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const KIND = { none: '没有数据', official: '官方记录', collected: '人工采集', commercial: '商业数据', regulation: '法规', parameter: '参数',
   demo: '演示·虚构', user_material: '用户材料', web: '网络公开', user_review: '用户评价' };
 const COVERAGE = { found: '查到了', not_found: '查了没有', not_covered: '没查', failed: '查询失败' };
-const STATUS = { bad: '有问题', warn: '要留意', miss: '该有的没有', none: '没查', ok: '没问题' };
+const STATUS = { bad: '需重点核实', warn: '要留意', miss: '缺应有记录', none: '未覆盖', ok: '暂未见异常' };
 const FLAG = new Set(['bad', 'warn', 'miss']);   // 要看的；ok、none 默认折叠
 const CHANGE = { new_concern: '新疑点', worse: '更严重', clarified: '疑点减轻', unchanged: '没变', added: '新增', removed: '这版没有了', updated: '事实更新', unavailable: '证据不足' };
 const MODE = { model: '模型回答', replay: '离线回放', template: '模板回答', guard: '已拦截' };
@@ -758,7 +758,7 @@ function answerOf(list) {
   if (worst === 'miss') return ['miss', '还缺证据'];
   const open = list.filter(isOpen), nOk = list.filter(i => i.status === 'ok').length;
   if (!nOk) return ['none', open.length && open.every(i => gapOf(i) === 'failed') ? '没查成，稍后重查' : '没查到数据'];
-  return open.length ? ['none', '查过的没问题', `另有 ${pendingNote(open)}`] : ['ok', '查过，没发现问题'];
+  return open.length ? ['none', '已查项暂未见异常', `另有 ${pendingNote(open)}`] : ['ok', '已查项暂未见异常'];
 }
 function glanceHtml(v, includeSignals = true) {
   const items = glanceItems(v), seen = new Set();
@@ -797,7 +797,7 @@ function glanceHtml(v, includeSignals = true) {
     const st = flagged.length ? flagged[0].status : (nOk && !open.length ? 'ok' : 'none');
     const phrase = flagged.length ? shortOf(v, `${s.key}.${flagged[0].key}`, `${flagged[0].label}：${flagged[0].value}`)
       : !nOk ? (open.length && open.every(i => gapOf(i) === 'failed') ? '没查成，稍后重查' : '没查到数据')
-      : open.length ? `查过的没问题，${pendingNote(open)}` : '查过的没问题';
+      : open.length ? `已查项暂未见异常；${pendingNote(open)}` : '已查项暂未见异常';
     return `<button type="button" class="tile s-${st}" data-act="sigtile" data-key="${s.key}">
       <span class="t-h"><b>${esc(s.title)}</b><span class="mk">${MARK[st]}</span></span>
       <span class="t-p">${esc(phrase)}</span>${flagged.length > 1 ? `<span class="t-n">共 ${flagged.length} 项要看</span>` : ''}</button>`;

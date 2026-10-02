@@ -219,7 +219,7 @@ export function researchProgress(state: ResearchState) {
     const status = done === group.tasks.length && done > 0 ? 'done'
       : active ? interrupted ? 'unknown' : 'active' : 'waiting';
     return { id: group.id, title: group.title, status,
-      label: status === 'done' ? prebuilt ? '当时已完成' : '已完成' : status === 'active' ? prebuilt ? '回放中' : '进行中' : status === 'unknown' ? '待确认' : '等待',
+      label: !group.tasks.length && state.steps.length ? '未安排' : status === 'done' ? prebuilt ? '当时已完成' : '已完成' : status === 'active' ? prebuilt ? '回放中' : '进行中' : status === 'unknown' ? '待确认' : '等待',
       detail: group.id === 'collect' ? `${done}/${group.tasks.length}` : '',
     };
   });
