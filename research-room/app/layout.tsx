@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://xiaoqi-kline-run.fanmeilin164.chatgpt.site'),
   title: '小企研究室 · 企er',
   description: '看小企穿梭于企业档案、新闻与数据终端，收集证据并生成企业研究报告。',
+  icons: {
+    icon: [{ url: '/qier-icon.png', type: 'image/png' }],
+    apple: '/qier-icon.png',
+  },
   openGraph: {
     title: '小企研究室 · 企er',
     description: '30 秒，看见一份企业研究报告如何生成。',

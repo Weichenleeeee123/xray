@@ -1,6 +1,6 @@
 # 企er配色方案：黄铜蓝柜
 
-版本：1.0 · 2026-10-03 · 已确认方向
+版本：1.1 · 2026-10-03 · 已确认配色与项目 Icon
 
 适用范围：最终路演 PPT、企业研究报告、产品界面、品牌 icon 与海报。
 
@@ -66,9 +66,11 @@
 
 ### Icon
 
-- 深蓝底，细黄铜边框或铭牌。
-- 主体使用西装小企；缩小时优先保留头部和清楚的轮廓。
-- 很小的尺寸省略铭牌文字，保留可辨认的角色与底色。
+- **已确认：有鹅方案 02「放大镜」**，于 2026-10-03 选定。
+- 深蓝底，暖纸白西装小企，手持黄铜放大镜；放大镜与眼睛构成主要识别点。
+- 正式原图：[qier-icon.png](../output/brand/qier-icon.png)，PNG，1254 × 1254，保留 imagegen 生成原图。
+- 后续项目图标、路演和报告品牌标识统一使用该图；使用时保持正方形比例，保留完整头像与放大镜。
+- 已接入研究室首页、报告页品牌入口及 favicon；网页资源位于 `research-room/public/qier-icon.png`，与正式原图一致。
 
 ### 海报
 
@@ -122,6 +124,7 @@
 
 - 已确认方案预览：[办公室配色预览](../output/visual-directions/qier-office-preview.html)，选择「01 黄铜蓝柜」。
 - 配色变量：[qier-brass-cabinet.css](../output/brand/qier-brass-cabinet.css)。
+- 项目 Icon：[qier-icon.png](../output/brand/qier-icon.png)，已选定的鹅方案 02「放大镜」。
 - 场景素材：`research-room/public/office-panorama-closed.q90.webp`。
 - 西装小企素材：`research-room/public/goose-actions-v2.q90.webp`，四列三行精灵图。
 

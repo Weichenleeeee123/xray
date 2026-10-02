@@ -531,19 +531,15 @@ button {
   transition: opacity 420ms ease, transform 420ms ease;
 }
 
-.scene-brand > span {
-  display: grid;
+.scene-brand > img {
+  display: block;
   width: clamp(28px, 2.6vw, 43px);
-  border: 1px solid rgb(255 255 255 / 23%);
+  height: auto;
+  border: 1px solid #b88b4c;
   border-radius: 22%;
   aspect-ratio: 1;
-  place-items: center;
-  background: rgb(8 23 36 / 85%);
-  box-shadow: 0.25vw 0.25vw 0 rgb(94 224 179 / 42%);
-  color: #6ce3ba;
-  font-size: clamp(12px, 1.15vw, 19px);
-  font-weight: 900;
-  backdrop-filter: blur(10px);
+  object-fit: contain;
+  background: #222e39;
 }
 
 .scene-brand div {

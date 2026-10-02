@@ -31,7 +31,7 @@ a{color:inherit}
 /* ---------- 顶栏 ---------- */
 .topbar{position:sticky;top:0;z-index:40;height:var(--top-h);display:flex;align-items:center;gap:18px;padding:0 24px;background:color-mix(in srgb,var(--paper) 92%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--ink)}
 .brand{display:flex;align-items:center;gap:9px;flex:0 0 auto;text-decoration:none}
-.logo{width:28px;height:28px}
+.logo{display:block;width:28px;height:28px;object-fit:contain;border-radius:22%}
 .brand-text b{font-family:var(--mono);font-size:16px;margin-right:6px}
 .brand-text span{font-family:var(--serif);font-weight:900;font-size:14.5px}
 .case-strip{min-width:0;font-family:var(--serif);font-weight:700;font-size:14px;color:var(--ink-2);padding-left:18px;border-left:1px solid var(--rule-2)}

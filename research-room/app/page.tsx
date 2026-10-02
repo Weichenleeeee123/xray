@@ -373,7 +373,7 @@ export default function Home() {
         )}
         <div className="report-transition" aria-hidden="true" />
         <div className="scene-brand" aria-label="企er 小企研究室">
-          <span>企</span>
+          <img src="/research-assets/qier-icon.png" width={43} height={43} alt="" />
           <div>
             <strong>企er</strong>
             <small>小企研究室</small>
