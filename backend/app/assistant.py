@@ -201,10 +201,15 @@ def context(case: Case, v: Version, terms: list[Term] = ()) -> dict:
     Volatile retrieval timestamps stay in the case/API; data cutoff dates remain
     in context. Case/version identity also scopes the recording cache.
     """
+    report_exclude = {"created_at"}
+    if v.prebuilt is None:
+        # This optional field was added after existing recordings were made.
+        # Keep their exact payload; actual snapshot provenance must stay visible.
+        report_exclude.add("prebuilt")
     return {
         "名词解释": [{"id": term_ref(t), "名词": t.term, "解释": t.plain, "对你意味着": t.why} for t in terms],
         "案卷id": case.id, "公司": case.case.company_name, "报告版本": v.no,
-        "报告": v.model_dump(mode="json", exclude={"created_at"}),
+        "报告": v.model_dump(mode="json", exclude=report_exclude),
         "原始数据": [r.model_dump(mode="json", exclude={"retrieved_at"}) for r in case.raw if r.id in v.raw_ids],
         "来源目录（不可作为事实出处）": {sid: s.model_dump(mode="json") for sid, s in (v.sources or case.sources).items()},
         "行动目录（仅问题与核对步骤，不是公司事实）": GUIDES,
@@ -212,6 +217,27 @@ def context(case: Case, v: Version, terms: list[Term] = ()) -> dict:
         "未核实的历史对话（不是证据）": [
             {"role": m.role, "text": m.text} for m in case.chat if m.version == v.no][-HISTORY:],
     }
+
+
+def _context_json(case: Case, v: Version, terms: list[Term] | None = None, *,
+                  max_chars: int = 120_000, extra: dict | None = None) -> str:
+    """Preserve existing recording keys unless lossless packing is necessary.
+
+    Packing moves the complete source catalog and term metadata to one copy,
+    retaining every other report/raw field and all null/unknown values. The
+    caller still checks the resulting size; packing never truncates evidence.
+    """
+    data = context(case, v, terms if terms is not None else [])
+    if extra:
+        data.update(extra)
+    original = json.dumps(data, ensure_ascii=False)
+    if len(original) <= max_chars:
+        return original
+    data["报告"].pop("sources")
+    data["报告"].pop("terms")
+    data["名词解释"] = [{**term.model_dump(mode="json"), "id": term_ref(term)}
+                      for term in (v.terms if terms is None else terms)]
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
 
 def _sentences(text: str) -> list[str]:
@@ -579,10 +605,11 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
     terms = list(v.terms) or find_terms(" ".join(valid.values()))
     terms += [t for t in find_terms(q.text) if t.id not in {x.id for x in terms}]
     valid.update(glossary_entries(terms))
-    blob = json.dumps(context(case, v, terms), ensure_ascii=False)
+    blob = _context_json(case, v, terms, max_chars=max_context_chars - len(q.text))
     if len(blob) + len(q.text) > max_context_chars:
-        return ChatMessage(text="案卷超出本次模型上下文预算；没有截断材料后继续回答。请拆分材料或提高服务端预算。",
-            not_found=True, mode="guard", suggest=["请缩小案卷材料范围后再问"], **base)
+        return ChatMessage(text="案卷超出本次模型上下文预算；没有截断材料后继续回答。你仍可查看报告和原始记录。"
+                                "选中条目便于明确问题，但完整案卷仍可能超出同一限制。",
+            not_found=True, mode="guard", suggest=["请查看报告条目及其原始记录"], **base)
     messages = [{"role": "system", "content": SYSTEM + "\n本轮回答侧重点：" + response_focus(q.text, v.scenario, refs)},
                 {"role": "user", "content": "<案卷数据>\n" + blob + "\n</案卷数据>"},
                 {"role": "user", "content": (f"选中条目：{'、'.join(refs)}\n" if refs else "") + q.text}]
@@ -701,9 +728,7 @@ def rewrite_report(case: Case, *, gateway: LLM, version_no: int | None = None) -
             originals.update({f"onepager.{section}.{i}": line.text
                               for i, line in enumerate(getattr(v.onepager, section))})
     result = RewriteResult(explanations=originals.copy())
-    data = context(case, v)
-    data["可改写条目"] = originals
-    blob = json.dumps(data, ensure_ascii=False)
+    blob = _context_json(case, v, extra={"可改写条目": originals})
     if len(blob) > 120_000:
         result.warnings.append("案卷超出改写预算，保留模板")
         return result
