@@ -1099,7 +1099,7 @@ button {
 .clock-number small {font-size:.62cqw;letter-spacing:0;margin-left:.05cqw;}
 .clock-caption {font-size:.44cqw;letter-spacing:.09em;margin-top:.12cqw;color:#675640;}
 .clock-interrupted .clock-ring {stroke:#986139;}.clock-interrupted .clock-caption {color:#8c4e28;}
-@media (min-width:641px) {.live-office .research-subject {display:none;} .live-office:not(.status-idle) .source-social {left:66%;top:27%;}}
+@media (min-width:641px) {.live-office .research-subject {display:none;} .live-office:not(.status-idle) .source-social {left:38.8%;top:21%;}}
 @media (max-width:640px) {.monitor-display,.clock-progress {display:none;}}
 @media (prefers-reduced-motion:reduce) {.monitor-company.name-overflow {overflow-x:auto;} .monitor-company.name-overflow span {animation:none;} .clock-ring {transition:none;}}
 .live-office .source-marker { min-width:110px; }
@@ -1284,4 +1284,87 @@ button {
   .live-office .research-subject {max-width:65%;font-size:12px;}
   .source-markers:not(.idle) .source-enterprise {top:12%;}
   .live-office .live-inspector {position:fixed;top:12px;left:12px;right:12px;width:auto;max-height:calc(100svh - 24px);}
+}
+
+/* Approved scene feedback: real task state, independent of the character clock. */
+.scene-status {
+  position:absolute;z-index:8;left:50%;top:53.5%;transform:translate(-50%,-50%);
+  pointer-events:none;white-space:nowrap;padding:0;border:0;background:none;color:#f0dec0;text-align:center;
+}
+.scene-message-type {
+  display:inline-block;font-family:'Songti SC','STSong','SimSun',serif;
+  font-size:clamp(21px,1.85cqw,32px);font-weight:500;line-height:1.5;letter-spacing:.13em;
+  text-shadow:0 2px 4px #25160bdd,0 0 10px #f1ce8040;transform-origin:50% 55%;
+}
+.scene-status-running .scene-message-type {animation:scene-text-breathe 2.8s ease-in-out infinite;}
+.scene-message-dots {display:inline-block;width:1.25em;text-align:left;letter-spacing:.09em;margin-left:.12em;}
+.scene-message-dots i {font-style:normal;display:inline-block;}
+.scene-message-dots i:nth-child(2) {animation:scene-dot-two 1.8s steps(1,end) infinite;}
+.scene-message-dots i:nth-child(3) {animation:scene-dot-three 1.8s steps(1,end) infinite;}
+.scene-status-complete {animation:scene-complete 4.4s ease-out both;}
+.scene-status-complete .scene-message-type {animation:scene-complete-glow 4.4s ease-out both;}
+.scene-status-attention {color:#f5c493;}
+.scene-status-attention .scene-message-type {font-size:clamp(17px,1.4cqw,24px);}
+/* Pausing the actor must not freeze a genuine save acknowledgement mid-fade. */
+.status-paused .scene-status,.status-paused .scene-status * {animation-play-state:running!important;}
+.scene-report-actions {position:absolute;z-index:35;left:2.5%;top:2.5%;max-width:32%;display:grid;gap:6px;}
+.scene-report-actions button {padding:9px 14px;border:1px solid #c4a36e;border-radius:7px;background:#23372e;color:#ffe1a5;font-size:14px;cursor:pointer;}
+.scene-report-actions button:focus-visible {outline:2px solid #ffe1a5;outline-offset:3px;}
+.scene-report-actions p {padding:10px;border-radius:7px;background:#382d29f5;color:#ffe3c9;font-size:13px;}
+.live-inspector .stage-progress li {grid-template-columns:1fr;padding:6px 2px;font-size:11px;}
+.live-inspector .stage-progress small {font-size:10px;}
+@media(min-width:641px) {.live-status {display:none;}}
+@media(max-width:640px) {.scene-status,.scene-report-actions {display:none;}}
+
+/* Keep the whole name, using the parchment for two or three semantic lines. */
+.dossier-inscription {left:27%;top:26%;width:49%;height:37%;gap:0;justify-content:center;text-align:center;color:#3e2b19;text-shadow:0 1px #f7e5bd;}
+.dossier-name-field {display:block;flex:0 1 auto;min-height:0;width:100%;overflow:hidden;}
+.dossier-name-field.name-scrollable {overflow:auto;scrollbar-width:none;overscroll-behavior:contain;}
+.dossier-name-field::-webkit-scrollbar {display:none;}
+.dossier-inscription strong {
+  display:block;width:100%;max-width:100%;white-space:normal;overflow:visible;text-overflow:clip;
+  overflow-wrap:anywhere;word-break:normal;text-wrap:balance;
+  font-size:var(--cover-name-size,clamp(9px,.82cqw,13px));font-weight:800;line-height:1.15;letter-spacing:.02em;
+}
+.cover-name-main,.cover-name-suffix {display:block;}
+.cover-name-suffix {font-size:.94em;font-weight:600;white-space:nowrap;}
+.dossier-inscription .dossier-title {flex:none;width:100%;margin-top:.12cqw;padding-top:0;border:0;color:#6c5338;font-size:clamp(7px,.57cqw,9.5px);line-height:1.1;letter-spacing:.1em;}
+.dossier-saved.dossier-settled .dossier-book {animation:book-idle-breathe 3.4s ease-in-out infinite;transition:translate 240ms ease,scale 240ms ease,filter 240ms ease;}
+.dossier-saved.dossier-settled .dossier-halo {animation:book-halo-breathe 3.4s ease-in-out infinite;filter:blur(2px);border-color:#f0cb8990;box-shadow:0 0 20px #ecc57968,inset 0 0 16px #ecc57960;}
+.dossier-saved.dossier-settled .dossier-label {animation:book-label-breathe 3.4s ease-in-out infinite;}
+.dossier-saved .dossier-hit-area:hover .dossier-book,
+.dossier-saved .dossier-hit-area:focus-visible .dossier-book {animation:none;translate:0 -8px;scale:1.035;filter:drop-shadow(2px 10px 5px #20130daa) drop-shadow(0 0 13px #ffdc96bb);}
+.dossier-saved .dossier-hit-area:hover .dossier-halo,
+.dossier-saved .dossier-hit-area:focus-visible .dossier-halo {animation:none;opacity:1;filter:blur(1px) brightness(1.55);box-shadow:0 0 28px #ecc57999,inset 0 0 19px #ecc57988;}
+.dossier-saved .dossier-hit-area:hover .dossier-label,
+.dossier-saved .dossier-hit-area:focus-visible .dossier-label {animation:none;color:#fff0c9;border-color:#ffe4aa;text-shadow:0 0 7px #f6dca670;box-shadow:inset 0 0 0 2px #171e1a,0 3px 0 #1e1711,0 0 14px #f1d29670;}
+.dossier-opening .dossier-book,.dossier-opening .dossier-halo,.dossier-opening .dossier-label {animation:none!important;}
+@keyframes scene-dot-two {0%,32%{opacity:0}33%,100%{opacity:1}}
+@keyframes scene-dot-three {0%,65%{opacity:0}66%,100%{opacity:1}}
+@keyframes scene-text-breathe {
+  0%,100%{opacity:.6;transform:scale(.97);text-shadow:0 2px 4px #25160be0,0 0 3px #f1ce8020}
+  50%{opacity:1;transform:scale(1.045);text-shadow:0 2px 4px #25160bd0,0 0 13px #f6d994a0,0 0 22px #edc16b30}
+}
+@keyframes scene-complete {0%{opacity:.65}14%,48%{opacity:1;color:#ffe8af}100%{opacity:0}}
+@keyframes scene-complete-glow {
+  0%{transform:scale(.94);text-shadow:0 2px 4px #25160baa,0 0 3px #f2d79720}
+  16%,30%{transform:scale(1.18);text-shadow:0 2px 4px #25160baa,0 0 14px #ffe1a6ee,0 0 30px #f2c978a0}
+  48%{transform:scale(1.09);text-shadow:0 2px 4px #25160baa,0 0 11px #ffe1a6bb,0 0 24px #f2c97860}
+  100%{transform:scale(1.04);text-shadow:0 2px 4px #25160baa,0 0 3px #f2d79710}
+}
+@keyframes book-idle-breathe {
+  0%,100%{translate:0 0;filter:drop-shadow(1px 5px 2px #1e100b90) drop-shadow(0 0 3px #edc87b40)}
+  50%{translate:0 -4px;filter:drop-shadow(1px 8px 4px #1e100b90) drop-shadow(0 0 9px #f4d08a88)}
+}
+@keyframes book-halo-breathe {0%,100%{opacity:.38}50%{opacity:.82}}
+@keyframes book-label-breathe {
+  0%,100%{border-color:#b99b60;box-shadow:inset 0 0 0 2px #171e1a,0 3px 0 #1e1711,0 5px 9px #0005,0 0 2px #f1d29618}
+  50%{border-color:#f0ce8a;color:#ffe3a5;box-shadow:inset 0 0 0 2px #171e1a,0 3px 0 #1e1711,0 5px 9px #0005,0 0 10px #f1d29655}
+}
+@keyframes scene-gentle-fade {0%,70%{opacity:1}100%{opacity:0}}
+@media(prefers-reduced-motion:reduce) {
+  .scene-status-running .scene-message-type,.scene-status-complete .scene-message-type,.scene-message-dots i,
+  .dossier-saved.dossier-settled .dossier-book,.dossier-saved.dossier-settled .dossier-halo,.dossier-saved.dossier-settled .dossier-label {animation:none;}
+  .scene-status-complete {animation:scene-gentle-fade 4.4s linear both;}
+  .dossier-saved .dossier-hit-area:hover .dossier-book,.dossier-saved .dossier-hit-area:focus-visible .dossier-book {translate:none;scale:none;transition:none;}
 }

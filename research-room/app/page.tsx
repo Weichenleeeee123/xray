@@ -28,6 +28,7 @@ import {
 } from './research-events';
 import { ReportDossier } from './report-dossier';
 import { OfficeInstruments } from './office-instruments';
+import { SceneStatus } from './scene-status';
 import { DemoExamples } from './demo-examples';
 import { useProgressiveImages } from './use-progressive-images';
 import type { DemoCase } from './research-input';
@@ -475,6 +476,20 @@ export default function Home() {
                 </button>
               </div>
             </div>
+            <SceneStatus state={state} />
+            {!report.visible && (report.canOpen || report.canRetry) && (
+              <div className="scene-report-actions">
+                {report.canOpen ? <button className="report-ready-link" onClick={openReport} disabled={!!opening}>
+                  {opening ? '正在打开报告' : '报告已就绪 · 查看报告'}
+                </button> : <>
+                  <p role="alert">{state.saveError ?? state.error ?? '保存状态需要确认'}</p>
+                  <button onClick={() => {
+                    if (state.candidate) void retrySave();
+                    else setRetryConfirm(true);
+                  }}>{report.label}</button>
+                </>}
+              </div>
+            )}
             <output className="live-status">
               <strong>{life}</strong>
               <span className="current-task">{progress.current}</span>
@@ -531,6 +546,15 @@ export default function Home() {
                 <strong>{inspectorSource ? `${stations.find(s => s.id === inspectorSource)?.title} · 查询明细` : '真实任务进度'}{testMode ? '（测试事件）' : ''}</strong>
                 <button type="button" onClick={() => setInspector(false)} aria-label="关闭任务详情">关闭</button>
                 <p>{progress.current}。多个资料点可能同时查询。</p>
+                {!inspectorSource && <>
+                  <p>{life} · {knownRecords} 条已找到记录</p>
+                  <ol className="stage-progress" aria-label="研究阶段">
+                    {progress.stages.map(stage => <li key={stage.id} data-state={stage.status}>
+                      <b>{stage.title}</b><small>{stage.label}{stage.detail ? ` ${stage.detail}` : ''}</small>
+                    </li>)}
+                  </ol>
+                  {paused && <p>动画已暂停，后台继续处理</p>}
+                </>}
                 {inspectorSource && <p>{stationState(state, inspectorSource).resultLabel}</p>}
                 <ol>
                   {state.steps.filter(s => !inspectorSource || (stations.find(station => station.id === inspectorSource)!.steps as readonly string[]).includes(s.id)).map((s) => (
