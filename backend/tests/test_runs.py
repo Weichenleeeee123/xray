@@ -1,5 +1,8 @@
 """A refreshed browser can recover a live case build without submitting again."""
 import time
+import threading
+
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -87,3 +90,36 @@ def test_legacy_journal_without_saved_input_remains_readable(tmp_path, monkeypat
     result = client.get(f"/api/runs/{run_id}").json()
     assert result["status"] == "interrupted"
     assert result["input"] is None
+
+
+def test_supplement_keeps_case_identity_and_full_original_material(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "RUNS_DIR", tmp_path)
+    original = client.post("/api/cases", json={"company_name": DEMO_COMPANY, "need": SAVINGS_NEED}).json()
+    body = {"kind": "material", "title": "补充合同", "text": "第一段：保本保息\n第二段：年化收益 9%"}
+    created = client.post(f"/api/cases/{original['id']}/runs", json=body,
+                          headers={"Idempotency-Key": "supplement-original-input"}).json()
+    settled = _settled(created["run_id"])
+    assert settled["input"]["kind"] == "supplement"
+    assert settled["input"]["case_id"] == original["id"]
+    assert settled["version"] == 2
+    for key, value in body.items():
+        assert settled["input"]["body"][key] == value
+    duplicate = client.post(f"/api/cases/{original['id']}/runs", json=body,
+                            headers={"Idempotency-Key": "supplement-original-input"}).json()
+    assert duplicate["run_id"] == created["run_id"]
+
+
+def test_failed_original_input_write_releases_run_slot(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "RUNS_DIR", tmp_path)
+    slots = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(main, "_run_slots", slots)
+    def broken(*_args, **_kwargs):
+        raise OSError("simulated storage failure")
+    monkeypatch.setattr(main.runs, "save_input", broken)
+    run_id = "c" * 24
+    with pytest.raises(OSError):
+        main._start_run({"type": "begin"}, lambda: None, run_id,
+                        original_input={"kind": "create", "body": {}})
+    assert run_id not in main._active_runs
+    assert slots.acquire(blocking=False)
+    slots.release()
