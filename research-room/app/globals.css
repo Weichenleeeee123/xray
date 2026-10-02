@@ -511,7 +511,7 @@ button {
 .source-library { top: 53%; left: 9%; }
 .source-news { top: 24%; left: 70%; }
 .source-data { top: 51%; left: 86%; }
-.source-social { top: 13%; left: 50%; }
+.source-social { top: 12%; left: 64%; }
 
 .scene-brand {
   position: absolute;
@@ -776,10 +776,10 @@ button {
 .phase-caption {
   position: absolute;
   z-index: 30;
-  bottom: 2.35%;
-  left: 50%;
+  top: 2.35%;
+  left: 23%;
   display: grid;
-  width: min(47%, 785px);
+  width: 32%;
   min-height: clamp(48px, 4.3vw, 72px);
   padding: clamp(7px, 0.63vw, 11px) clamp(9px, 0.8vw, 14px) clamp(8px, 0.72vw, 12px);
   align-items: center;
@@ -952,7 +952,7 @@ button {
 
 @media (max-aspect-ratio: 4 / 3) {
   .home-query { width: 72%; }
-  .phase-caption { width: 62%; }
+  .phase-caption { width: 32%; }
   .complete-card { min-width: 58%; }
 }
 
@@ -978,7 +978,7 @@ button {
   .source-social { top: 46%; left: 12%; }
   .source-news { top: 63%; left: 12%; }
   .source-data { top: 80%; left: 12%; }
-  .phase-caption { width: 76%; }
+  .phase-caption { width: 32%; }
   .phase-meta span { display: none; }
   .complete-card { min-width: 76%; }
   .complete-card small { display: none; }
@@ -994,3 +994,77 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* All character motion is sampled from the same research clock. */
+.xiaoqi-actor {
+  transform: translate(-50%, -100%);
+  width: 19%;
+  transition: none;
+  z-index: 9;
+}
+.xiaoqi-actor::before { opacity: calc(1 - var(--seated)); bottom: 3%; }
+.standing-body, .seated-body, .distance-walk, .planted-feet, .gesture-body {
+  position: absolute;
+  display: block;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-size: 400% 300%;
+  image-rendering: auto;
+  pointer-events: none;
+}
+.standing-body { opacity: calc(1 - var(--seated-mix)); }
+.seated-body {
+  opacity: var(--seated-mix);
+  background-image: url('/xiaoqi-action-cycles.png');
+  background-position: var(--action-frame) 0%;
+  transform: translateY(-22%);
+}
+.distance-walk {
+  background-image: url('/xiaoqi-walk-cycles.png');
+  background-position-x: var(--walk-frame);
+  transition: opacity 90ms linear;
+}
+.distance-walk.walk-back { background-position-y: 0%; }
+.distance-walk.walk-front { background-position-y: 100%; }
+.distance-walk.walk-right, .distance-walk.walk-left { background-position-y: 50%; }
+.distance-walk.walk-left { transform: scaleX(-1); }
+.planted-feet, .gesture-body {
+  background-image: url('/xiaoqi-action-cycles.png');
+  background-position: 33.333333% 100%;
+  transform: translateY(17%);
+}
+.planted-feet { clip-path: inset(76% 0 0); }
+.gesture-body {
+  clip-path: inset(0 0 24%);
+  background-position-x: var(--action-frame);
+  transform: translateY(17%) rotate(var(--gesture));
+  transform-origin: 50% 77%;
+}
+.research-feet, .research-body { background-position-y: 50%; transform: translateY(11%); }
+.research-body { transform: translateY(11%) rotate(var(--gesture)); }
+.action-stand .standing-body { transform: scaleX(-1); }
+.visitor-sprite { width: 244%; left: 63%; bottom: -34%; animation: none; transform: translateX(-50%) scaleX(-1); }
+.visitor-goose { animation: none; }
+@media (min-width: 641px) {
+  .source-enterprise { left: 13%; }
+  .source-news { left: 83%; }
+  .source-data { top: 40%; }
+}
+.chair-foreground {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  background: url('/office-panorama-closed.png') 0 0 / 100% 100% no-repeat;
+  clip-path: polygon(46% 80%, 53.4% 80%, 55% 84%, 54% 93%, 55.3% 98%, 43.8% 98%, 45% 92%, 44.7% 84%);
+  pointer-events: none;
+}
+.motion-inspector {
+  position: absolute; z-index: 50; left: 1%; right: 61%; top: 2%;
+  padding: 10px; border: 1px solid #719e97; border-radius: 10px;
+  background: #0b192cee; font-size: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.motion-inspector input { width: 100%; }
+.motion-inspector select, .motion-inspector button { background: #24473e; border-radius: 4px; padding: 3px 7px; }
+.motion-inspector span { flex: 1; text-align: center; }
+.status-paused *, .status-paused *::before, .status-paused *::after { animation-play-state: paused !important; }
+.status-complete .phase-caption, .office-stage:has(.motion-inspector) .phase-caption { visibility: hidden; }

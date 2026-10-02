@@ -21,26 +21,9 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DURATION, phases, phaseAt, phaseProgress, motionAt, doorAt, ease } from './office-motion';
 
 type ResearchStatus = 'idle' | 'running' | 'paused' | 'complete';
-type WalkPose = 'back' | 'front' | 'right' | 'left';
-type ActionPose = 'desk' | 'research' | 'door';
-type Point = { x: number; y: number };
-
-type Phase = {
-  id: string;
-  start: number;
-  end: number;
-  label: string;
-  detail: string;
-  mode: 'walk' | 'action';
-  visual: WalkPose | ActionPose;
-  from: Point;
-  to: Point;
-  route?: Point[];
-  papers: number;
-};
-
 type WebMcpContext = {
   registerTool: (
     tool: {
@@ -60,38 +43,6 @@ declare global {
     readonly modelContext?: WebMcpContext;
   }
 }
-
-const DURATION = 30_000;
-const DESK = { x: 50, y: 75 };
-const DESK_LEFT = { x: 25, y: 69 };
-const DESK_RIGHT = { x: 74, y: 69 };
-const ARCHIVE = { x: 23, y: 34 };
-const LIBRARY = { x: 12, y: 56 };
-const NEWS = { x: 70, y: 32 };
-const DATA = { x: 76.5, y: 57 };
-const DOOR = { x: 49, y: 31 };
-const walkPoses: WalkPose[] = ['back', 'right', 'front', 'left'];
-
-const phases: Phase[] = [
-  { id: 'brief', start: 0, end: 1_300, label: '建立研究任务', detail: '小企先在工位确认公司名称与研究范围', mode: 'action', visual: 'desk', from: DESK, to: DESK, papers: 0 },
-  { id: 'desk-exit', start: 1_300, end: 2_100, label: '离开工位', detail: '小企推开椅子，从桌子左侧起身', mode: 'action', visual: 'desk', from: DESK, to: DESK_LEFT, route: [DESK, { x: 40, y: 73 }, { x: 32, y: 70 }, DESK_LEFT], papers: 0 },
-  { id: 'walk-archive', start: 2_100, end: 4_300, label: '前往企业档案区', detail: '从桌外通道步行到主体档案柜', mode: 'walk', visual: 'back', from: DESK_LEFT, to: ARCHIVE, route: [DESK_LEFT, { x: 23, y: 52 }, ARCHIVE], papers: 0 },
-  { id: 'archive', start: 4_300, end: 6_100, label: '查阅企业档案', detail: '逐项确认股权、高管与历史变更', mode: 'action', visual: 'research', from: ARCHIVE, to: ARCHIVE, papers: 0 },
-  { id: 'walk-library', start: 6_100, end: 7_300, label: '前往窗下图书架', detail: '沿左侧通道走向年报与行业目录', mode: 'walk', visual: 'front', from: ARCHIVE, to: LIBRARY, route: [ARCHIVE, { x: 18, y: 44 }, { x: 14, y: 52 }, LIBRARY], papers: 1 },
-  { id: 'library', start: 7_300, end: 9_200, label: '翻阅书籍资料', detail: '取书、翻页、摘录，再把书放回原位', mode: 'action', visual: 'research', from: LIBRARY, to: LIBRARY, papers: 1 },
-  { id: 'walk-news', start: 9_200, end: 13_000, label: '前往新闻资料架', detail: '沿空旷通道穿过办公室，不横跨任何工位', mode: 'walk', visual: 'right', from: LIBRARY, to: NEWS, route: [LIBRARY, { x: 18, y: 48 }, { x: 39, y: 42 }, { x: 57, y: 42 }, { x: 66, y: 38 }, NEWS], papers: 2 },
-  { id: 'news', start: 13_000, end: 14_600, label: '比对新闻摘要', detail: '圈出公告时间、媒体事件和潜在风险词', mode: 'action', visual: 'research', from: NEWS, to: NEWS, papers: 2 },
-  { id: 'walk-data', start: 14_600, end: 15_700, label: '前往数据终端', detail: '从桌外侧接近终端，不穿过显示器和座椅', mode: 'walk', visual: 'front', from: NEWS, to: DATA, route: [NEWS, { x: 72, y: 42 }, { x: 75, y: 50 }, DATA], papers: 3 },
-  { id: 'data', start: 15_700, end: 17_200, label: '核验经营数据', detail: '检查收入、利润、行业与市场变化', mode: 'action', visual: 'research', from: DATA, to: DATA, papers: 3 },
-  { id: 'knock', start: 17_200, end: 18_000, label: '门外传来敲门声', detail: '一位社会观察员带来了新的舆情线索', mode: 'action', visual: 'research', from: DATA, to: DATA, papers: 4 },
-  { id: 'walk-door', start: 18_000, end: 20_300, label: '去开门', detail: '小企转身背对使用者，沿中央通道走向门口', mode: 'walk', visual: 'back', from: DATA, to: DOOR, route: [DATA, { x: 69, y: 48 }, { x: 59, y: 40 }, { x: 53, y: 34 }, DOOR], papers: 4 },
-  { id: 'open-door', start: 20_300, end: 21_300, label: '打开办公室门', detail: '抓住原门把手，让门沿原门框打开', mode: 'action', visual: 'door', from: DOOR, to: DOOR, papers: 4 },
-  { id: 'talk', start: 21_300, end: 23_100, label: '核对社会舆情', detail: '小企留在门内，与门外访客确认来源和影响', mode: 'action', visual: 'door', from: { x: 48.5, y: 31 }, to: { x: 48.5, y: 31 }, papers: 4 },
-  { id: 'close-door', start: 23_100, end: 23_900, label: '结束访谈并关门', detail: '舆情记录已经带回研究室', mode: 'action', visual: 'door', from: DOOR, to: DOOR, papers: 5 },
-  { id: 'walk-desk', start: 23_900, end: 26_200, label: '回到工位', detail: '绕过右侧桌角，在桌外停步', mode: 'walk', visual: 'front', from: DOOR, to: DESK_RIGHT, route: [DOOR, { x: 49, y: 43 }, { x: 61, y: 50 }, { x: 72, y: 58 }, DESK_RIGHT], papers: 5 },
-  { id: 'desk-sit', start: 26_200, end: 27_200, label: '坐回原来的椅子', detail: '小企从桌侧进入工位并调整坐姿', mode: 'action', visual: 'desk', from: DESK_RIGHT, to: DESK, route: [DESK_RIGHT, { x: 65, y: 73 }, { x: 57, y: 76 }, DESK], papers: 5 },
-  { id: 'report', start: 27_200, end: 30_000, label: '撰写研究报告', detail: '在原工位阅读、整理、输入并完成报告', mode: 'action', visual: 'desk', from: DESK, to: DESK, papers: 5 },
-];
 
 const sourceMarkers = [
   { title: '企业资料', caption: '主体 · 股权 · 高管', icon: Building2, readyAt: 6_100, activeIds: ['walk-archive', 'archive'], className: 'source-enterprise' },
@@ -122,59 +73,13 @@ const breezeItems = [
   { kind: 'paper', frame: 3, x: 24, y: 65, delay: 760 },
 ];
 
-function phaseAt(elapsed: number) {
-  return phases.find((phase) => elapsed >= phase.start && elapsed < phase.end) ?? phases.at(-1)!;
-}
-
-function easeInOut(value: number) {
-  const clamped = Math.max(0, Math.min(1, value));
-  return clamped * clamped * (3 - 2 * clamped);
-}
-
-function walkStateFor(phase: Phase, elapsed: number) {
-  if (!phase.route) return { position: phase.to, facing: 'back' as WalkPose };
-  const points = phase.route;
-  const segments = points.slice(0, -1).map((point, index) => {
-    const next = points[index + 1];
-    const screenDx = (next.x - point.x) * 1.776833;
-    const dy = next.y - point.y;
-    return { from: point, to: next, length: Math.hypot(screenDx, dy), screenDx, dy };
-  });
-  const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
-  const routeProgress = easeInOut((elapsed - phase.start) / (phase.end - phase.start));
-  let remaining = totalLength * routeProgress;
-  const segment = segments.find((candidate) => {
-    if (remaining <= candidate.length) return true;
-    remaining -= candidate.length;
-    return false;
-  }) ?? segments.at(-1)!;
-  const segmentProgress = segment.length ? Math.min(1, remaining / segment.length) : 1;
-  const facing: WalkPose = Math.abs(segment.screenDx) > Math.abs(segment.dy)
-    ? segment.screenDx >= 0 ? 'right' : 'left'
-    : segment.dy >= 0 ? 'front' : 'back';
-  return {
-    position: {
-      x: segment.from.x + (segment.to.x - segment.from.x) * segmentProgress,
-      y: segment.from.y + (segment.to.y - segment.from.y) * segmentProgress,
-    },
-    facing,
-  };
-}
-
-function doorProgressFor(elapsed: number, status: ResearchStatus) {
-  if (status === 'idle' || status === 'complete') return 0;
-  if (elapsed < 20_300) return 0;
-  if (elapsed < 21_300) return easeInOut((elapsed - 20_300) / 1_000);
-  if (elapsed < 23_100) return 1;
-  if (elapsed < 23_900) return 1 - easeInOut((elapsed - 23_100) / 800);
-  return 0;
-}
-
 export default function Home() {
   const [query, setQuery] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
   const [status, setStatus] = useState<ResearchStatus>('idle');
   const [elapsed, setElapsed] = useState(0);
+  const [inspector, setInspector] = useState(false);
+  const [speed, setSpeed] = useState(1);
   const elapsedRef = useRef(0);
 
   const beginResearch = (nextQuery: string) => {
@@ -196,7 +101,7 @@ export default function Home() {
       void Promise.resolve(context.registerTool({
         name: 'start_company_research',
         title: '开始企业研究',
-        description: '输入公司名称，关闭首页输入框，并启动小企在办公室内约 30 秒的连续资料收集与报告撰写动画。',
+        description: '输入公司名称，关闭首页输入框，并启动小企在办公室内约 37 秒的连续资料收集与报告撰写动画。',
         inputSchema: {
           type: 'object',
           properties: { company: { type: 'string', minLength: 1, maxLength: 80 } },
@@ -211,7 +116,7 @@ export default function Home() {
             throw new Error('company 必须是 1 至 80 个字符的公司名称');
           }
           beginResearch(company);
-          return { status: 'running', company: company.trim(), durationSeconds: 30 };
+          return { status: 'running', company: company.trim(), durationSeconds: DURATION / 1000 };
         },
       }, { signal: lifecycle.signal })).catch(() => undefined);
     } catch {
@@ -225,7 +130,7 @@ export default function Home() {
     let animationFrame = 0;
     let previous = performance.now();
     const tick = (now: number) => {
-      const delta = Math.min(42, now - previous);
+      const delta = Math.min(100, now - previous) * speed;
       previous = now;
       const nextElapsed = Math.min(DURATION, elapsedRef.current + delta);
       elapsedRef.current = nextElapsed;
@@ -238,23 +143,28 @@ export default function Home() {
     };
     animationFrame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animationFrame);
-  }, [status]);
+  }, [status, speed]);
 
   const phase = status === 'idle'
     ? { ...phases[0], id: 'idle', label: '等待查询', detail: '输入公司名称或研究问题，让小企开始工作' }
     : status === 'complete'
       ? { ...phases.at(-1)!, id: 'complete', label: '研究报告已生成', detail: '公开资料、经营信号与社会舆情已经整理完成' }
       : phaseAt(elapsed);
-  const walkState = walkStateFor(phase, elapsed);
-  const actorPosition = status === 'idle' || status === 'complete' ? DESK : walkState.position;
-  const actorFacing = phase.mode === 'walk' ? walkState.facing : 'back';
-  const progress = status === 'idle' ? 0 : Math.min(100, (elapsed / DURATION) * 100);
-  const doorProgress = doorProgressFor(elapsed, status);
-  const showGuest = status !== 'idle' && elapsed >= 20_950 && elapsed < 23_450;
-  const knocking = status !== 'idle' && elapsed >= 17_200 && elapsed < 20_000;
+  const motion = motionAt(phase, elapsed);
+  const localProgress = phaseProgress(phase, elapsed);
+  const seated = phase.visual === 'desk' ? 1 : phase.visual === 'stand' ? 1-ease(localProgress) : phase.visual === 'sit' ? ease(localProgress) : 0;
+  const isWalking = phase.mode === 'walk';
+  const frame = motion.frame;
+  const progress = status === 'idle' ? 0 : Math.min(100, elapsed / DURATION * 100);
+  const doorProgress = status === 'idle' ? 0 : doorAt(elapsed);
+  const showGuest = doorProgress > .12;
+  const knocking = phase.id === 'knock' || phase.id === 'walk-door';
   const paperLevel = status === 'complete' ? 5 : phase.papers;
-  const actorStyle = { '--actor-x': `${actorPosition.x}%`, '--actor-y': `${actorPosition.y}%` } as CSSProperties;
+  const actionFrame = phase.visual === 'research' ? [1,2,2,1][Math.floor((elapsed-phase.start)/450)%4] : phase.visual === 'door' ? Math.min(1,Math.floor(localProgress*2)) : phase.visual === 'talk' ? 2 : phase.visual === 'desk' ? Math.floor(Math.max(0,elapsed-phase.start)/600)%4 : 1;
+  const research = phase.visual === 'research';
+  const actorStyle = { '--actor-x': motion.position.x+'%', '--actor-y': motion.position.y+'%', '--walk-frame': frame*100/3+'%', '--seated': seated, '--seated-mix': seated > .85 ? (seated-.85)/.15 : 0, '--action-frame': actionFrame*100/3+'%', '--gesture': Math.sin((elapsed-phase.start)/220)*1.5+'deg' } as CSSProperties;
   const doorStyle = { '--door-progress': doorProgress } as CSSProperties;
+  const seek = (time:number) => { elapsedRef.current=Math.max(0,Math.min(DURATION,time)); setElapsed(elapsedRef.current); setStatus('paused'); };
 
   const visiblePaperCount = settledPapers.filter((paper) => paper.level <= paperLevel).length;
 
@@ -322,7 +232,8 @@ export default function Home() {
 
         <ol className={`source-markers ${status === 'idle' ? 'idle' : ''}`} aria-label="企业资料来源">
           {sourceMarkers.map((source) => {
-            const done = status === 'complete' || (status !== 'idle' && elapsed >= source.readyAt);
+            const readyAt = phases.find(p => p.id === source.activeIds.at(-1))!.end;
+            const done = status === 'complete' || (status !== 'idle' && elapsed >= readyAt);
             const active = status !== 'idle' && status !== 'complete' && source.activeIds.includes(phase.id);
             const Icon = source.icon;
             return (
@@ -340,7 +251,7 @@ export default function Home() {
         </ol>
 
         {showGuest && (
-          <figure className="visitor-goose" aria-label="站在门外提供社会舆情线索的访客鹅">
+          <figure className="visitor-goose" style={{opacity:Math.min(1,doorProgress*3)}} aria-label="站在门外提供社会舆情线索的访客鹅">
             <span className="visitor-sprite" aria-hidden="true" />
           </figure>
         )}
@@ -352,17 +263,21 @@ export default function Home() {
         )}
 
         <figure
-          className={`xiaoqi-actor mode-${phase.mode} visual-${phase.visual}`}
+          className={`xiaoqi-actor ${isWalking ? 'walking' : 'stationary'} facing-${motion.facing} action-${phase.visual}`}
           style={actorStyle}
+          data-phase={phase.id}
+          data-distance={motion.distance.toFixed(2)}
           aria-label={`穿西装的小企正在${phase.label}`}
         >
-          {walkPoses.map((pose) => (
-            <span className={`walk-cycle walk-${pose} ${phase.mode === 'walk' && actorFacing === pose ? 'active' : ''}`} key={pose} aria-hidden="true" />
-          ))}
-          <span className={`action-cycle action-${phase.mode === 'action' ? phase.visual : 'desk'} ${phase.mode === 'action' ? 'active' : ''}`} aria-hidden="true" />
+          <span className="seated-body" aria-hidden="true" />
+          <span className="standing-body" aria-hidden="true">
+            {isWalking ? (['back','front','left','right'] as const).map(direction => <span key={direction} className={`distance-walk walk-${direction}`} style={{opacity:direction === motion.facing ? 1 : 0}} />) : <>
+              <span className={`planted-feet ${research ? 'research-feet' : ''}`} />
+              <span className={`gesture-body ${research ? 'research-body' : ''}`} />
+            </>}
+          </span>
         </figure>
-
-        <div className="desk-foreground" aria-hidden="true" />
+        <div className="chair-foreground" style={{opacity:seated > .85 ? 1 : 0}} aria-hidden="true" />
 
         <div className="scene-brand" aria-label="企er 小企研究室">
           <span>企</span>
@@ -397,6 +312,7 @@ export default function Home() {
             <div className="research-hud">
               <div className="research-subject"><i /> <span>{activeQuery}</span></div>
               <div className="research-controls">
+                <button type="button" onClick={() => setInspector(v=>!v)} aria-label="动作检查">⌕</button>
                 <button type="button" onClick={togglePause} disabled={status === 'complete'} aria-label={status === 'paused' ? '继续动画' : '暂停动画'}>
                   {status === 'paused' ? <CirclePlay /> : <CirclePause />}
                 </button>
@@ -417,6 +333,12 @@ export default function Home() {
           </>
         )}
 
+        {inspector && status !== 'idle' && <div className="motion-inspector">
+          <label>动作检查 <select aria-label="播放速度" value={speed} onChange={e=>setSpeed(Number(e.target.value))}><option value={1}>正常速度</option><option value={.25}>四分之一速度</option></select></label>
+          <label>检查时间 <input aria-label="检查时间（秒）" type="number" min={0} max={DURATION/1000} step={.04} value={Number((elapsed/1000).toFixed(2))} onChange={e=>seek(Number(e.target.value)*1000)} /></label>
+          <input aria-label="动画时间" type="range" min={0} max={DURATION} step={40} value={elapsed} onChange={e=>seek(Number(e.target.value))} />
+          <button onClick={()=>seek(elapsed-40)} type="button">上一帧</button><span>{(elapsed/1000).toFixed(2)} 秒 · {phase.label}</span><button onClick={()=>seek(elapsed+40)} type="button">下一帧</button>
+        </div>}
         {status === 'complete' && (
           <output className="complete-card">
             <CheckCircle2 />

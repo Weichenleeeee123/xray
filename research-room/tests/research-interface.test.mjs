@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { phases, motionAt, doorAt, DURATION } from '../app/office-motion.ts';
 
 const page = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
@@ -39,15 +40,42 @@ test('the windy office treatment is always part of the fixed panorama', () => {
   assert.match(page, /breezeItems\.map/);
 });
 
-test('walking follows segmented routes and cross-fades direction changes', () => {
-  assert.match(page, /route\?: Point\[\]/);
-  assert.match(page, /function walkStateFor/);
-  assert.match(page, /walkPoses\.map/);
-  assert.ok((page.match(/route: \[/g) ?? []).length >= 6, 'each walking phase needs a routed path');
-  assert.match(page, /id: 'desk-exit'[^\n]*mode: 'action'[^\n]*route: \[DESK/);
-  assert.match(page, /id: 'walk-archive'[^\n]*from: DESK_LEFT/);
-  assert.match(page, /id: 'walk-desk'[^\n]*to: DESK_RIGHT/);
-  assert.match(page, /id: 'desk-sit'[^\n]*mode: 'action'[^\n]*to: DESK[^\n]*route: \[DESK_RIGHT/);
+test('the goose clears both desk corners with body-width clearance', () => {
+  for (const p of phases.filter(p => p.mode === 'walk')) {
+    for (let t=p.start; t<p.end; t+=16) {
+      const {x,y}=motionAt(p,t).position;
+      const inDesk = x>27.5 && x<72.5 && y>71 && y<95;
+      assert.ok(!inDesk, `${p.id} intersects desk at ${x},${y}`);
+    }
+  }
+});
+
+test('action phases keep feet stationary and phase boundaries never teleport', () => {
+  for (const [i,p] of phases.entries()) {
+    if(p.mode==='action') {
+      assert.deepEqual(motionAt(p,p.start).position,motionAt(p,p.end).position);
+      assert.equal(motionAt(p,p.start+300).frame,0);
+    }
+    if(i) {
+      const a=motionAt(phases[i-1],p.start).position,b=motionAt(p,p.start).position;
+      assert.ok(Math.hypot(a.x-b.x,a.y-b.y)<.001);
+    }
+  }
+});
+
+test('footsteps advance with traveled distance, not with idle time', () => {
+  const walk={...phases[2],start:0,end:1000,route:[{x:0,y:0},{x:10,y:0}]};
+  const halfway=motionAt(walk,500);
+  assert.equal(halfway.position.x,5);
+  assert.equal(halfway.facing,'right');
+  assert.equal(halfway.frame,3);
+  assert.equal(motionAt({...walk,route:undefined,to:{x:5,y:0}},500).frame,0);
+});
+
+test('door stays open for the conversation and closes before returning', () => {
+  assert.equal(doorAt(0),0);
+  assert.equal(doorAt(25500),1);
+  assert.equal(doorAt(DURATION),0);
 });
 
 test('five source markers report active and completed research locations', () => {
