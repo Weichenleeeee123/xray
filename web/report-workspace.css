@@ -1,0 +1,345 @@
+/* Paper and brass finish for the report workspace. */
+body.research-mode.report-workspace {
+  background-color:#f7f0e0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.76' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23p)' opacity='.026'/%3E%3C/svg%3E");
+}
+body.research-mode.report-workspace .topbar {
+  background:linear-gradient(115deg,#1c2934,#2d3f4c 55%,#222e39);
+  border-bottom-color:#b88b4c;
+  box-shadow:0 3px 20px #222e3912,inset 0 -1px #e2bc781c;
+}
+body.research-mode.report-workspace .brand .logo {box-shadow:inset 0 0 12px #e2bc7814,0 0 18px #e2bc780a}
+body.research-mode.report-workspace .research-hero:before {
+  background:radial-gradient(ellipse at 65% 25%,#e2bc7820,transparent 65%);
+}
+body.research-mode.report-workspace .hero-title {position:relative}
+body.research-mode.report-workspace .hero-title:after {
+  content:"";position:absolute;right:15px;top:41px;width:290px;height:235px;pointer-events:none;
+  background:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 290 235' fill='none'%3E%3Cg stroke='%23b88b4c' stroke-opacity='.17'%3E%3Ccircle cx='169' cy='113' r='91'/%3E%3Ccircle cx='169' cy='113' r='69' stroke-dasharray='2 6'/%3E%3Cpath d='M61 113h216M169 8v210' stroke-opacity='.1'/%3E%3Crect x='114' y='54' width='101' height='129' rx='5' transform='rotate(-8 114 54)'/%3E%3Crect x='103' y='44' width='101' height='129' rx='5' fill='%23f7f0e0'/%3E%3Cpath d='M122 71h55M122 84h41M122 110h61M122 122h61M122 134h35'/%3E%3Ccircle cx='193' cy='165' r='26' fill='%23f7f0e0'/%3E%3Cpath d='m181 164 8 8 16-17M36 191h44M36 199h25'/%3E%3C/g%3E%3C/svg%3E");
+}
+body.research-mode.report-workspace .research-button:not(.ghost) {
+  background:linear-gradient(145deg,#344957,#222e39);
+  box-shadow:inset 0 1px #f7f0e018,0 5px 12px #222e3917;
+}
+body.research-mode.report-workspace .research-button.ghost {background:#fffcf54d}
+body.research-mode.report-workspace .flow-primary .flow-label {
+  background:linear-gradient(145deg,#344b59,#222e39 75%);
+}
+body.research-mode.report-workspace .flow-secondary .flow-label {
+  background:linear-gradient(150deg,#fffcf3,#ede2cd);
+}
+body.research-mode.report-workspace .flow-label:after {
+  content:"";position:absolute;inset:3px;border:1px solid #e2bc7829;border-radius:inherit;pointer-events:none;
+}
+body.research-mode.report-workspace .flow-secondary .flow-label:after {border-color:#fff9ec99}
+body.research-mode.report-workspace .research-heading .research-eyebrow {position:relative;color:#8a641f}
+body.research-mode.report-workspace .research-heading .research-eyebrow:after {
+  content:"";position:absolute;width:36px;height:1px;background:linear-gradient(90deg,#b88b4c,transparent);left:31px;top:50%;pointer-events:none;
+}
+
+/* A navy radar surface anchors the most important section; its grid is untouched. */
+body.research-mode.report-workspace .overview-grid {
+  background:linear-gradient(90deg,#243642 0%,#293e4b 51%,#fcf8ee 51%,#fcf8ee 100%);
+  border-color:#b9a17e;
+  box-shadow:0 14px 35px #222e3910,inset 0 1px #ffffff80;
+}
+body.research-mode.report-workspace #research-overview .radar-caption {color:#f7f0e0}
+body.research-mode.report-workspace .radar-caption span:last-child,
+body.research-mode.report-workspace .research-radar>p {color:#d4cebd}
+body.research-mode.report-workspace .research-radar svg polygon,
+body.research-mode.report-workspace .research-radar svg line {stroke:#e2bc78}
+body.research-mode.report-workspace .research-radar svg path {fill:#e2bc78;stroke:#e2bc78}
+body.research-mode.report-workspace .research-radar svg circle {fill:#f2d69b;filter:drop-shadow(0 0 3px #e2bc7855)}
+body.research-mode.report-workspace .research-radar svg text {fill:#f7f0e0}
+body.research-mode.report-workspace .research-radar svg text[font-size="12"] {fill:#d4cebd}
+body.research-mode.report-workspace .research-radar svg text[fill="#ed9b89"] {fill:#efb19e}
+body.research-mode.report-workspace .overview-summary {border-left-color:transparent}
+body.research-mode.report-workspace .overview-summary .gl-first li {
+  background:linear-gradient(100deg,#ede2cd99,#f7f0e066);border-color:#d9ccb4bb;
+}
+
+/* A paper card, with a different quiet line illustration for each signal. */
+body.research-mode.report-workspace .research-signals .tile {
+  position:relative;isolation:isolate;
+  background:linear-gradient(145deg,#fffaf0,#f3ead8);
+  border-color:#d5c7ae;border-top-color:#b88b4c;
+  box-shadow:0 8px 24px #222e3909,inset 0 1px #ffffff99;
+}
+body.research-mode.report-workspace .research-signals .tile:after {
+  content:"";position:absolute;right:15px;bottom:13px;width:58px;height:58px;background:center/contain no-repeat var(--signal-art);opacity:.09;z-index:-1;pointer-events:none;
+}
+body.research-mode.report-workspace .research-signals .tile[data-key=risk] {
+  --signal-art:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='none' stroke='%23222e39' stroke-width='1.6'%3E%3Cpath d='M32 5 53 13v18c0 14-21 27-21 27S11 45 11 31V13Z'/%3E%3Cpath d='m21 29 8 8 15-16'/%3E%3C/svg%3E");
+}
+body.research-mode.report-workspace .research-signals .tile[data-key=finance] {
+  --signal-art:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='none' stroke='%23222e39' stroke-width='1.6'%3E%3Cpath d='M8 55h49M13 55V34h9v21M28 55V23h9v32M43 55V10h9v45M11 23l14-10 12 2 16-11'/%3E%3C/svg%3E");
+}
+body.research-mode.report-workspace .research-signals .tile[data-key=credit] {
+  --signal-art:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='none' stroke='%23222e39' stroke-width='1.6'%3E%3Crect x='11' y='7' width='37' height='49' rx='3'/%3E%3Cpath d='M20 19h20M20 28h20M20 37h12'/%3E%3Ccircle cx='45' cy='45' r='13' fill='%23f7f0e0'/%3E%3Cpath d='m39 45 4 4 8-9'/%3E%3C/svg%3E");
+}
+body.research-mode.report-workspace .research-signals .tile.s-bad {border-top-color:#a44738}
+body.research-mode.report-workspace .research-signals .tile[data-key=reputation] {
+  --signal-art:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='none' stroke='%23222e39' stroke-width='1.6'%3E%3Cpath d='M9 10h43v31H29L16 52V41H9Z'/%3E%3Cpath d='M18 20h25M18 29h19M52 24h6v28h-9l-9 7v-7h-8'/%3E%3C/svg%3E");
+}
+body.research-mode.report-workspace .research-signals .tile:hover {
+  background:linear-gradient(145deg,#fffdf6,#f0e3ca);box-shadow:0 13px 30px #222e3914;
+}
+
+body.research-mode.report-workspace .inquiry-stage {
+  background:radial-gradient(ellipse at 23% 46%,#e2bc782c,transparent 42%),linear-gradient(120deg,#f2e7d1,#fcf8ee 70%);
+  border-color:#d3b98f;box-shadow:inset 0 1px #ffffff88,0 12px 30px #222e3908;
+}
+body.research-mode.report-workspace .camera-illustration {filter:drop-shadow(0 22px 16px #79503720)}
+body.research-mode.report-workspace .question-float,
+body.research-mode.report-workspace .question-float:nth-of-type(2n) {
+  background:linear-gradient(135deg,#fffdf5,#f7efdf);border-color:#d7c6a8;
+  box-shadow:0 8px 18px #7950370d,inset 3px 0 #b88b4c55,inset 0 1px #ffffff;
+}
+body.research-mode.report-workspace .question-float:hover {background:#fffdf6;border-color:#b88b4c;box-shadow:0 12px 24px #79503719,inset 3px 0 #b88b4c88}
+body.research-mode.report-workspace .research-tabs [aria-selected=true] {background:linear-gradient(0deg,#b88b4c12,transparent 75%)}
+body.research-mode.report-workspace .research-tab-panel {background:#fcf8ee;border-color:#d5c7ae;box-shadow:0 10px 26px #222e3909,inset 0 1px #ffffff80}
+body.research-mode.report-workspace .event-detail {background:linear-gradient(110deg,#ede2cd,#f8f1e3);box-shadow:inset 3px 0 #b88b4c66}
+body.research-mode.report-workspace .source-toggle-hint {background:linear-gradient(145deg,#fffaf0,#ede2cd)}
+body.research-mode.report-workspace .source-collection {border-color:#c5ad88}
+body.research-mode.report-workspace .dlg {background:#fcf8ee;box-shadow:0 22px 90px #14202e33}
+body.research-mode.report-workspace .dlg-head {background:linear-gradient(110deg,#efe4cf,#fcf8ee);border-bottom-color:#cbb38b}
+body.research-mode.report-workspace .signal-item {background:#fffcf4;box-shadow:0 4px 12px #222e3905}
+body.research-mode.report-workspace .fab {background:linear-gradient(135deg,#38505d,#222e39);box-shadow:0 8px 25px #222e3922,inset 0 0 0 4px #e2bc7810}
+@media(max-width:1000px) {
+  body.research-mode.report-workspace .hero-title:after {opacity:.5;width:220px;right:0}
+}
+@media(max-width:700px) {
+  body.research-mode.report-workspace .hero-title:after {display:none}
+  body.research-mode.report-workspace .overview-grid {background:#fcf8ee}
+  body.research-mode.report-workspace #research-overview .radar-caption {color:#222e39}
+  body.research-mode.report-workspace .radar-caption span:last-child,
+  body.research-mode.report-workspace .research-radar>p {color:#6f675b}
+  body.research-mode.report-workspace .research-radar svg polygon,
+  body.research-mode.report-workspace .research-radar svg line {stroke:#6f675b}
+  body.research-mode.report-workspace .research-radar svg path {fill:#222e39;stroke:#222e39}
+  body.research-mode.report-workspace .research-radar svg text {fill:#222e39}
+  body.research-mode.report-workspace .research-radar svg text[font-size="12"] {fill:#6f675b}
+  body.research-mode.report-workspace .research-radar svg text[fill="#ed9b89"] {fill:#a44738}
+}
+
+
+/* Report workspace: fixed navigation, flowing report and docked assistant. */
+.workspace-sidebar,.workspace-assistant-toggle {display:none}
+body.research-mode.report-workspace {--workspace-nav:188px;--top-h:64px;--workspace-assist:320px}
+body.report-workspace .topbar {height:64px;padding:0 24px;gap:24px;z-index:90}
+body.report-workspace .topbar .brand {min-width:140px}
+body.report-workspace .case-strip {max-width:380px}
+body.report-workspace .workspace-assistant-toggle {display:flex;align-items:center;gap:9px;margin-left:0;background:#e2bc7812;color:#f7f0e0;border:1px solid #e2bc7855;border-radius:8px;padding:8px 12px;font:13px var(--sans);white-space:nowrap}
+body.report-workspace .workspace-assistant-toggle svg {width:18px;height:18px;color:#e2bc78}
+body.report-workspace .workspace-assistant-toggle[aria-expanded=true] {background:#e2bc782b}
+body.report-workspace .workspace-sidebar {display:flex;flex-direction:column;position:fixed;left:0;top:64px;bottom:0;width:var(--workspace-nav);padding:28px 14px 66px;background:linear-gradient(165deg,#fbf7ed,#f0e7d5);border-right:1px solid #d9ccb4;z-index:60;overflow:auto}
+.workspace-nav-label {font-size:10px;letter-spacing:.13em;color:#8d806c;margin:0 12px 12px}
+.workspace-chapter-label {margin-top:31px;padding-top:24px;border-top:1px solid #d9ccb4}
+body.report-workspace .workspace-sidebar .shell-nav {display:flex;flex-direction:column;align-items:stretch;gap:5px}
+body.report-workspace .workspace-sidebar .snav-b {display:flex;align-items:center;gap:12px;text-align:left;border-radius:8px;padding:11px 13px;font-size:14px;color:#6f675b;border:1px solid transparent}
+body.report-workspace .workspace-sidebar .snav-b:before {content:'';width:17px;height:17px;flex:none;background:currentColor;mask:center/contain no-repeat var(--nav-icon)}
+body.report-workspace .snav-b[data-sec=check] {--nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='10' cy='10' r='6'/%3E%3Cpath d='m15 15 6 6'/%3E%3C/svg%3E")}
+body.report-workspace .snav-b[data-sec=cases] {--nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M3 6h7l2 3h9v11H3V6Z'/%3E%3C/svg%3E")}
+body.report-workspace .snav-b[data-sec=me] {--nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3Cpath d='M4 21v-3c0-8 16-8 16 0v3'/%3E%3C/svg%3E")}
+body.report-workspace .workspace-sidebar .snav-b[aria-current=true] {background:#222e39;color:#f7f0e0;box-shadow:0 4px 10px #222e3910}
+.workspace-chapters {display:grid;gap:5px}
+.workspace-chapter {display:flex;align-items:center;gap:11px;padding:12px 11px;text-align:left;border:1px solid transparent;border-radius:8px;background:transparent;color:#6f675b;font:13px var(--sans);white-space:nowrap}
+.workspace-chapter svg {width:18px;height:18px;flex:none}
+.workspace-chapter small {margin-left:auto;font:10px var(--mono);color:#a29277}
+.workspace-chapter.is-primary {font-size:15px;font-weight:600;color:#29333a}
+.workspace-chapter:hover {background:#ede2cd80}
+.workspace-chapter[aria-current=location] {background:#e9dcc3;border-color:#b88b4c40;color:#795037;box-shadow:inset 3px 0 #b88b4c}
+.workspace-sidebar-foot {display:flex;align-items:center;gap:8px;margin:auto 12px 0;padding-top:28px;font-size:11px;color:#8d806c}
+.workspace-sidebar-foot i {width:5px;height:5px;border-radius:50%;background:#b88b4c}
+body.report-workspace #view {margin-left:var(--workspace-nav)}
+body.research-mode.report-workspace .case-layout {display:grid;grid-template-columns:minmax(0,1fr);align-items:start;gap:0;padding:0 28px;max-width:1800px;margin:0 auto;min-height:calc(100dvh - 64px)}
+body.research-mode.report-workspace .case-layout:has(.assist.open) {grid-template-columns:minmax(0,1fr) var(--workspace-assist);gap:22px}
+body.research-mode.report-workspace .report {container-type:inline-size;width:100%;min-width:0;max-width:none;padding:0;margin:0}
+body.research-mode.report-workspace .assist {position:sticky;top:80px;right:auto;bottom:auto;width:100%;max-width:none;height:calc(100dvh - 98px);min-height:380px;margin:16px 0 0;align-self:start;transform:none;z-index:30;border:1px solid #d9ccb4;border-radius:14px;background:#fcf8ee;box-shadow:0 8px 28px #222e390b;overflow:hidden;scroll-margin-top:80px}
+body.report-workspace .assist.open {animation:dockReveal .25s ease-out}
+@keyframes dockReveal {from{opacity:0}to{opacity:1}}
+body.report-workspace .assist .as-head {padding:18px 17px 14px;background:linear-gradient(120deg,#ede2cd88,#fcf8ee);border-bottom:1px solid #d9ccb4;flex:none}
+body.report-workspace .as-heading h3 {font-size:19px}
+body.report-workspace .as-heading p {font-size:11px;line-height:1.7;margin:7px 0 0}
+body.report-workspace .as-x {display:block;align-self:flex-start;width:28px;height:28px;background:#ede2cd88;border:1px solid #d9ccb4;border-radius:6px;font-size:20px}
+body.report-workspace .as-body {padding:16px;overscroll-behavior:contain}
+body.report-workspace .as-intro .chips {display:grid;gap:8px}
+body.report-workspace .as-intro .chip {text-align:left;border-radius:7px;padding:10px 11px;font-size:12px;background:#f7f0e0;border-color:#d9ccb4}
+body.report-workspace .as-intro .small {font-size:11px;line-height:1.8}
+body.report-workspace .qi-perch {height:72px;flex-basis:72px}
+body.report-workspace .qi-perch .qi-sprite {width:76px;height:76px}
+body.report-workspace .as-sel {padding:9px 16px;font-size:11px;line-height:1.6}
+body.report-workspace .as-input {padding:10px 14px 15px;min-width:0}
+body.report-workspace .as-input textarea {min-width:0;font-size:12px}
+body.report-workspace .fab {display:none!important}
+
+/* Compact the space around the same report sections, retaining their content and order. */
+body.report-workspace .research-hero {padding-top:20px}
+body.report-workspace .research-button {padding:8px 13px;font-size:12px}
+body.report-workspace .hero-title {padding:34px 0 26px}
+body.report-workspace .hero-title:after {top:6px;width:190px;height:165px;opacity:.55}
+body.report-workspace .hero-title .research-eyebrow {margin-bottom:12px;font-size:10px}
+body.report-workspace .research-hero h1 {font-size:clamp(30px,3.2vw,46px);line-height:1.3}
+body.report-workspace .hero-meta {margin-top:18px;gap:10px 18px;font-size:10px}
+body.report-workspace .research-flow {grid-template-columns:1.25fr 1.25fr 1fr 1fr;gap:15px;min-height:190px;padding-top:20px}
+body.report-workspace .flow-primary .flow-label {font-size:21px;padding:11px 14px;gap:7px}
+body.report-workspace .flow-secondary .flow-label {font-size:15px;padding:10px;gap:6px}
+body.report-workspace .flow-label b {font-size:10px}
+body.report-workspace .flow-label>span {font-size:18px;margin-left:0}
+body.report-workspace .flow-stop:nth-of-type(2),body.report-workspace .flow-stop:nth-of-type(4) {margin-top:33px}
+body.report-workspace .flow-stop:nth-of-type(3) {margin-top:0}
+body.report-workspace .flow-preview {margin-top:15px;padding:10px 10px 4px;gap:5px}
+body.report-workspace .flow-preview strong,body.report-workspace .flow-stop[data-section=overview] .flow-preview strong {font-size:14px}
+body.report-workspace .flow-preview small,body.report-workspace .flow-stop[data-section=overview] .flow-preview small {font-size:11px}
+body.report-workspace .mini-trace {height:20px;gap:4px}
+body.report-workspace .mini-trace i {width:4px;max-height:19px}
+body.report-workspace .hero-foot {margin-top:4px;padding:12px 0 15px}
+body.report-workspace .research-section {padding-top:38px;scroll-margin-top:82px}
+body.report-workspace .research-heading {margin-bottom:18px}
+body.report-workspace .research-heading h2 {font-size:27px;margin-top:6px}
+body.report-workspace .research-heading .research-eyebrow {font-size:10px}
+body.report-workspace .overview-grid {padding:24px;gap:28px;border-radius:15px}
+body.report-workspace .research-radar svg {max-height:290px}
+body.report-workspace .overview-summary {padding-left:20px}
+body.report-workspace .overview-summary .gl-q {font-size:12px;margin:10px 0 12px}
+body.report-workspace .overview-summary .gl-a {font-size:34px;margin-bottom:16px}
+body.report-workspace .overview-summary .gl-first li {font-size:14px;padding:7px 10px}
+body.report-workspace .overview-note {margin:18px 0}
+body.report-workspace .overview-note p {font-size:13px}
+body.report-workspace .research-signals {gap:12px}
+body.research-mode.report-workspace .research-signals .tile {padding:19px 18px;min-height:165px}
+body.report-workspace .research-signals .tile .t-h b {font-size:23px}
+body.report-workspace .research-signals .tile .t-p {font-size:14px;margin-top:14px}
+body.report-workspace .inquiry-stage {padding:28px 32px;gap:32px;min-height:350px;border-radius:15px}
+body.report-workspace .camera-illustration {width:200px}
+body.report-workspace .photo-launch strong {font-size:27px}
+body.report-workspace .question-float {padding:17px 18px}
+body.report-workspace .question-float strong {font-size:16px}
+body.report-workspace .research-tab-panel {padding:24px}
+body.report-workspace .research-tabs [role=tab] {font-size:16px;padding:12px 16px}
+body.report-workspace .research-sources {margin-top:38px}
+body.report-workspace .research-disclaimer {padding:22px 0 72px;margin-top:24px}
+
+/* Report-width breakpoints also respond to opening the assistant, not just window width. */
+@container (max-width: 850px) {
+  body.report-workspace .flow-primary .flow-label {font-size:17px;padding:10px;gap:5px}
+  body.report-workspace .flow-secondary .flow-label {font-size:13px;padding:10px 8px;gap:4px}
+  body.report-workspace .flow-label b {font-size:9px}
+  body.report-workspace .flow-label>span {font-size:14px}
+  body.report-workspace .flow-preview {padding-left:5px}
+  body.report-workspace .flow-preview strong,body.report-workspace .flow-stop[data-section=overview] .flow-preview strong {font-size:12px}
+  body.report-workspace .flow-preview small,body.report-workspace .flow-stop[data-section=overview] .flow-preview small {font-size:10px;white-space:normal}
+  body.report-workspace .overview-grid {padding:20px;gap:20px}
+  body.report-workspace .overview-summary {padding-left:8px}
+  body.report-workspace .radar-caption {flex-wrap:wrap;gap:3px}
+  body.report-workspace .research-signals {grid-template-columns:repeat(2,minmax(0,1fr))}
+  body.report-workspace .inquiry-stage {padding:24px;gap:24px}
+  body.report-workspace .question-float {transform:none;margin-left:0;padding:15px 12px}
+  body.report-workspace .question-float strong {font-size:14px}
+}
+@container (max-width: 550px) {
+  body.report-workspace .research-hero h1 {font-size:30px}
+  body.report-workspace .hero-title:after {display:none}
+  body.report-workspace .research-topline {gap:10px;align-items:center}
+  body.report-workspace .research-actions .ghost {display:none}
+  body.report-workspace .research-button {font-size:11px;padding:8px}
+  body.report-workspace .back-study {font-size:10px}
+  body.report-workspace .research-flow {grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 15px;min-height:0}
+  body.report-workspace .flow-wire {display:none}
+  body.report-workspace .flow-stop:nth-of-type(n) {margin-top:0}
+  body.report-workspace .flow-label {width:100%}
+  body.report-workspace .flow-label>span {margin-left:auto}
+  body.report-workspace .mini-trace {display:none}
+  body.report-workspace .flow-preview {margin-top:10px}
+  body.report-workspace .overview-grid {grid-template-columns:1fr;background:#fcf8ee}
+  body.report-workspace .research-radar {background:#243642;border-radius:10px;padding:16px}
+  body.report-workspace .overview-summary {border:0;padding:4px 0 0}
+  body.report-workspace #research-overview .radar-caption {color:#f7f0e0}
+  body.report-workspace .radar-caption span:last-child,body.report-workspace .research-radar>p {color:#d4cebd}
+  body.report-workspace .research-radar svg text {fill:#f7f0e0}
+  body.report-workspace .research-radar svg text[font-size="12"] {fill:#d4cebd}
+  body.report-workspace .research-radar svg path {fill:#e2bc78;stroke:#e2bc78}
+  body.report-workspace .research-radar svg text[fill="#ed9b89"] {fill:#efb19e}
+  body.report-workspace .inquiry-stage {grid-template-columns:1fr}
+  body.report-workspace .research-tab-panel {padding:18px}
+  body.report-workspace .research-tabs [role=tab] {font-size:13px;padding:11px}
+}
+@media (max-width:1399px) and (min-width:1100px) {
+  body.research-mode.report-workspace {--workspace-nav:166px;--workspace-assist:300px}
+  body.research-mode.report-workspace .case-layout {padding:0 22px}
+  body.research-mode.report-workspace .case-layout:has(.assist.open) {gap:18px}
+  body.report-workspace .workspace-sidebar {padding-inline:10px}
+  .workspace-chapter {gap:8px;padding-inline:9px}
+  .workspace-chapter small {display:none}
+}
+@media (max-width:1099px) {
+  body.research-mode.report-workspace {--workspace-nav:154px}
+  body.research-mode.report-workspace .case-layout,body.research-mode.report-workspace .case-layout:has(.assist.open) {grid-template-columns:minmax(0,1fr);gap:0;padding:0 22px}
+  body.research-mode.report-workspace .assist.open {grid-column:1;grid-row:1;position:relative;top:auto;min-height:0;height:min(560px,calc(100dvh - 100px));margin:20px 0 4px}
+  body.research-mode.report-workspace .case-layout:has(.assist.open) .report {grid-column:1;grid-row:2}
+  body.report-workspace .workspace-sidebar {padding-inline:10px}
+  .workspace-chapter {gap:8px;padding-inline:9px}
+  .workspace-chapter small {display:none}
+  body.report-workspace .topbar {gap:16px;padding-inline:20px}
+  body.report-workspace .topbar .brand {min-width:118px}
+}
+@media (max-width:700px) {
+  body.research-mode.report-workspace {--workspace-nav:70px}
+  body.report-workspace .topbar {padding-inline:14px;gap:12px}
+  body.report-workspace .topbar .brand {min-width:0}
+  body.report-workspace .case-strip {font-size:11px;border:0;padding-left:0;flex:1;min-width:0}
+  body.report-workspace .workspace-assistant-toggle {padding:8px;margin-left:auto}
+  body.report-workspace .workspace-assistant-toggle span {display:none}
+  body.report-workspace .workspace-sidebar {padding:19px 5px 68px}
+  .workspace-nav-label,.workspace-sidebar-foot {display:none}
+  body.report-workspace .workspace-sidebar .shell-nav {gap:4px}
+  body.report-workspace .workspace-sidebar .snav-b {flex-direction:column;gap:5px;font-size:10px;padding:10px 5px}
+  .workspace-chapters {margin-top:18px;padding-top:18px;border-top:1px solid #d9ccb4}
+  .workspace-chapter,.workspace-chapter.is-primary {flex-direction:column;gap:5px;padding:10px 3px;font-size:10px;white-space:normal}
+  body.research-mode.report-workspace .case-layout,body.research-mode.report-workspace .case-layout:has(.assist.open) {padding:0 14px}
+  body.report-workspace .research-flow {overflow:visible}
+  body.report-workspace .research-heading h2 {font-size:25px}
+  body.report-workspace .research-section {padding-top:30px}
+  body.report-workspace .research-signals .tile .t-h b {font-size:19px}
+  body.report-workspace .research-signals .tile .t-p {font-size:12px}
+}
+@media(prefers-reduced-motion:reduce) {body.report-workspace .assist.open {animation:none}}
+
+/* A slightly stronger frame and chapter rules; all existing dimensions stay intact. */
+body.research-mode.report-workspace .assist {
+  border-color:#8c918a;
+  background:#fffaf0;
+  box-shadow:0 0 0 1px #222e3912,0 12px 30px #222e391b;
+}
+body.research-mode.report-workspace .assist .as-head {
+  background:linear-gradient(110deg,#e9dfcc,#f2eadb);
+  border-bottom-color:#bcaa8b;
+  box-shadow:inset 0 3px #b88b4c;
+}
+body.research-mode.report-workspace .assist .as-x {border-color:#b8aa92;background:#fffaf0}
+body.research-mode.report-workspace .assist .as-sel {border-top-color:#c3b293;background:#f2eadb}
+body.research-mode.report-workspace .assist .as-input {background:#f2eadb}
+body.research-mode.report-workspace .assist .as-input textarea {border-color:#a9977a;background:#fffdf7}
+body.research-mode.report-workspace .report>.research-section {position:relative}
+body.research-mode.report-workspace .report>.research-section:not(#research-overview):not(#research-sources)::before {
+  content:"";position:absolute;left:0;right:0;top:16px;height:1px;
+  background:linear-gradient(90deg,#b88b4ca6,#cbbb9f 55%,#d9ccb4);
+  pointer-events:none;
+}
+body.research-mode.report-workspace .hero-foot {border-bottom-color:#c2b092}
+body.research-mode.report-workspace .overview-grid,
+body.research-mode.report-workspace .inquiry-stage,
+body.research-mode.report-workspace .research-tab-panel {
+  border-color:#bda887;
+  box-shadow:0 4px 14px #222e390b,inset 0 1px #fffdf5b3;
+}
+body.research-mode.report-workspace .research-signals .tile {
+  border-color:#c0ae91;
+  border-top-color:#a5814d;
+  box-shadow:0 4px 14px #222e390b,inset 0 1px #fffdf5;
+}
+body.research-mode.report-workspace .research-signals .tile.s-bad {border-top-color:#a44738}
+body.research-mode.report-workspace .source-collection {border-color:#bda887}
+body.research-mode.report-workspace .research-notes,
+body.research-mode.report-workspace .research-disclaimer {border-color:#c3b293}
+@media print {.workspace-sidebar,.workspace-assistant-toggle{display:none!important}body.report-workspace #view{margin-left:0}body.report-workspace .case-layout{display:block!important}}
