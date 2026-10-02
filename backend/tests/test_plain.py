@@ -97,3 +97,11 @@ def test_glance_replay_stays_with_its_case_and_version(tmp_path, changed_identit
     result, _ = build_glance(other, other.versions[0], replay_llm)
     assert result.mode == "template" and result.short == {}
     assert not replay_llm.calls
+
+
+def test_short_moved_to_the_wrong_item_is_rejected():
+    # 实测模型把"持牌名单"那条的短句错放到了"私募登记"那条上
+    from app.plain import _short_ok
+    amac_src = "私募基金管理人登记：已登记：P1021593，私募证券投资基金管理人，在管基金 21 只；协会公示了它的诚信信息"
+    assert not _short_ok("四类持牌名单都没它", amac_src, "")
+    assert _short_ok("已登记私募，有诚信信息", amac_src, "")

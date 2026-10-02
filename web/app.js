@@ -362,6 +362,7 @@ function renderCase() {
     <div class="report" id="report">
       ${caseHead(c, v)}
       ${conclusionHtml(v)}
+      ${chartsHtml(v)}
       ${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc(v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}
       ${tabsHtml(v)}
       <div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>
@@ -409,6 +410,64 @@ function conclusionHtml(v) {
       <article class="onepager" id="onepager">${opBody(currentOp(v), v)}</article>
     </div>
   </section>`;
+}
+
+// 用图看：图里的数全部来自记录和规则（后端 app/analysis/charts.py），不经过模型。没查的画虚线框，不画成 0
+const SIDE = { said: '它说的', record: '记录里的', reference: '参考值' };
+function chartsHtml(v) {
+  const cs = v.charts || [];
+  if (!cs.length) return '';
+  const small = cs.filter(c => c.kind !== 'timeline'), tl = cs.find(c => c.kind === 'timeline');
+  return `<section class="viz" id="LV" aria-label="用图看">
+    <div class="cc-bar"><span class="kicker">用图看</span><span class="small muted">图里的数全部来自记录，点图看出处</span></div>
+    ${small.length ? `<div class="viz-grid">${small.map(c => chartCard(c, v)).join('')}</div>` : ''}
+    ${tl ? chartCard(tl, v) : ''}
+  </section>`;
+}
+function chartCard(c, v) {
+  const body = c.kind === 'compare' ? compareHtml(c) : c.kind === 'share' ? shareHtml(c)
+    : c.kind === 'series' ? seriesSvg(c.points.map(p => p.label), c.points.map(p => p.value || 0)) : timelineHtml(c, v);
+  const refs = [...new Set([...c.points.map(p => p.ref), ...c.events.map(e => e.ref)].filter(Boolean))].sort((a, b) => +a.slice(1) - +b.slice(1));
+  const params = [...new Set(c.points.filter(p => !p.ref && p.source && p.side === 'reference').map(p => p.source))];
+  return `<figure class="vcard v-${c.kind}">
+    <figcaption><b>${esc(c.title)}</b>${c.item ? `<button type="button" class="linkish small" data-act="goto" data-id="${esc(c.item)}">看这一条</button>` : ''}</figcaption>
+    ${body}
+    ${c.note ? `<p class="v-note">${termText(c.note)}</p>` : ''}
+    ${refs.length || params.length ? `<div class="v-src">出处 ${refs.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(r)}</button>`).join('')}${params.map(s => srcLink(s)).join('')}</div>` : ''}
+  </figure>`;
+}
+function compareHtml(c) {
+  const max = Math.max(0, ...c.points.map(p => p.value ?? 0)) || 1;
+  const sides = [...new Set(c.points.map(p => p.side))];
+  return `<div class="cmp">${c.points.map(p => {
+    const na = p.value == null, zero = !na && p.value === 0;
+    const w = na ? 100 : Math.max((p.value / max) * 100, p.value > 0 ? 1.5 : 0);
+    return `<div class="cmp-row ${p.side}${na ? ' na' : ''}${zero ? ' zero' : ''}">
+      <span class="cmp-l">${esc(p.label)}</span>
+      <span class="cmp-bar"><i style="width:${w}%"></i>${na ? '<em>没查</em>' : ''}</span><b class="cmp-v">${esc(p.display)}</b></div>`;
+  }).join('')}</div>
+  ${sides.length > 1 ? `<div class="cmp-legend">${sides.map(s => `<span class="lg ${s}"><i></i>${SIDE[s]}</span>`).join('')}</div>` : ''}`;
+}
+function shareHtml(c) {
+  const fill = ['var(--ink)', 'var(--ink-3)', '#a9a294', 'var(--rule)'];
+  return `<div class="share-bar">${c.points.map((p, i) => `<span style="width:${p.value}%;background:${fill[i % 4]};color:${i % 4 < 2 ? '#fff' : 'var(--ink)'}" title="${esc(p.label)} ${esc(p.display)}">${p.value >= 15 ? esc(p.display) : ''}</span>`).join('')}</div>
+    <ul class="share-lg">${c.points.map((p, i) => `<li><i style="background:${fill[i % 4]}"></i>${esc(p.label)} <b>${esc(p.display)}</b></li>`).join('')}</ul>`;
+}
+function timelineHtml(c, v) {
+  const t = d => Date.parse(d.length === 7 ? `${d}-15` : d.slice(0, 10));
+  const today = t(v.created_at.slice(0, 10));
+  const all = [...c.events.map(e => t(e.date)), today];
+  const min = Math.min(...all), max = Math.max(...all), span = max - min || 1;
+  const pos = x => 3 + ((x - min) / span) * 94;
+  const years = [];
+  for (let y = new Date(min).getFullYear() + 1; y <= new Date(max).getFullYear(); y++) years.push(y);
+  return `<div class="tl-track">
+      ${years.map(y => `<span class="tl-tick" style="left:${pos(Date.parse(`${y}-01-01`))}%"><em>${y}</em></span>`).join('')}
+      <span class="tl-today" style="left:${pos(today)}%"><em>查询日</em></span>
+      ${c.events.map((e, i) => `<span class="tl-dot ${e.tone}" style="left:${pos(t(e.date))}%" title="${esc(e.date)} ${esc(e.label)}">${i + 1}</span>`).join('')}
+    </div>
+    <ol class="tl-list">${c.events.map((e, i) => `<li class="${e.tone}"${e.item ? ` data-act="goto" data-id="${esc(e.item)}" role="link" tabindex="0"` : ''}>
+      <span class="tl-n">${i + 1}</span><time>${esc(e.date)}</time><span>${esc(e.label)}</span></li>`).join('')}</ol>`;
 }
 
 // 一眼看懂：判定、颜色、排序全部来自规则；短句是报告生成时 AI 按规则原句缩写的（v.glance.short），没有就用原句
@@ -568,9 +627,9 @@ function changesPanel(v) {
 // 第二层：四个信号。每张卡只列要看的，其余折叠
 function signalsPanel(v, cm) {
   return `<p class="panel-lede">财务、信用、风险、口碑，排序跟着你的需求走。每张卡只列要看的，没问题和没查的折叠在下面。</p>
-    <div class="signals">${v.signals.map(sig => signalCard(sig, cm)).join('')}</div>`;
+    <div class="signals">${v.signals.map(sig => signalCard(sig, cm, v)).join('')}</div>`;
 }
-function signalCard(sig, cm) {
+function signalCard(sig, cm, v) {
   const flagged = sig.items.filter(i => FLAG.has(i.status));
   const rest = sig.items.filter(i => !FLAG.has(i.status));
   const open = S.openRest.has(sig.key) || !flagged.length && rest.length <= 2;
@@ -586,7 +645,7 @@ function signalCard(sig, cm) {
     ${rest.length ? (open
       ? `<div class="rest">${rest.map(it => itemHtml(sig.key, it, cm)).join('')}</div>${flagged.length || rest.length > 2 ? `<button type="button" class="rest-tog" data-act="rest" data-key="${sig.key}">收起</button>` : ''}`
       : `<button type="button" class="rest-tog" data-act="rest" data-key="${sig.key}">另外 ${restLabel} ▾</button>`) : ''}
-    ${sigExtra(sig)}
+    ${sigExtra(sig, v)}
   </section>`;
 }
 function itemHtml(sigKey, it, cm) {
@@ -598,18 +657,22 @@ function itemHtml(sigKey, it, cm) {
     <div class="it-m">${srcLink(it.source, it.ref)}</div>
   </div>`;
 }
-function sigExtra(sig) {
+function seriesSvg(months, counts) {
+  const max = Math.max(1, ...counts), w = 300, h = 64, bw = w / counts.length;
+  return `<svg class="chart" viewBox="0 0 ${w} ${h + 14}" role="img" aria-label="每月投诉数">${counts.map((n, i) => {
+    const bh = Math.round((n / max) * (h - 12));
+    return `<rect x="${i * bw + 3}" y="${h - bh}" width="${bw - 6}" height="${bh}" fill="${i >= counts.length - 3 ? 'var(--red)' : 'var(--ink-3)'}" opacity=".8"/>`
+      + `<text class="cv" x="${i * bw + bw / 2}" y="${h - bh - 2}" text-anchor="middle">${n}</text>`
+      + `<text x="${i * bw + bw / 2}" y="${h + 11}" text-anchor="middle">${esc(String(months[i] || '').slice(5))}</text>`;
+  }).join('')}</svg>`;
+}
+function sigExtra(sig, v) {
   const x = sig.extra;
   if (!x) return '';
   let out = '';
-  if (Array.isArray(x.months) && Array.isArray(x.counts) && x.counts.length) {
-    const max = Math.max(1, ...x.counts), w = 300, h = 64, bw = w / x.counts.length;
-    out += `<div class="chart-wrap"><svg class="chart" viewBox="0 0 ${w} ${h + 14}" role="img" aria-label="近 12 个月投诉数">${x.counts.map((n, i) => {
-      const bh = Math.round((n / max) * (h - 12));
-      return `<rect x="${i * bw + 3}" y="${h - bh}" width="${bw - 6}" height="${bh}" fill="${i >= x.counts.length - 3 ? 'var(--red)' : 'var(--ink-3)'}" opacity=".8"/>`
-        + `<text class="cv" x="${i * bw + bw / 2}" y="${h - bh - 2}" text-anchor="middle">${n}</text>`
-        + `<text x="${i * bw + bw / 2}" y="${h + 11}" text-anchor="middle">${esc(String(x.months[i] || '').slice(5))}</text>`;
-    }).join('')}</svg><div class="small muted">近 12 个月投诉数，红色是最近 3 个月。</div></div>`;
+  // 新报告的投诉趋势画在"用图看"里；旧案卷没有图表，才在卡片里画
+  if (Array.isArray(x.months) && Array.isArray(x.counts) && x.counts.length && !(v.charts || []).some(c => c.id === 'complaints')) {
+    out += `<div class="chart-wrap">${seriesSvg(x.months, x.counts)}<div class="small muted">近 12 个月投诉数，红色是最近 3 个月。</div></div>`;
   }
   if (Array.isArray(x.web) && x.web.length) {
     out += `<details class="webhits"><summary>搜到的 ${x.web.length} 条公开报道和投诉</summary><ul>${x.web.map(hh => `<li>

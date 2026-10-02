@@ -226,6 +226,34 @@ class Term(BaseModel):
     origin: Literal["glossary", "model"] = "glossary"  # model：报告生成时模型补的，词表里没有，标"AI 解释"
 
 
+class ChartPoint(BaseModel):
+    label: str
+    value: float | None = None           # None = 没查：前端画成虚线框写"没查"，不画成 0
+    display: str
+    side: Literal["said", "record", "reference"] = "record"  # 它说的 / 记录里的 / 参考值
+    ref: str | None = None               # RawRecord id
+    source: str | None = None            # Source id
+
+
+class TimelineEvent(BaseModel):
+    date: str                            # YYYY-MM-DD 或 YYYY-MM
+    label: str
+    tone: Literal["bad", "warn", "neutral", "future"] = "neutral"
+    ref: str | None = None
+    item: str | None = None              # 点了跳到的报告条目
+
+
+class Chart(BaseModel):
+    """报告里的图。数据全部来自记录和规则，不经过模型（app/analysis/charts.py）。"""
+    id: str                              # capital / return / scale / holders / complaints / timeline
+    kind: Literal["compare", "share", "series", "timeline"]
+    title: str
+    note: str | None = None              # 一句话读图
+    item: str | None = None              # 点图跳到的报告条目
+    points: list[ChartPoint] = Field(default_factory=list)
+    events: list[TimelineEvent] = Field(default_factory=list)
+
+
 class Glance(BaseModel):
     """一眼看懂：报告生成时一并写好的短句。判定、颜色、排序全部来自规则，模型只把规则写的长句缩短。"""
     first: list[str] = Field(default_factory=list)        # 回答"第一问"的条目 id（这一版里有的）
@@ -346,6 +374,7 @@ class Version(BaseModel):
     change_summary: str | None = None
     onepager: OnePager | None = None
     glance: Glance | None = None          # 报告首屏的短句（app/plain.py）
+    charts: list[Chart] = Field(default_factory=list)  # 报告里的图，全部来自记录和规则
     terms: list[Term] = Field(default_factory=list)  # 这一版报告里出现的名词及解释，随报告一起生成
 
 

@@ -3,7 +3,7 @@ import re
 from datetime import date
 
 from app.analysis.extract import Extraction
-from app.analysis.fmt import money, months_between
+from app.analysis.fmt import money, months_between, wan
 from app.analysis.verify import qualification_review, return_review
 from app.config import LOW_PAID_RATIO, YOUNG_COMPANY_MONTHS
 from app.models import (AmacHit, Assertion, ClaimKind, CompanyProfile, LicenseHit, RegistryHit, Scenario, Signal,
@@ -18,7 +18,9 @@ VERDICT_STATUS = {Verdict.mismatch: Status.bad, Verdict.redline: Status.bad, Ver
                   Verdict.attention: Status.warn, Verdict.unverifiable: Status.miss, Verdict.consistent: Status.ok}
 CASH_TOPIC = re.compile(r"兑付|提现|退款|跑路|失联|拿不回")
 DEAD_STATUS = re.compile(r"吊销|注销|撤销|停业|清算")
-QUAL_KEYS = ["bank_list", "amac", "product_code", "scope"]
+# 资格核验的检查项 → 风险信号的条目。按检查名对应，不按位置：说法核验会在前面插入"宣称的牌照"这类检查
+QUAL_KEYS = {"持牌机构名单": "bank_list", "私募基金管理人登记": "amac", "理财产品登记编码": "product_code",
+             "经营范围": "scope"}
 
 
 def _flags(items: list[SignalItem]) -> int:
@@ -45,15 +47,25 @@ def official_web_item(web: WebFindings | None, refs: dict[str, str]) -> SignalIt
     if not web.official and any("官方" in e for e in web.errors):
         return SignalItem(key="official_web", label=label, value="查询失败", detail="；".join(web.errors),
                           status=Status.none, source="web_official")
-    bad = [h for h in web.official if h.category in ("penalty", "warning")]
-    judicial = [h for h in web.official if h.category == "judicial"]
+    # 只算它是当事人的文件；正文里顺带提到它的（比如别家公司的处罚决定里写"员工在它那里兼职"）单独说
+    subject = [h for h in web.official if h.subject]
+    mentioned = [h for h in web.official if not h.subject and h.category in ("penalty", "warning", "judicial")]
+    also = f"；另有 {len(mentioned)} 份文件在正文里提到它，它不是当事人" if mentioned else ""
+    bad = [h for h in subject if h.category in ("penalty", "warning")]
+    judicial = [h for h in subject if h.category == "judicial"]
     if bad:
         kinds = "、".join(dict.fromkeys(h.category_label for h in bad))
-        return _hit_item("official_web", label, f"{len(bad)} 份文件点名了它（{kinds}）", bad[0], Status.bad, refs,
+        item = _hit_item("official_web", label, f"{len(bad)} 份文件点名了它（{kinds}）", bad[0], Status.bad, refs,
                          "web_official")
+        if also:
+            item.detail = (item.detail or "") + also
+        return item
     if judicial:
         return _hit_item("official_web", label, f"{len(judicial)} 份法院相关文件提到它", judicial[0], Status.warn, refs,
                          "web_official")
+    if mentioned:
+        return _hit_item("official_web", label, f"{len(mentioned)} 份处罚或法院文件在正文里提到它（它不是当事人）",
+                         mentioned[0], Status.warn, refs, "web_official")
     if web.official:
         return _hit_item("official_web", label, f"{len(web.official)} 份文件提到它，没有处罚或警示", web.official[0],
                          Status.ok, refs, "web_official")
@@ -62,9 +74,63 @@ def official_web_item(web: WebFindings | None, refs: dict[str, str]) -> SignalIt
                       status=Status.ok, source="web_official")
 
 
+PF_MIN = 1_000_000  # 投资单只私募基金的最低金额
+# 中基协诚信信息里属于处罚、纪律处分、失联这类的，判"有问题"；信息报送异常之类判"要留意"
+AMAC_SERIOUS = re.compile(r"行政处罚|纪律处分|失联|异常机构|虚假|违反.{0,4}底线|不良诚信")
+
+
+def _amac_detail(amac: AmacHit) -> dict | None:
+    return (amac.record or {}).get("detail") if amac.registered else None
+
+
+def amac_integrity_item(amac: AmacHit) -> SignalItem | None:
+    d = _amac_detail(amac)
+    integ = (d or {}).get("机构诚信信息") or {}
+    if not integ:
+        return None
+    heads = list(integ)
+    serious = [h for h in heads if AMAC_SERIOUS.search(h)]
+    detail = "；".join((integ[h][0] if integ[h] else h) for h in (serious or heads))
+    return SignalItem(key="amac_integrity", label="中基协诚信信息", value="、".join(heads), detail=detail[:200],
+                      status=Status.bad if serious else Status.warn, source="amac_detail")
+
+
+def amac_tips_item(amac: AmacHit) -> SignalItem | None:
+    d = _amac_detail(amac)
+    tips, special = (d or {}).get("机构提示信息") or [], (d or {}).get("协会特别提示") or []
+    if not tips and not special:
+        return None
+    value = "、".join(tips) if tips else f"{len(special)} 条特别提示"
+    return SignalItem(key="amac_tips", label="中基协提示", value=value, detail="；".join(special)[:240] or None,
+                      status=Status.warn, source="amac_detail")
+
+
+def amac_scale_item(amac: AmacHit) -> SignalItem | None:
+    f = _amac_detail(amac)
+    if not f or not f.get("管理规模区间"):
+        return None
+    detail = f"全职员工 {f.get('全职员工人数', '?')} 人，取得基金从业资格 {f.get('取得基金从业人数', '?')} 人；"              f"实缴资本 {f.get('实缴资本(万元)(人民币)', '?')} 万元（{f.get('注册资本实缴比例', '?')}）；"              f"管理人自行填报，{f.get('机构信息最后更新时间', '')} 更新"
+    return SignalItem(key="amac_scale", label="管理规模（中基协公示）", value=f.get("管理规模区间"), detail=detail,
+                      status=Status.ok, source="amac_detail")
+
+
+def pf_threshold_item(amac: AmacHit, amount: float | None) -> SignalItem | None:
+    """它是私募基金管理人：卖的只能是私募，只能卖给合格投资者，单只起投 100 万。"""
+    if not amac.registered:
+        return None
+    label, src = "私募门槛", "reg_pf_qualified"
+    if amount is not None and amount < PF_MIN:
+        return SignalItem(key="pf_threshold", label=label,
+                          value=f"私募基金只能卖给合格投资者，单只至少 100 万；这笔是 {wan(amount)}，达不到",
+                          detail="它登记的是私募基金管理人，不能向普通人公开推销产品", status=Status.bad, source=src)
+    return SignalItem(key="pf_threshold", label=label, value="私募基金只能卖给合格投资者，单只至少 100 万",
+                      detail="个人还要金融资产不低于 300 万元，或近三年年均收入不低于 50 万元", status=Status.warn, source=src)
+
+
 def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
                 scenario: Scenario, assertions: list[Assertion], others: list[RegistryHit] = (),
-                web: WebFindings | None = None, refs: dict[str, str] | None = None) -> Signal:
+                web: WebFindings | None = None, refs: dict[str, str] | None = None,
+                amount: float | None = None) -> Signal:
     items: list[SignalItem] = []
     warnings = [h for h in (web.official if web else []) if h.category == "warning"]
     if warnings:
@@ -73,7 +139,11 @@ def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit
     if scenario.license_checks or ext.is_financial or lic.found or any(h.found for h in others):
         checks, _, _ = qualification_review(ext, company, lic, amac, others)
         items += [SignalItem(key=k, label=c.label, value=c.result, status=c.status, source=c.source)
-                  for k, c in zip(QUAL_KEYS, checks)]
+                  for c in checks if (k := QUAL_KEYS.get(c.label))]
+        if "amac" in scenario.license_checks and (pf := pf_threshold_item(amac, amount)):
+            items.append(pf)
+        if tips := amac_tips_item(amac):
+            items.append(tips)
     else:
         items.append(SignalItem(key="bank_list", label="金融牌照", value="你的需求和材料都不涉及理财或投资，不适用",
                                 status=Status.ok, source="material"))
@@ -103,11 +173,13 @@ def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit
     return Signal(key="risk", title="风险", lede="最关键的一条：它有没有资格收你的钱。", flags=_flags(items), items=items)
 
 
-def finance_signal(company: CompanyProfile | None, claimed_stores: float | None) -> Signal:
+def finance_signal(company: CompanyProfile | None, claimed_stores: float | None, amac: AmacHit | None = None) -> Signal:
     lede = "普通公司不公开财报。但缺钱的公司，会在登记记录里留下影子。"
+    scale = amac_scale_item(amac) if amac else None
     if company is None:
-        return Signal(key="finance", title="财务", lede=lede, flags=0, items=_not_covered("registry"))
-    items: list[SignalItem] = []
+        items = ([scale] if scale else []) + _not_covered("registry")
+        return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items)
+    items: list[SignalItem] = [scale] if scale else []
     reg, paid = company.reg_capital, company.paid_capital
     due = f"，期限 {company.capital_due}" if company.capital_due else ""
     if paid is None:
@@ -146,11 +218,12 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None)
 
 
 def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings | None = None,
-                  refs: dict[str, str] | None = None) -> Signal:
+                  refs: dict[str, str] | None = None, amac: AmacHit | None = None) -> Signal:
     lede = "\"没有不良记录\"只说明查过的地方没有，不等于可靠。"
     web_item = official_web_item(web, refs or {})
+    integrity = amac_integrity_item(amac) if amac else None
     if company is None:
-        items = _not_covered("registry") + [web_item]
+        items = ([integrity] if integrity else []) + _not_covered("registry") + [web_item]
         return Signal(key="credit", title="信用", lede=lede, flags=_flags(items), items=items)
     months = months_between(company.founded, as_of)
     status = (Status.bad if DEAD_STATUS.search(company.status)
@@ -175,6 +248,8 @@ def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings 
             continue
         items.append(SignalItem(key=key, label=label, value=yes if hit else no,
                                 status=Status.bad if hit else Status.ok, source="registry"))
+    if integrity:
+        items.append(integrity)
     items.append(web_item)
     return Signal(key="credit", title="信用", lede=lede, flags=_flags(items), items=items)
 
@@ -238,13 +313,15 @@ def reputation_signal(data: dict | None, web: WebFindings | None = None, refs: d
 def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,
                   complaints: dict | None, as_of: date, scenario: Scenario,
                   assertions: list[Assertion] = (), others: list[RegistryHit] = (),
-                  web: WebFindings | None = None, web_refs: dict[str, str] | None = None) -> list[Signal]:
+                  web: WebFindings | None = None, web_refs: dict[str, str] | None = None,
+                  amount: float | None = None) -> list[Signal]:
     """四个信号的内容不随场景变；场景只改排序和开头那句话。"""
     scale = ext.claims.get(ClaimKind.scale)
     stores = scale.numbers.get("stores") if scale else None
     refs = web_refs or {}
-    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions), list(others), web, refs),
-                                  finance_signal(company, stores), credit_signal(company, as_of, web, refs),
+    signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions), list(others), web, refs,
+                                              amount),
+                                  finance_signal(company, stores, amac), credit_signal(company, as_of, web, refs, amac),
                                   reputation_signal(complaints, web, refs)]}
     for key, lede in scenario.signal_ledes.items():
         if key in signals:

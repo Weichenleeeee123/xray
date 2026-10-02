@@ -3,6 +3,8 @@
 来源有三类：对不上或核不了的说法、"该有的没有"和"没查"的项、场景模板里的必问清单。
 每个问题都写明拿到答案后去哪里查；同一主题只问一次，最多 5 个。
 """
+import re
+
 from app.models import Assertion, ClaimKind, MissingItem, Question, Scenario, Signal, Status
 
 LIMIT = 5
@@ -35,6 +37,11 @@ GAP_QUESTIONS = {
     "risk.amac": ("amac", "有没有私募基金管理人登记编号",
                   "中国证券投资基金业协会信息公示（gs.amac.org.cn）按名称或编号查"),
 }
+# 有问题 / 要留意时追问的条目
+FLAG_QUESTIONS = {
+    "risk.pf_threshold": ("pf_threshold", "你们推荐的是不是私募基金？我达不到合格投资者标准（单只 100 万起），为什么能卖给我",
+                          "中国证券投资基金业协会信息公示（gs.amac.org.cn）查这只产品的备案编号；查不到备案的不要买"),
+}
 # 用户最担心的事，对应到要问的主题
 FOCUS_ABOUT = {"急用时钱能不能拿回来": "refund", "本金会不会亏": "return_promise", "说的收益是不是真的": "return_promise",
                "这家公司正不正规、有没有资格": "qualification", "会不会让我先交钱": "upfront_fee"}
@@ -49,6 +56,12 @@ def build_questions(assertions: list[Assertion], missing: list[MissingItem], sig
         if a.color == "green" or a.kind not in CLAIM_QUESTIONS:
             continue
         ask, where = CLAIM_QUESTIONS[a.kind]
+        if a.kind is ClaimKind.background and not re.search(r"国资|国企|央企|国有|政府", a.text):
+            if "上市" in a.text:   # 说的是它自己上市，不是股东背景
+                ask, where = ("在哪个交易所上市？股票代码是多少",
+                              "上交所、深交所、北交所官网按股票代码查，核对公司全称是不是同一家")
+            else:
+                ask = "说的\"金融集团注资\"是哪一家？持股多少"
         rank = 0 if a.kind.value in focus_about else (1 if a.color == "red" else 2)
         candidates.append((rank, a.kind.value, Question(id="", ask=ask, why=a.plain, check_where=where, linked=[a.id])))
 
@@ -61,9 +74,13 @@ def build_questions(assertions: list[Assertion], missing: list[MissingItem], sig
             key = f"{s.key}.{item.key}"
             if key in ("credit.official_web", "risk.regulator_warning") and item.status is Status.bad:
                 candidates.append((1, "official_web", Question(
-                    id="", ask=f"政府网站上有一份点名你们的文件（{item.detail}），这件事现在处理完了吗",
+                    id="", ask=f"政府网站上有一份点名你们的文件（{(item.detail or '').split('；另有')[0]}），这件事现在处理完了吗",
                     why=f"{item.label}：{item.value}", check_where="点开原始数据里的原文链接，看处罚或通报的内容和日期",
                     linked=[key])))
+            if key in FLAG_QUESTIONS and item.status in (Status.bad, Status.warn):
+                about, ask, where = FLAG_QUESTIONS[key]
+                candidates.append((0 if item.status is Status.bad else 2, about,
+                                   Question(id="", ask=ask, why=f"{item.label}：{item.value}", check_where=where, linked=[key])))
             if key in GAP_QUESTIONS and item.status is Status.none:
                 about, ask, where = GAP_QUESTIONS[key]
                 candidates.append((3, about, Question(id="", ask=ask, why=f"{item.label}还没查：{item.detail or item.value}",

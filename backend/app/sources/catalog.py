@@ -30,6 +30,8 @@ def build_sources(license_meta: dict, registry_as_of: str, amac_as_of: str, comp
         Source(id="amac", name="私募基金管理人公示", kind="demo", as_of=amac_as_of,
                note="演示快照；中基协实时查询待对接"),
         Source(id="complaints", name="投诉平台", kind="demo", as_of=complaints_as_of, note="演示数据"),
+        Source(id="amac_detail", name="中基协私募基金管理人公示详情页", kind="official", url="https://gs.amac.org.cn",
+               note="管理规模、员工人数、资本由管理人自行填报；诚信信息、行政处罚、提示信息由协会公示"),
         Source(id="web_official", name="监管、法院、政府网站（联网搜索）", kind="official",
                note="通过比赛网关的联网搜索，只搜监管、法院、地方政府网站；只保留摘要里有公司全称的页面"),
         Source(id="web_news", name="公开报道和投诉（联网搜索）", kind="web",
@@ -44,6 +46,9 @@ def build_sources(license_meta: dict, registry_as_of: str, amac_as_of: str, comp
                note="理财产品销售文件须提示\"理财非存款、产品有风险、投资须谨慎\""),
         Source(id="reg_labor9", name="《中华人民共和国劳动合同法》第九条", kind="regulation", as_of="2012 修正",
                note="用人单位招用劳动者，不得要求劳动者提供担保或者以其他名义向劳动者收取财物"),
+        Source(id="reg_pf_qualified", name="《私募投资基金监督管理暂行办法》第十二条、第十四条", kind="regulation",
+               as_of="2014",
+               note="私募基金只能向合格投资者募集，投资单只私募基金不低于 100 万元；个人还要金融资产不低于 300 万元或近三年年均收入不低于 50 万元；不得向不特定对象公开宣传推介"),
         Source(id="param_rate", name="一年期定期存款参考利率", kind="parameter",
                note=f"演示参数 {REF_DEPOSIT_RATE:.1%}，正式版按实际挂牌利率更新"),
     ]

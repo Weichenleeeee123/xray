@@ -124,3 +124,26 @@ def test_assistant_may_relay_characterization_written_in_official_records(tmp_pa
     fake = FakeLLM(['{"answer": "浙江省政府的风险提示点名它涉嫌非法集资 [risk.regulator_warning]"}'], tmp_path / "llm")
     msg = answer(case, ChatIn(text="政府说过它什么"), fake)
     assert msg.mode == "model" and msg.rewrites == 0 and not msg.blocked
+
+
+def test_doc_date_subject_and_personal_info():
+    from app.sources.web import doc_date, is_subject, redact
+    assert doc_date("索引号…发文日期1648688353000名称") == "2022-03-31"     # 搜索引擎给的是收录日期，以页面为准
+    assert doc_date("发布日期：2024年9月13日") == "2024-09-13" and doc_date("无日期") is None
+    name = "杭州某某财富管理有限公司"
+    assert is_subject(f"关于对{name}采取出具警示函措施的决定", "", name)
+    assert is_subject("行政处罚决定书[2024]35号(某某财富、王某)", f"当事人:{name}(以下简称某某财富)", name)
+    assert not is_subject("关于对杭州某某资产管理有限公司采取出具警示函措施的决定", f"三、公司员工在{name}兼职。", name)
+    assert redact("王某,男,1978年8月出生,法定代表人,住址:浙江省杭州市西湖区。") == "王某,（出生信息略）,法定代表人,住址：略。"
+
+
+def test_documents_that_only_mention_it_are_not_counted_as_naming_it():
+    from app.analysis.signals import official_web_item
+    from app.sources.web import WebFindings, WebHit
+    web = WebFindings(searched=True, official=[
+        WebHit("penalty", "行政处罚 / 监管措施", True, "关于对它的决定", "https://a.gov.cn/1", "a", "2023-12-05", "", subject=True),
+        WebHit("penalty", "行政处罚 / 监管措施", True, "关于对别家的决定", "https://a.gov.cn/2", "a", "2022-03-31", "", subject=False)])
+    item = official_web_item(web, {})
+    assert item.value.startswith("1 份文件点名了它") and "另有 1 份文件在正文里提到它" in item.detail
+    only = official_web_item(WebFindings(searched=True, official=web.official[1:]), {})
+    assert only.status is Status.warn and "它不是当事人" in only.value
