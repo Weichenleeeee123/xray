@@ -36,7 +36,7 @@ cd backend
 | `XRAY_REF_DEPOSIT_RATE` | `0.011` | 承诺收益拿来比的一年期定存参考利率（演示参数） |
 | `XRAY_CASES_DIR`、`XRAY_REVIEWS_DIR`、`XRAY_CACHE_DIR` | `data/cases` 等 | 案卷、用户评价、缓存放哪；测试指到临时目录 |
 
-网关的实测结果和长思考超时的来龙去脉见 [Tokendance 能力记录](../docs/tokendance.md)；版本化引用、缓存与回放、还没接进主流程的模型增强见 [后端 B 接入说明](../docs/backend-b-integration.md)。没有做公网部署；要部署得先加访问口令，防止 Key 的额度被刷。
+网关的实测结果和长思考超时的来龙去脉见 [Tokendance 能力记录](../docs/tokendance.md)；版本化引用、缓存与回放、还没接进主流程的模型增强见 [后端 B 接入说明](../docs/backend-b-integration.md)。网站已部署到 `https://qier.asia`，由 Caddy 提供 HTTPS，按用户要求无需登录即可使用；服务器使用独立的 `/etc/qier/backend.env` 与 `/var/lib/qier` 数据目录，维护及验收说明见 [部署文档](../docs/deployment.md)。
 
 ### 浏览器演示验证
 

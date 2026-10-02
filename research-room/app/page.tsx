@@ -28,6 +28,7 @@ import {
 } from './research-events';
 import { ReportDossier } from './report-dossier';
 import { DemoExamples } from './demo-examples';
+import { useProgressiveImages } from './use-progressive-images';
 import type { DemoCase } from './research-input';
 import type { Station } from './research-events';
 const icons = {
@@ -59,6 +60,8 @@ const breeze = [
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export default function Home() {
+  const [previewReady, setPreviewReady] = useState(false);
+  const images = useProgressiveImages(previewReady);
   const [query, setQuery] = useState(''),
     [need, setNeed] = useState(''),
     [selectedDemo, setSelectedDemo] = useState<DemoCase | null>(null),
@@ -193,11 +196,18 @@ export default function Home() {
       <section
         className={`office-stage status-${status} breeze-active live-office ${opening ? 'report-opening' : ''}`}
         aria-label="小企企业研究室"
-        style={{ '--door-progress': door } as CSSProperties}
+        style={{
+          '--door-progress': door,
+          ...Object.fromEntries(Object.entries(images).map(([id, url]) => [
+            `--image-${id}`, `url("${url}")`,
+          ])),
+        } as CSSProperties}
       >
         <img
           className="office-background"
-          src="/research-assets/office-panorama-closed.png"
+          src={images.background}
+          onLoad={() => setPreviewReady(true)}
+          onError={() => setPreviewReady(true)}
           alt="企业研究室全景，包含图书架、企业档案、新闻资料、中央门和研究工位"
           width={1672}
           height={941}
@@ -347,6 +357,7 @@ export default function Home() {
         />
         {!idle && (
           <ReportDossier
+            artSrc={images.dossier}
             state={state}
             scene={scene}
             opening={!!opening}
