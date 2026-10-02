@@ -25,17 +25,19 @@ STEPS = {
     "lists": "持牌名单",
     "amac": "中基协私募登记",
     "registry": "工商登记",
+    "finance": "财务数据",
     "pack": "人工摘录的文书",
-    "web": "政府网站和公开报道",
-    "reviews": "用户评价",
+    "web": "政府网站",
+    "opinion": "新闻舆情和网上投诉",
+    "reviews": "本站用户评价",
     "rules": "对照规则",
     "plain": "写成短句",
 }
 # 查资料的步骤：done 带 coverage。其余三步（读需求、对照规则、写短句）是处理，coverage 为 null
-LOOKUPS = {"lists", "amac", "registry", "pack", "web", "reviews"}
+LOOKUPS = {"lists", "amac", "registry", "finance", "pack", "web", "opinion", "reviews"}
 GROUPS = {"lists": {"nfra_bank_list", *LICENSE_LISTS}, "amac": {"amac", "amac_detail"},
-          "registry": {"registry", "annual_report"}, "web": {"web_official", "web_news", "complaints"},
-          "reviews": {"user_reviews"}}
+          "registry": {"registry", "annual_report"}, "finance": {"qcc_finance"}, "web": {"web_official"},
+          "opinion": {"qcc_news", "web_news", "complaints"}, "reviews": {"user_reviews"}}
 GROUPED = set().union(*GROUPS.values())
 KIND_LABEL = {"collected": "人工证据包", "commercial": "企查查商业数据", "demo": "演示数据"}
 
@@ -91,22 +93,40 @@ def _pack_text(recs: list[RawRecord]) -> str:
     return f"{len(recs)} 份，项目组从官方网站摘录" if recs else "没有人工摘录的材料"
 
 
+def _replay(recs: list[RawRecord]) -> str:
+    return "（离线回放）" if any("离线回放" in (r.note or "") for r in recs) else ""
+
+
 def _web_text(recs: list[RawRecord]) -> str:
-    found = _found(recs)
     # 是搜到的页面数，不是"点名它的文件"数：哪些文件以它为当事人，由报告里的规则去分
-    parts = [f"政府网站页面 {n} 个" for n in [sum(r.source_id == "web_official" for r in found)] if n]
-    parts += [f"报道 {n} 条" for n in [sum(r.source_id == "web_news" for r in found)] if n]
+    n = len(_found(recs))
+    if n:
+        return f"搜到政府网站页面 {n} 个" + _replay(recs)
+    if any(r.coverage is Coverage.failed for r in recs):
+        return "搜索失败"
+    return ("搜了，没找到点名它的页面" if recs else "没查") + _replay(recs)
+
+
+def _opinion_text(recs: list[RawRecord]) -> str:
+    found = _found(recs)
+    parts = []
+    news = next((r for r in found if r.source_id == "qcc_news"), None)
+    if news is not None and isinstance(news.content, dict):
+        neg = len(news.content.get("负面新闻") or [])
+        parts.append(f"新闻 {news.content.get('平台记录总数', 0)} 条（最近 {news.content.get('返回的最近几条', 0)} 条里"
+                     f"企查查标负面 {neg} 条）")
+    parts += [f"网上投诉和报道 {n} 条" for n in [sum(r.source_id == "web_news" for r in found)] if n]
     parts += ["投诉记录（演示数据）" for r in found if r.source_id == "complaints"][:1]
     failed = any(r.coverage is Coverage.failed for r in recs)
     if parts:
-        text = "搜到" + "、".join(parts) + ("；有一项搜索失败" if failed else "")
+        text = "查到" + "、".join(parts) + ("；有一项没查成" if failed else "")
     elif failed:
-        text = "搜索失败"
+        text = "没查成"
     elif any(r.coverage is Coverage.not_found for r in recs):
-        text = "搜了，没找到点名它的页面"
+        text = "查了，没有新闻，也没搜到投诉"
     else:
         text = "没查"
-    return text + ("（离线回放）" if any("离线回放" in (r.note or "") for r in recs) else "")
+    return text + _replay(recs)
 
 
 def _reviews_text(recs: list[RawRecord]) -> str:
@@ -114,8 +134,20 @@ def _reviews_text(recs: list[RawRecord]) -> str:
     return f"{n} 条，别人说的，未核实" if n else "还没有人写评价"
 
 
+def _finance_text(recs: list[RawRecord]) -> str:
+    rec = next(iter(recs), None)
+    if rec is None or rec.coverage is Coverage.not_covered:
+        return "没查"
+    if rec.coverage is Coverage.failed:
+        return "没查成"
+    if rec.coverage is Coverage.not_found:
+        return "查了，没有公开的财务数据（非上市公司一般不公开）"
+    periods = (rec.content or {}).get("报告期") or []
+    return f"取到 {len(periods)} 个报告期，最新是{periods[0]['报告期']}" if periods else "取到财务数据"
+
+
 TEXT = {"lists": _lists_text, "amac": _amac_text, "registry": _registry_text, "pack": _pack_text,
-        "web": _web_text, "reviews": _reviews_text}
+        "web": _web_text, "finance": _finance_text, "opinion": _opinion_text, "reviews": _reviews_text}
 
 
 def intake_text(info: Intake) -> str:

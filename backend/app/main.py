@@ -5,9 +5,12 @@
 """
 import json
 import logging
+import os
 import queue
 import threading
 import time
+from pathlib import Path
+from uuid import uuid4
 from collections.abc import Callable
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -16,7 +19,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import config, progress
+from app import config, progress, runs
 from app.analysis.pipeline import NoNewReviews, load_services, new_case, refresh_reviews, resolve, supplement
 from app.analysis.report import onepager
 from app.assistant import answer
@@ -41,6 +44,9 @@ llm = LLM()
 store = CaseStore(config.CASES_DIR)
 
 app = FastAPI(title="X-Ray 透视·真相", version="0.2.0")
+RUNS_DIR = Path(os.getenv("XRAY_RUNS_DIR", config.DATA_DIR / "runs"))
+_active_runs: set[str] = set()
+_active_lock = threading.Lock()
 # 前端由本服务同源提供；放开跨域只是方便有人单独起前端调试
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -152,6 +158,62 @@ def _stream(first: dict, work: Callable[[], Case]) -> StreamingResponse:
 
     return StreamingResponse(lines(), media_type="application/x-ndjson",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _start_run(first: dict, work: Callable[[], Case]) -> dict:
+    """Launch a case build and retain progress independently of the browser connection."""
+    run_id = uuid4().hex[:24]
+    started = time.monotonic()
+
+    def put(event: dict) -> None:
+        runs.append(RUNS_DIR, run_id, {**event, "t": round(time.monotonic() - started, 2)})
+
+    with _active_lock:  # 先登记再写第一条，免得查询时看到"没在跑、也没结束"
+        _active_runs.add(run_id)
+    put(first)
+
+    def run() -> None:
+        try:
+            with progress.reporting(put):
+                case = work()
+            put({"type": "complete", "case_id": case.id, "version": case.current})
+        except Exception:  # noqa: BLE001 - raw provider errors stay in server logs
+            log.exception("run failed")
+            put({"type": "error", "message": "生成失败，请重试；如页面中断，先到案卷列表确认结果"})
+        finally:
+            with _active_lock:
+                _active_runs.discard(run_id)
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"run_id": run_id, "status": "running"}
+
+
+@app.post("/api/runs", status_code=202)
+def create_run(body: CaseIn) -> dict:
+    return _start_run(progress.begin("create", body.company_name, intake=True), lambda: _create(body))
+
+
+@app.post("/api/cases/{case_id}/runs", status_code=202)
+def supplement_run(case_id: str, body: SupplementIn) -> dict:
+    case = _case(case_id)
+    return _start_run(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
+                      lambda: _supplement(case, body))
+
+
+@app.get("/api/runs/{run_id}")
+def get_run(run_id: str, after: int = Query(0, ge=0)) -> dict:
+    try:
+        all_events = runs.events(RUNS_DIR, run_id)
+    except ValueError:
+        all_events = None
+    if all_events is None:
+        raise HTTPException(status_code=404, detail="研究任务不存在")
+    terminal = next((e for e in reversed(all_events) if e.get("type") in ("complete", "error")), None)
+    with _active_lock:
+        active = run_id in _active_runs
+    status = ("complete" if terminal["type"] == "complete" else "error") if terminal else ("running" if active else "interrupted")
+    return {"run_id": run_id, "status": status, "case_id": terminal.get("case_id") if terminal else None,
+            "events": all_events[after:], "next": len(all_events)}
 
 
 @app.post("/api/cases")

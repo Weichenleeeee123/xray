@@ -649,3 +649,9 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
 .rv p{margin:3px 0 0;font-size:14.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
 .k-user_review{color:#8a5a2b}
 @media (max-width:640px){.rv-top{grid-template-columns:1fr}.rv-h time{margin-left:0}}
+
+/* 财务卡片里的年报小表 */
+.fin-t { width: 100%; border-collapse: collapse; margin: 10px 0 4px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.fin-t th, .fin-t td { padding: 4px 6px; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+.fin-t th:first-child, .fin-t td:first-child { text-align: left; }
+.fin-t th { font-weight: 500; color: var(--ink-3); }

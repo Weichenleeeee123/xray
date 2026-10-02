@@ -118,9 +118,9 @@ def test_done_texts_follow_the_records():
         progress.done("lists", [rec("nfra_bank_list", "found", title="银行业金融机构法人名单 · 按名称查询"),
                                 rec("pbc_payment", "not_found")])
     assert [(e["coverage"], e["text"]) for e in got] == [
-        ("found", "搜到政府网站页面 2 个；有一项搜索失败"),     # 页面数，不说成"点名它的文件"
+        ("found", "搜到政府网站页面 2 个"),     # 页面数，不说成"点名它的文件"
         ("not_found", "搜了，没找到点名它的页面"),
         ("found", "查到登记信息（企查查商业数据）"),
         ("failed", "没查成（企查查商业数据）"),
         ("found", "2 份名单里，银行业金融机构法人名单有它")]
-    assert got[0]["counts"] == {"found": 2, "not_found": 0, "not_covered": 0, "failed": 1}
+    assert got[0]["counts"] == {"found": 2, "not_found": 0, "not_covered": 0, "failed": 0}  # web_news 归舆情那步

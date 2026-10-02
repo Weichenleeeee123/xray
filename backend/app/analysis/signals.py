@@ -12,6 +12,9 @@ from app.models import (AmacHit, Assertion, ClaimKind, CompanyProfile, LicenseHi
                         RawRecord, SignalItem, Status, Verdict)
 from app.sources.licenses import normalize
 from app.sources.web import OFFICIAL_DOMAINS, WebFindings, WebHit
+from app.sources import finance as fin
+from app.sources.finance import FinancialFindings
+from app.sources.news import NewsFindings
 
 NO_WEB = "联网搜索没开（没配模型网关，或处于离线模式）"
 
@@ -250,13 +253,56 @@ def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit
 SHOWN_NONE = "明细没取到，只知道条数"
 
 
-def finance_signal(company: CompanyProfile | None, claimed_stores: float | None, amac: AmacHit | None = None) -> Signal:
+def report_items(finance: FinancialFindings | None) -> list[SignalItem]:
+    """企查查财务数据：最新年报的营收、净利润，最新一期的资产负债率。只照抄，不判断高低；只有亏损标出来。"""
+    if finance is None:
+        return []
+    if finance.coverage != "found":
+        failed = finance.coverage == "failed"
+        return [SignalItem(key="reports", label="公开的财务数据", value="没查成" if failed else "没有",
+                           detail=finance.error if failed else "只有上市、发债等要公开披露的公司才有财报；没有不等于经营有问题",
+                           status=Status.none, source="qcc_finance")]
+    annual, latest = finance.latest_annual, finance.latest
+    items = []
+    if annual:
+        yoy = f"，同比 {fin.pct(annual.revenue_yoy, True)}" if annual.revenue_yoy is not None else ""
+        items.append(SignalItem(key="revenue", label=f"营业收入（{annual.label}）", value=fin.yi(annual.revenue) + yoy,
+                                detail="企查查汇总的公司定期报告数据，以公告原文为准", status=Status.ok,
+                                source="qcc_finance"))
+        loss = annual.net_profit is not None and annual.net_profit < 0
+        items.append(SignalItem(key="net_profit", label=f"净利润（{annual.label}）", value=fin.yi(annual.net_profit),
+                                detail="亏损" if loss else "只列数字，不判断高低", status=Status.warn if loss else Status.ok,
+                                source="qcc_finance"))
+    if latest and latest is not annual:
+        loss = latest.net_profit is not None and latest.net_profit < 0
+        items.append(SignalItem(key="latest_period", label=f"最新一期（{latest.label}）",
+                                value=f"营收 {fin.yi(latest.revenue)}，净利润 {fin.yi(latest.net_profit)}",
+                                detail=("亏损；" if loss else "") + "季报、中报是累计数，不能直接和年报比",
+                                status=Status.warn if loss else Status.ok, source="qcc_finance"))
+    if latest and latest.debt_ratio is not None:
+        items.append(SignalItem(key="debt_ratio", label=f"资产负债率（{latest.label}）", value=fin.pct(latest.debt_ratio),
+                                detail="平台算好的比率。银行、保险负债率高是常态，不同行业不能直接比",
+                                status=Status.ok, source="qcc_finance"))
+    return items
+
+
+def report_extra(finance: FinancialFindings | None) -> dict | None:
+    """近几年年报的营收、净利润，给报告页画一张小表。"""
+    annual = [p for p in (finance.periods if finance else []) if p.kind == "年报"][:3]
+    if not annual:
+        return None
+    return {"reports": [{"period": p.label, "revenue": fin.yi(p.revenue), "net_profit": fin.yi(p.net_profit),
+                         "revenue_yoy": fin.pct(p.revenue_yoy, True)} for p in annual]}
+
+
+def finance_signal(company: CompanyProfile | None, claimed_stores: float | None, amac: AmacHit | None = None,
+                   finance: FinancialFindings | None = None) -> Signal:
     lede = "普通公司不公开财报。但缺钱的公司，会在登记记录里留下影子。"
     scale = amac_scale_item(amac) if amac else None
     if company is None:
-        items = ([scale] if scale else []) + _not_covered("registry")
-        return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items)
-    items: list[SignalItem] = [scale] if scale else []
+        items = ([scale] if scale else []) + report_items(finance) + _not_covered("registry")
+        return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items, extra=report_extra(finance))
+    items: list[SignalItem] = ([scale] if scale else []) + report_items(finance)
     reg, paid = company.reg_capital, company.paid_capital
     due = f"，期限 {company.capital_due}" if company.capital_due else ""
     if paid is None:
@@ -296,7 +342,7 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
         n = company.n(key)
         items.append(SignalItem(key=key, label=label, value=f"{n} 条" if n else "无", detail=company.facts.get(key),
                                 status=bad if n else Status.ok, source="registry"))
-    return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items)
+    return Signal(key="finance", title="财务", lede=lede, flags=_flags(items), items=items, extra=report_extra(finance))
 
 
 def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings | None = None,
@@ -390,6 +436,28 @@ def web_reputation(web: WebFindings, refs: dict[str, str], lede: str) -> Signal:
     return Signal(key="reputation", title="口碑", lede=lede, flags=_flags(items), items=items, extra=extra)
 
 
+def news_items(news: NewsFindings, today: date) -> list[SignalItem]:
+    """企查查新闻舆情。负面是平台的模型标的：最多到"要留意"，不到"有问题"。"""
+    if news.coverage != "found":
+        failed = news.coverage == "failed"
+        return [SignalItem(key="news", label="新闻舆情", value="没查成" if failed else "没有新闻",
+                           detail=news.error if failed else "平台没有收录这家公司的新闻；没有不等于没人说过",
+                           status=Status.none, source="qcc_news")]
+    recent = news.recent_negatives(today)
+    shown = len(news.items)
+    items = [SignalItem(key="news", label="新闻舆情", value=f"共 {news.total} 条",
+                        detail=f"看的是最近 {shown} 条：负面 {news.counts().get('消极', 0)}、中立 {news.counts().get('中立', 0)}、"
+                               f"正面 {news.counts().get('积极', 0)}（企查查标的倾向）",
+                        status=Status.ok, source="qcc_news")]
+    if news.negatives:
+        top = (recent or news.negatives)[0]
+        items.append(SignalItem(key="news_negative", label="近一年企查查标为负面的新闻" if recent else "负面新闻（一年以前）",
+                                value=f"{len(recent)} 条" if recent else f"{len(news.negatives)} 条",
+                                detail=f"最近一条：{top.date or '日期不详'} {top.source}《{top.title}》",
+                                status=Status.warn if recent else Status.ok, source="qcc_news"))
+    return items
+
+
 def reputation_signal(data: dict | None, web: WebFindings | None = None, refs: dict[str, str] | None = None) -> Signal:
     lede = "单条投诉不能证明什么，可能有误会或夸大。我们看的是趋势和集中的主题。"
     if data is None and web is not None:
@@ -446,15 +514,24 @@ def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseH
                   complaints: dict | None, as_of: date, scenario: Scenario,
                   assertions: list[Assertion] = (), others: list[RegistryHit] = (),
                   web: WebFindings | None = None, web_refs: dict[str, str] | None = None,
-                  amount: float | None = None, reviews: list[dict] | None = None) -> list[Signal]:
+                  amount: float | None = None, reviews: list[dict] | None = None,
+                  finance: FinancialFindings | None = None, news: NewsFindings | None = None) -> list[Signal]:
     """四个信号的内容不随场景变；场景只改排序和开头那句话。"""
     scale = ext.claims.get(ClaimKind.scale)
     stores = scale.numbers.get("stores") if scale else None
     refs = web_refs or {}
     signals = {s.key: s for s in [risk_signal(ext, company, lic, amac, scenario, list(assertions), list(others), web, refs,
                                               amount),
-                                  finance_signal(company, stores, amac), credit_signal(company, as_of, web, refs, amac),
+                                  finance_signal(company, stores, amac, finance), credit_signal(company, as_of, web, refs, amac),
                                   reputation_signal(complaints, web, refs)]}
+    if news is not None:
+        rep = signals["reputation"]
+        if rep.items and rep.items[0].key == "complaints" and rep.items[0].status is Status.none:
+            rep.items = []  # "还没有投诉数据"：舆情查了，就不再说没查
+        rep.items[:0] = news_items(news, as_of)
+        rep.extra = (rep.extra or {}) | {"news": [{"title": i.title, "date": i.date, "source": i.source, "url": i.url}
+                                                  for i in news.negatives]}
+        rep.flags = _flags(rep.items)
     if item := review_item(reviews):
         rep = signals["reputation"]
         rep.items.append(item)

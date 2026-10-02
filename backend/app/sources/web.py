@@ -187,12 +187,13 @@ class WebClient:
 
         return self._cached("search", params, fetch)
 
-    def findings(self, name: str) -> WebFindings:
+    def _find(self, name: str, kinds: tuple[str, ...]) -> WebFindings:
         out = WebFindings(searched=True)
         short = short_name(name)
         jobs = {"official": (name, OFFICIAL_DOMAINS, None),
                 "news": (f"{short or name} 投诉 维权 兑付", None, AGGREGATORS)}
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = {k: jobs[k] for k in kinds}
+        with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             futures = {k: pool.submit(self.search, q, inc, exc) for k, (q, inc, exc) in jobs.items()}
             for k, (q, _, _) in jobs.items():
                 out.queries.append(q)
@@ -207,13 +208,13 @@ class WebClient:
                     domain = _domain(p["url"])
                     excerpt = _excerpt(p["text"], name)
                     by_short = False
-                    if not excerpt and k == "news" and short:  # 官方文件必须有全称；报道可以用简称
+                    if not excerpt and k != "official" and short:  # 官方文件必须有全称；报道可以用简称
                         excerpt, by_short = _excerpt(p["text"], short), True
                     if not excerpt or p["url"] in seen or _matches(domain, AGGREGATORS):
                         continue
                     seen.add(p["url"])
                     official = _matches(domain, OFFICIAL_DOMAINS) or domain.endswith(".gov.cn")
-                    if k == "news" and official:
+                    if k != "official" and official:
                         continue  # 官方页面由第一路搜索负责
                     cat, label = _classify(p["name"] + excerpt, OFFICIAL_CATS if official else NEWS_CATS)
                     found = doc_date(p["text"])
@@ -224,3 +225,14 @@ class WebClient:
                                  dated=found is not None)
                     (out.official if k == "official" else out.news).append(hit)
         return out
+
+    def find_official(self, name: str) -> WebFindings:
+        """只搜监管、法院、政府网站。"""
+        return self._find(name, ("official",))
+
+    def find_complaints(self, name: str) -> WebFindings:
+        """全网搜"简称 + 投诉 维权 兑付"：网上的投诉和维权帖、报道。"""
+        return self._find(name, ("news",))
+
+    def findings(self, name: str) -> WebFindings:
+        return self._find(name, ("official", "news"))

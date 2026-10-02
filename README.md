@@ -36,10 +36,10 @@ npm ci
 npm run dev -- --port 3000
 ```
 
-打开 http://localhost:3000 。默认后端为 `http://127.0.0.1:8000`；使用其他端口时，可在 `research-room/.env.local` 中设置 `XRAY_BACKEND_URL`。查询后输入框隐藏，五类资料标识按后端事件更新，暂停只控制动画。报告经保存校验后即可查看。`?animationTest=fast` 等本地测试入口使用合成事件，页面会明确标注。
+打开 http://localhost:3000 。默认后端为 `http://127.0.0.1:8000`；使用其他端口时，可在 `research-room/.env.local` 中设置 `XRAY_BACKEND_URL`。查询后输入框隐藏，五类资料标识按后端事件更新，暂停只控制动画。查询编号记在地址栏（`?run=…`），刷新页面会接着看同一次查询，不会重新提交。报告经保存校验后即可查看。`?animationTest=fast` 等本地测试入口使用合成事件，页面会明确标注。
 
 - 不配 Key 也能用：规则照常出结论，需求识别退回关键词，小企退回模板回答，工商登记显示"没查"。
-- 测试：`backend` 里跑 `.venv\Scripts\python -m pytest`（304 个，不连网、不扣费）；仓库根目录跑 `node --test web/tests/*.test.cjs`（27 个）。独立动画原型另有 `node --test research-room/tests/*.test.mjs`（9 个）。
+- 测试：`backend` 里跑 `.venv\Scripts\python -m pytest`（319 个，不连网、不扣费）；仓库根目录跑 `node --test web/tests/*.test.cjs`（27 个）。动画前端另有 `node --experimental-strip-types --test research-room/tests/*.test.mjs`（13 个；Node 22.18 以上可省掉这个参数）。
 - 断网演示：`.env` 里设 `XRAY_LLM_MODE=replay`，只用录好的模型响应，界面标"离线回放"。
 
 配置项、接口和数据来源的完整说明见 [backend/README.md](backend/README.md)。
@@ -53,6 +53,7 @@ npm run dev -- --port 3000
 | 监管、法院、政府网站上点名这家公司的文件 | 接了模型网关才联网搜，只留摘要里有公司全称的 | 官方记录 |
 | 投诉、维权、兑付相关的公开报道 | 同上，全网搜；只对上简称的标"可能是同名的别家" | 网络公开 |
 | 工商登记、股东、分支机构、上市信息、处罚、被执行、失信、限高、经营异常 | 企查查智能体数据平台，配了 Key 才查 | 商业数据（有出入以官方公示为准） |
+| 财务数据（上市、发债等公开财报的公司才有）、新闻舆情 | 同上；新闻的"负面"是企查查标的，不是我们的判断 | 商业数据 |
 | 项目组人工摘录的文书、年报 | `backend/data/evidence_packs/` | 人工采集 |
 | 3 家虚构公司的全部记录 | `backend/data/fixtures/` | 演示 · 虚构 |
 

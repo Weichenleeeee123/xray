@@ -154,9 +154,12 @@ export class OfficeDirector {
       return;
     }
     if (a.station === 'social' && a.visual === 'listen') {
+      // 访客只在真查到东西时来：新闻舆情、网上投诉或本站评价
       const hasReviews = state.steps.some(
         (s) =>
-          s.id === 'reviews' && s.phase === 'done' && s.coverage === 'found',
+          (s.id === 'reviews' || s.id === 'opinion') &&
+          s.phase === 'done' &&
+          s.coverage === 'found',
       );
       if (hasReviews) {
         this.queue.push(
@@ -165,7 +168,7 @@ export class OfficeDirector {
         this.queue.push(
           this.make(
             'research',
-            '交流用户评价（未经核实）',
+            '听访客讲新闻和投诉（未经核实）',
             'talk',
             1200,
             this.position,
@@ -208,7 +211,7 @@ export class OfficeDirector {
       this.queue.push(
         this.make(
           'research',
-          social ? '核对用户评价查询状态' : `查阅${station.title}`,
+          social ? '查新闻舆情和用户评价' : `查阅${station.title}`,
           social ? 'listen' : 'research',
           1200,
           this.position,

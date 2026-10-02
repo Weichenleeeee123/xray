@@ -218,17 +218,20 @@ def test_penalty_text_keeps_only_the_company_clause():
 def test_pledges_and_mortgages_where_it_is_the_creditor_do_not_count(tmp_path):
     bank = dict(TOOLS)
     bank["get_company_risk_scan"] = {"风险因子扫描": [{"风险因子": "股权出质", "条目数": 3}, {"风险因子": "动产抵押", "条目数": 2}]}
-    bank["get_equity_pledge_info"] = {"企业名称": NAME, "摘要": "该查询实体共有3条股权出质记录。", "提示": "已为您展示前2条。",
+    bank["get_equity_pledge_info"] = {"企业名称": NAME, "摘要": "该查询实体共有4条股权出质记录。", "提示": "已为您展示前3条。",
                                       "股权出质信息": [{"出质人": ["某影视股份有限公司"], "质权人": [NAME], "股权数额": "100万元",
                                                       "登记日期": "2024-10-08", "标的企业": "某科技有限公司"},
                                                      {"出质人": ["乙某"], "质权人": ["某银行股份有限公司"], "股权数额": "50万元",
-                                                      "登记日期": "2023-01-01", "标的企业": NAME}]}
+                                                      "登记日期": "2023-01-01", "标的企业": NAME},
+                                                     {"出质人": ["乙某"], "质权人": ["丙某某"], "股权数额": "1万元",
+                                                      "登记日期": "2022-01-01", "标的企业": NAME}]}
     bank["get_chattel_mortgage_info"] = {"企业名称": NAME, "摘要": "该查询实体共有2条动产抵押记录。",
                                          "动产抵押信息": [{"抵押人": "某服饰有限公司", "抵押权人": [NAME], "登记日期": "2019-12-11"},
                                                         {"抵押人": "某服饰二有限公司", "抵押权人": [NAME], "登记日期": "2019-10-29"}]}
     p = client(tmp_path, bank).fetch(NAME).profile
-    assert p.n("pledges") == 1 and p.pledges[0].pledgor == "自然人股东A" and p.pledges[0].pledgee == "某银行股份有限公司"
-    assert "别人押给它" in p.facts["pledges"] and "前 2 条" in p.facts["pledges"]
+    assert p.pledges[0].pledgor == "自然人股东A" and p.pledges[0].pledgee == "某银行股份有限公司"
+    assert p.pledges[1].pledgee == "自然人"  # 质权人是个人：名字不进报告
+    assert "别人押给它" in p.facts["pledges"] and "前 3 条" in p.facts["pledges"]
     assert p.n("mortgages") == 0 and p.known("mortgages") and "抵押权人" in p.facts["mortgages"]
 
 

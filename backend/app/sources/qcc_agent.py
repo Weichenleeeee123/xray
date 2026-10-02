@@ -38,7 +38,7 @@ COST = {"get_company_registration_info": 3, "get_company_risk_scan": 5, "get_sha
         "get_branches": 5, "get_listing_info": 1, "get_administrative_penalty": 3, "get_judgment_debtor_info": 3,
         "get_dishonest_info": 3, "get_high_consumption_restriction": 3, "get_business_exception": 3,
         "get_serious_violation": 3, "get_equity_pledge_info": 3, "get_chattel_mortgage_info": 3,
-        "get_tax_arrears_notice": 3}
+        "get_tax_arrears_notice": 3, "get_financial_data": 5, "get_news_sentiment": 5}
 # 风险扫描里的因子 → CompanyProfile 字段、明细工具
 RISK = {"penalties": ("行政处罚", "get_administrative_penalty"),
         "executions": ("被执行人", "get_judgment_debtor_info"),
@@ -343,6 +343,14 @@ class QccAgentClient:
                                    ensure_ascii=False), encoding="utf-8")
         return Call(data, None, False, when)
 
+    def financials(self, name: str) -> Call:
+        """财务数据（上市、发债等公开披露的公司才有）。解析在 app/sources/finance.py。"""
+        return self.call("company", "get_financial_data", name)
+
+    def news(self, name: str) -> Call:
+        """新闻舆情，最近 30 条带情感倾向。解析在 app/sources/news.py。"""
+        return self.call("operation", "get_news_sentiment", name)
+
     def fetch(self, name: str) -> QccAgentResult | None:
         """没配置返回 None。工商信息查不到或名称对不上，就不再调别的工具（省积分）。"""
         if not self.configured:
@@ -459,7 +467,9 @@ class QccAgentClient:
                                        pledgor="、".join(self._alias(x, people) if is_person(x) else x
                                                         for x in _names(r.get("出质人"))),
                                        share=_first(r, "出质股权数额", "股权数额", "出质数额"),
-                                       pledgee="、".join(_names(r.get("质权人")))) for r in own]
+                                       # 质权人是个人时不写名字（和原始数据里的处理一致）
+                                       pledgee="、".join("自然人" if is_person(x) or "*" in x else x
+                                                        for x in _names(r.get("质权人")))) for r in own]
             else:
                 p["mortgages"] = clean(own, people, company)
         elif fld in ("executions", "tax_arrears"):

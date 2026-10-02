@@ -12,7 +12,7 @@ cd backend
 - 前端：http://localhost:8000 （`web/`，原生 JS，不打包，改完刷新即可）
 - 接口文档：http://localhost:8000/docs
 - 断网备用的静态演示：http://localhost:8000/demo/
-- 测试：`.venv\Scripts\python -m pytest`，共 304 个，不连网、不需要 Key、不扣企查查积分；前端版本与流式接入测试在仓库根目录跑 `node --test web/tests/*.test.cjs`，共 27 个
+- 测试：`.venv\Scripts\python -m pytest`，共 319 个，不连网、不需要 Key、不扣企查查积分；前端版本与流式接入测试在仓库根目录跑 `node --test web/tests/*.test.cjs`，共 27 个
 - 新机器：`python -m venv .venv`，再 `.venv\Scripts\python -m pip install -r requirements-b.txt`（包含共享依赖和图片验证所需的 Pillow）。不要复制别人的 `.venv`，解释器路径不能跨机器用
 
 ### 配置（`backend/.env`）
@@ -66,6 +66,8 @@ cd backend
 | GET | `/api/cases`、`/api/cases/{id}` | 案卷列表；单个案卷（全部版本、原始数据、对话） |
 | POST | `/api/cases/{id}/supplements` | 二次分析。`kind`：`material` 新材料 / `reply` 对方回复 / `need` 改需求；`text` 必填 |
 | POST | `/api/cases/stream`、`/api/cases/{id}/supplements/stream` | 同上两个，但边查边发进度（NDJSON，一行一个事件），最后一行是整个案卷。给等待动画用，格式见 `docs/progress-events.md` |
+| POST | `/api/runs`、`/api/cases/{id}/runs` | 同建案卷、补充信息，但马上返回任务编号（202），后台跑；进度记在 `data/runs/`（git 忽略） |
+| GET | `/api/runs/{run_id}?after=n` | 取第 n 条以后的进度和状态（`running` / `complete` + `case_id` / `error` / `interrupted`）。页面刷新后用同一个编号接着看，不重复提交 |
 | POST | `/api/cases/{id}/resolve` | 对一条判断下结论（`judgment_id`、`action`：clarified / withdrawn / recheck、`note`），出一版新报告。界面上判断页先藏着（地址带 `?judg=1` 才显示），见[判断更新契约](../docs/2026-10-02-judgment-update-contract.md) |
 | POST | `/api/cases/{id}/reviews` | 把这家公司最新的用户评价放进案卷，出一版新报告（"更新用户评价"）；评价没变返回 409 |
 | GET | `/api/reviews?company=&author=` | 某家公司的用户评价：条数、1–5 星分布（不算平均分）、评价列表（新的在前；`mine` 标出这个浏览器写的） |
@@ -126,6 +128,7 @@ cd backend
 | 支付机构名单 | **真实**：人民银行《已获许可机构（支付机构）》，含许可证号、业务类型、有效期 | `data/registries/pbc_payment.csv` |
 | 私募基金管理人 | **真实**：中基协公示全量，共 18,396 家，含登记编号、在管基金数、特别提示/诚信信息标记 | `data/registries/amac_managers.csv` |
 | 企业工商信息（商业） | 企查查智能体数据平台（推荐，个人可注册）或企查查、天眼查开放平台，配置了才用，来源标"商业数据" | 缓存在 `data/cache/qcc_agent/`、`data/cache/commercial/` |
+| 财务数据、新闻舆情（商业） | 企查查智能体数据平台的 `get_financial_data`、`get_news_sentiment`，只在用智能体平台时查；虚构公司不查 | 同上，`data/cache/qcc_agent/` |
 | 人工采集的真实记录（公示系统、中基协、投诉、公司自述） | **真实**，来源类型 `collected` | `data/evidence_packs/<公司全称>.json`，怎么填见该目录 README |
 | 企业登记、年报、私募登记、投诉 | 演示，3 家公司全部虚构 | `data/fixtures/` |
 | 演示用材料（宣传单、对方回复、协议节选） | 演示，虚构 | `data/fixtures/flyers/` |
@@ -134,7 +137,7 @@ cd backend
 
 配了模型网关后，每家公司还会联网查证（`app/sources/web.py`，虚构的演示公司不查）：
 - 只搜监管、法院、政府网站，找点名它的处罚、监管措施、风险提示、法院文书。这类结果必须在摘要里有公司全称才保留，来源标"官方记录"。
-- 全网搜"简称 + 投诉、维权、兑付"，归进口碑信号。只匹配上简称的，原始数据里标"可能是同名的别家"。
+- 全网搜"简称 + 投诉、维权、兑付"，归进口碑信号（进度里是 `opinion` 那一步）。只匹配上简称的，原始数据里标"可能是同名的别家"。
 - 天眼查、企查查等商业数据网站的结果一律丢掉。分类靠关键词，不让模型判断。每次搜索都有缓存，断网时回放。网关实测见 [docs/tokendance.md](../docs/tokendance.md)。
 
 企查查、天眼查开放平台只取基本工商信息，处罚、出质、被执行等字段它不给，报告里这些项显示"没查"，不显示"无"（`CompanyProfile.checked` 控制）。查回来的公司名和输入对不上时不采用。
@@ -148,6 +151,8 @@ cd backend
 - 出质、抵押按角色算：出质只算标的企业是它的，抵押只算抵押人是它的；它当债权人的条数写在说明里，不算它的风险。风险扫描里打官司的条数不分原告被告，只标"要留意"；终本案件、税务非正常户这类才标"有问题"。
 - 证据包里没有 `registry` 段（只摘了文书）时，登记信息照样从企查查取。
 - 宣称上市的，对照上市信息里的交易所、股票代码。
+- 财务数据（`app/sources/finance.py`，每家 5 积分）：只有上市、发债等公开财报的公司才有。照抄营业总收入、净利润、总资产，以及平台算好的营收同比、资产负债率、净资产收益率，不自己重算、不判断高低（银行负债率 90% 以上是常态）；只有净利润为负标"要留意"。没有就写"没有公开的财务数据"，不等于经营差。报告财务卡片下面列近三年年报。
+- 新闻舆情（`app/sources/news.py`，每家 5 积分）：平台给总条数和最近 30 条（标题、时间、来源、负面/中立/正面）。倾向是企查查的模型标的，报告里写"企查查标为负面"；近一年有负面的标"要留意"，不到"有问题"。只存负面新闻的标题，标题括号里列的个人名字换成"相关个人"；中立、正面的只存日期和来源。
 
 更新名单：
 

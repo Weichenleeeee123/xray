@@ -921,6 +921,19 @@ function sigExtra(sig, v) {
       <div class="wm">${esc(hh.category || '其他')} · ${esc(hh.site || '')}${hh.date ? ' · ' + esc(hh.date) : ''}${hh.ref ? ` · <button type="button" class="cite" data-act="raw" data-ref="${esc(hh.ref)}">${esc(hh.ref)}</button>` : ''}</div>
       ${hh.excerpt ? `<div class="small">${esc(hh.excerpt)}</div>` : ''}</li>`).join('')}</ul></details>`;
   }
+  // 企查查新闻舆情：只列它标为负面的；倾向是平台标的，不是我们的判断
+  if (Array.isArray(x.news) && x.news.length) {
+    out += `<details class="webhits"><summary>企查查标为负面的 ${x.news.length} 条新闻</summary><ul>${x.news.map(n => `<li>
+      ${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.title || '（无标题）')}</a>` : esc(n.title || '（无标题）')}
+      <div class="wm">${esc(n.source || '')}${n.date ? ' · ' + esc(n.date) : ''}</div></li>`).join('')}</ul>
+      <div class="small muted">"负面"是企查查的模型标的，标题不等于事实，点开看原文。</div></details>`;
+  }
+  // 企查查财务数据：近几年年报，只列数
+  if (Array.isArray(x.reports) && x.reports.length) {
+    out += `<table class="fin-t"><thead><tr><th>年报</th><th>营业收入</th><th>同比</th><th>净利润</th></tr></thead><tbody>${x.reports.map(r => `<tr>
+      <td>${esc(r.period)}</td><td>${esc(r.revenue)}</td><td>${esc(r.revenue_yoy)}</td><td>${esc(r.net_profit)}</td></tr>`).join('')}</tbody></table>
+      <div class="small muted">企查查汇总的定期报告数据，以公司公告原文为准。</div>`;
+  }
   return out;
 }
 

@@ -124,7 +124,8 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     web_refs = {raw_by_id[rid].url: rid for rid in collected_ids if raw_by_id[rid].source_id.startswith("web_")}
     amount = inp.amount or intake.amount
     signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
-                            collected.others, collected.web, web_refs, amount, collected.reviews)
+                            collected.others, collected.web, web_refs, amount, collected.reviews,
+                            collected.finance, collected.news)
     pack_items = official_pack_items(inp.company_name, [raw_by_id[rid] for rid in collected_ids])
     add_pack_items(signals, pack_items, raw, company, collected.web, web_refs)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}

@@ -66,21 +66,21 @@ export const stations = [
   },
   {
     id: 'news',
-    title: '新闻摘要',
-    caption: '政府网站 · 公开报道',
+    title: '政府公告',
+    caption: '监管 · 法院 · 政府网站',
     steps: ['web'],
   },
   {
     id: 'data',
     title: '经营数据',
-    caption: '私募登记 · 公示详情',
-    steps: ['amac'],
+    caption: '私募登记 · 财务数据',
+    steps: ['amac', 'finance'],
   },
   {
     id: 'social',
     title: '社会舆情',
-    caption: '用户评价 · 未经核实',
-    steps: ['reviews'],
+    caption: '新闻舆情 · 网上投诉 · 用户评价',
+    steps: ['opinion', 'reviews'],
   },
 ] as const;
 export type Station = (typeof stations)[number]['id'];
@@ -263,5 +263,81 @@ export async function readCaseStream(
   } finally {
     await reader.cancel().catch(() => {});
     reader.releaseLock();
+  }
+}
+
+// ---------- 刷新后能接着看：后端把每次查询记成一个任务（/api/runs），按编号取进度 ----------
+export type RunStatus = 'running' | 'complete' | 'error' | 'interrupted';
+export type RunPage = {
+  run_id: string;
+  status: RunStatus;
+  case_id: string | null;
+  events: Array<Record<string, unknown>>;
+  next: number;
+};
+export async function startRun(
+  body: unknown,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const response = await fetchImpl('/api/runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    run_id?: unknown;
+    detail?: unknown;
+  };
+  if (!response.ok || typeof data.run_id !== 'string')
+    throw new BackendError(
+      typeof data.detail === 'string'
+        ? data.detail
+        : `请求失败（${response.status}）`,
+    );
+  return data.run_id;
+}
+// 轮询任务进度，把 begin/step 交给 onEvent；任务完成返回案卷编号。
+// 页面刷新后用同一个编号再调一次，从头补齐事件，不会重新提交查询。
+export async function followRun(
+  runId: string,
+  {
+    onEvent,
+    signal,
+    fetchImpl = fetch,
+    interval = 600,
+  }: {
+    onEvent: (e: ProgressEvent) => void;
+    signal?: AbortSignal;
+    fetchImpl?: typeof fetch;
+    interval?: number;
+  },
+): Promise<string> {
+  let next = 0;
+  for (;;) {
+    const response = await fetchImpl(
+      `/api/runs/${encodeURIComponent(runId)}?after=${next}`,
+      { signal, cache: 'no-store' },
+    );
+    if (response.status === 404)
+      throw new BackendError('找不到这次查询，可能后端换了机器或数据被清理，请重新查询');
+    if (!response.ok) throw new Error(`进度查询失败（${response.status}）`);
+    const page = (await response.json()) as RunPage;
+    for (const e of page.events) {
+      if (e.type === 'begin' || e.type === 'step') onEvent(e as ProgressEvent);
+      if (e.type === 'error')
+        throw new BackendError(String(e.message || '后端研究失败'));
+    }
+    next = page.next;
+    if (page.status === 'complete' && page.case_id) return page.case_id;
+    if (page.status === 'error') throw new BackendError('后端研究失败');
+    if (page.status === 'interrupted')
+      throw new BackendError('后端中途重启过，这次查询没有跑完，请重新查询');
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, interval);
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new DOMException('aborted', 'AbortError'));
+      });
+    });
   }
 }
