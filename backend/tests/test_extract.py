@@ -50,3 +50,13 @@ def test_ordinary_business_flyer_is_not_financial():
     ext = extract("明澄家政 · 专业保洁\n全国 3 家门店 · 服务 2 万家庭")
     assert not ext.is_financial
     assert set(ext.claims) == {ClaimKind.scale}
+
+
+def test_company_names_do_not_make_text_a_wealth_product_ad():
+    # 杭州银行的招聘介绍里有"杭银理财有限责任公司"，不能因此要它写"理财非存款"
+    from app.analysis.extract import RuleExtractor
+    bank = RuleExtractor().extract("此外，成立了杭银理财有限责任公司。2016年10月27日，首次公开发行A股在上海证券交易所成功上市。"
+                                   "目前，全行拥有200余家分支机构。")
+    assert not bank.is_financial
+    assert bank.claims["background"].words and bank.claims["scale"].numbers["stores"] == 200
+    assert RuleExtractor().extract("保本保息 年化 9%").is_financial

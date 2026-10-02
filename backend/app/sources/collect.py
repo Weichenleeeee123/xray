@@ -197,23 +197,26 @@ def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], real_amac
         data["checked"] = [k for k in data if k != "checked"]
         company = CompanyProfile(**data)
 
-    if "amac" in sec:
-        registered = bool(sec["amac"].data.get("registered"))
-        amac = AmacHit(coverage=Coverage.found if registered else Coverage.not_found, registered=registered)
-    elif real_amac:
+    # 中基协的官方名单和详情页优先；证据包里人工填的私募登记，只在没有官方数据时才用
+    if real_amac:
         amac, amac_records = real_amac
         records += amac_records
+    elif "amac" in sec:
+        registered = bool(sec["amac"].data.get("registered"))
+        amac = AmacHit(coverage=Coverage.found if registered else Coverage.not_found, registered=registered)
     else:
         amac = AmacHit(coverage=Coverage.not_covered)
     complaints = sec["complaints"].data if "complaints" in sec else None
 
     for sid in ("registry", "annual_report", "amac", "complaints"):
+        if sid == "amac" and real_amac:
+            continue
         if sid in sec:
             s = sec[sid]
             records.append(_raw(sid, s.title or s.source.name, "collected", Coverage.found, s.data,
                                 retrieved_at=s.retrieved_at, as_of=s.source.as_of, url=s.source.url,
                                 screenshot=s.screenshot, note=s.source.note))
-        elif not (sid == "amac" and real_amac):
+        else:
             sources[sid] = Source(id=sid, name=SECTIONS[sid], kind="collected", note="证据包里没有这一项")
             records.append(_raw(sid, SECTIONS[sid], "collected", Coverage.not_covered,
                                 note="没查：证据包里没有这一项"))

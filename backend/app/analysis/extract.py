@@ -50,11 +50,13 @@ NEGATABLE = {"保本", "保息", "还本付息", "刚性兑付"}
 ANNUAL_RATE = re.compile(r"年化(?:收益率?|回报率?)?[^\d%％]{0,4}(\d+(?:\.\d+)?)[%％]")
 BENCHMARK = re.compile(r"业绩比较基准[^\d%％]{0,4}(\d+(?:\.\d+)?)[%％]")
 PARTNER = re.compile(r"(?P<bank>[一-龥]{0,10}银行)?(?:资金)?存管|银行(?:战略)?合作")
-BACKGROUND = re.compile(r"国资背景|国企背景|央企|国有控股|国有企业|政府背景|政府支持|上市公司|上市集团")
+BACKGROUND = re.compile(r"国资背景|国企背景|央企|国有控股|国有企业|政府背景|政府支持|上市公司|上市集团|上市银行|"
+                        r"(?:证券交易所|上交所|深交所|北交所|主板|A股|港股)[^。；]{0,12}上市")
 CAPITAL = re.compile(r"注册资本[^\d]{0,4}(\d+(?:\.\d+)?)(亿|万)")
-STORES = re.compile(r"(\d+)家(?:门店|分公司|网点|分店|营业部)")
+STORES = re.compile(r"(\d+)\s*(?:余|多)?\s*家(?:门店|分公司|网点|分店|营业部|分支机构)")
 MEMBERS = re.compile(r"(\d+(?:\.\d+)?)(万|亿)?名?(?:会员|客户|用户|投资人)")
-# 像不像在卖理财产品。"基金""存管"这类词公司介绍里也常有，不算
+# 像不像在卖理财产品。"基金""存管"这类词公司介绍里也常有，不算；公司名里的"理财"（杭银理财有限责任公司）也不算
+COMPANY_NAME = re.compile(r"[一-龥]{2,20}(?:有限责任公司|股份有限公司|有限公司)")
 FINANCIAL = re.compile(r"理财|年化|保本|保息|收益率|收益权|认购|固定收益|还本付息|业绩比较基准")
 # 真实文案的写法：拥有信托、证券……等牌照 / 集团管理资产 3800 亿元 / 公司规模 100-499 人
 LICENSE_CLAIM = re.compile(r"(?:拥有|具有|具备|持有|取得|获得|手握)[^。；]{0,30}?牌照|全牌照")
@@ -176,7 +178,7 @@ class RuleExtractor:
         return Extraction(
             text=text,
             claims=claims,
-            is_financial=bool(FINANCIAL.search(flat)),
+            is_financial=bool(FINANCIAL.search(COMPANY_NAME.sub("", flat))),
             has_risk_disclosure=bool(ANY_DISCLOSURE.search(flat)),
             has_bank_wm_disclosure=bool(BANK_WM_DISCLOSURE.search(flat)),
             product_codes=list(dict.fromkeys(PRODUCT_CODE.findall(flat))),

@@ -22,7 +22,8 @@
       "ready": true,
       "note": "真实公司，证明它不只会吓人：持牌名单里有它；浙江证监局 2023-07-21 的责令改正决定也会如实列出。登记信息（实缴、股东、参保人数）要人工到公示系统查好放进证据包。",
       "input": {"company_name": "杭州银行股份有限公司", "need": "我收到杭州银行的 offer，想知道这家单位靠不靠谱"},
-      "material_file": null,
+      "material_file": "../materials/hzbank_campus2022.txt",
+      "material_title": "杭州银行 2022 校园招聘公告里的银行介绍（2026-10-02 摘录）",
       "supplements": []
     },
     {

@@ -57,8 +57,11 @@ def build_questions(assertions: list[Assertion], missing: list[MissingItem], sig
             continue
         ask, where = CLAIM_QUESTIONS[a.kind]
         if a.kind is ClaimKind.background and not re.search(r"国资|国企|央企|国有|政府", a.text):
-            backer = "上市公司" if "上市" in a.text else "金融集团注资"
-            ask = f"说的\"{backer}\"是哪一家？持股多少"
+            if "上市" in a.text:   # 说的是它自己上市，不是股东背景
+                ask, where = ("在哪个交易所上市？股票代码是多少",
+                              "上交所、深交所、北交所官网按股票代码查，核对公司全称是不是同一家")
+            else:
+                ask = "说的\"金融集团注资\"是哪一家？持股多少"
         rank = 0 if a.kind.value in focus_about else (1 if a.color == "red" else 2)
         candidates.append((rank, a.kind.value, Question(id="", ask=ask, why=a.plain, check_where=where, linked=[a.id])))
 
