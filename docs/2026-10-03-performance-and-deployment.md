@@ -53,3 +53,15 @@
 - 390 × 844 浏览器完成示例选择、查询、保存与报告打开，无横向溢出；桌面菜单仍能展开。手机放大镜中心的命中元素为 `company-query`。
 - 首页 88/88 行为测试通过，TypeScript 检查及生产构建通过。最终 CSS 约 66.9 KB（gzip 约 15.2 KB），增加移动布局后仍显著小于基线。独立审查发现的放大镜点击和浅底焦点对比问题均已修正。
 - 截图保存在本机 `.tmp/hackathon/screenshots/home-mobile-polished-final.jpg`、`home-mobile-ready.jpg`、`report-mobile-current.jpg` 与 `home-desktop-polished.jpg`。
+
+## 第一轮上线（2026-10-03 07:07，UTC+8）
+
+- 发布提交 `81cddc8`，服务器版本 `/opt/qier/releases/20261002T230700Z-81cddc8`。候选版本先以服务用户在回环端口 8001 验证，再检查无活动查询、问答和 8000 连接后切换；qier 与 Caddy 均为 active。
+- 保留 `/opt/qier/current.before-20261002T230700Z-81cddc8` 及全部旧 release。完整运行数据和私有配置备份位于 `/var/backups/qier/qier-before-20261002T230700Z-81cddc8.tar.gz`，仅 root 可读；切换前后 329 个运行数据文件 SHA-256 一致。
+- 公网报告资源哈希 `49ea1c0220662be8`、首页入口哈希 `166bbf7ac804cf81` 与候选版本一致。模型配置 qwen3.8-max / live；这只是服务配置，不证明任何单次回答来自实时模型。
+- 新访客案卷列表为空；Cookie 含 HttpOnly、Secure、SameSite=Lax，API 为 private/no-store，三种私有配置路径均 404。
+- 同一公网浏览器“禁用缓存、复用 h2 连接”样本：TTFB 0.465 s，FCP 1.368 s；此前同类条件样本 FCP 4.012 s。资源大小下降有确定证据，单次页面样本受网络等因素影响，不作为稳定 SLA。
+- 首次新连接仍有 TLS 6.793 s、TTFB 7.276 s、FCP 8.448 s，未宣称该路径已解决；Cloudflare 权威 DNS 迁移仍需阿里云短信验证。
+- 精确采用杭州银行示例输入时命中了服务器预制报告，进度回放约 20 s，**不能计为实时查询提速**。已单独列为来源透明性问题，继续验证不同需求的真实流程。
+
+本机 C 盘打包时耗尽空间，未完成的包保留、上传已停止，没有据此切换生产。将本次生成的 11 个临时渲染目录完整迁至 `D:/codex-artifacts/qier-hackathon-20261003/pitch-previews`，逐文件哈希校验，通过原路径 junction 继续访问。没有删除文件；完整代码包在 D 盘重新生成、校验并发布。

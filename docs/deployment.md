@@ -1,8 +1,10 @@
 # qier.asia 部署与维护
 
-首次部署验收时间：2026-10-03 00:23（Asia/Taipei）。按用户要求，00:27 已移除全站访问口令，首页、报告与 API 可直接使用，无需登录。该次部署的案卷为共享数据，没有用户间隔离。
+当前验收版本：`20261002T230700Z-81cddc8`，发布于 2026-10-03 07:07 左右（Asia/Taipei），已包含浏览器私有案卷、加载优化和新版报告摘要。详细记录见 [性能与部署](2026-10-03-performance-and-deployment.md)。
 
-> 待部署升级（2026-10-03）：本分支新增安全访客身份，案卷、材料、聊天和生成结果按浏览器隔离；不增加登录步骤。无法确认归属的历史案卷隐藏但保留，只有主动提交的评价公开。这不代表公网已经升级。发布前请完整阅读 [小企与私有案卷交接](2026-10-03-assistant-privacy-handoff.md)，持久化 `XRAY_PRIVATE_DIR`，核对 Cookie、HTTPS 代理与缓存设置，不能仅替换前端。
+> 当前站点无需登录，案卷、材料、聊天和生成结果按浏览器身份隔离。无法确认归属的历史案卷隐藏但保留，只有主动提交的评价公开。`XRAY_PRIVATE_DIR` 已持久化；公网验证了 HttpOnly、Secure、SameSite=Lax 和 API 的 private/no-store。维护时仍需遵循 [小企与私有案卷交接](2026-10-03-assistant-privacy-handoff.md)。
+
+首次部署验收于 2026-10-03 00:23，00:27 移除全站访问口令；最初版本曾使用共享案卷，后续升级已改为上述隔离方式。下方按日期保留历次部署记录，不把旧验收状态当作当前状态。
 
 ## 访问与架构
 
@@ -20,7 +22,7 @@
 | 路径 | 用途 |
 |---|---|
 | `/opt/qier/releases/20261002T152239Z` | 本次部署的代码、页面和公开资料 |
-| `/opt/qier/current` | 当前版本链接，目前指向 `/opt/qier/releases/20261002T163911Z-xiaoqi-656634d` |
+| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261002T230700Z-81cddc8` |
 | `/opt/qier/venv` | 独立 Python 环境 |
 | `/opt/qier/current/requirements-deployed.txt` | 服务器实际安装的完整依赖版本 |
 | `/etc/qier/backend.env` | 私有模型/企查查配置，由 systemd 加载，不在网站静态目录中 |
