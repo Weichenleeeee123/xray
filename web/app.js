@@ -21,6 +21,9 @@ const STATUS = { bad: '有问题', warn: '要留意', miss: '该有的没有', n
 const FLAG = new Set(['bad', 'warn', 'miss']);   // 要看的；ok、none 默认折叠
 const CHANGE = { new_concern: '新疑点', worse: '更严重', clarified: '疑点减轻', unchanged: '没变', added: '新增', removed: '这版没有了' };
 const MODE = { model: '模型回答', replay: '离线回放', template: '模板回答', guard: '已拦截' };
+// 判断页先收起来（地址带 ?judg=1 才显示）：它的逐条比对在"只改需求"时也会报"需要重新核实"，
+// 和"事实没变"打架；记录里查到的官方文书也不该一键撤掉。后端照常存判断，修好再放出来。
+const SHOW_JUDGMENTS = /[?&]judg=1/.test(location.search);
 const TABS = { judgments: '判断', changes: '变化', signals: '四个信号', claims: '宣称 vs 记录', questions: '该问对方的', raw: '原始数据' };
 // 三个分区。顺序就是顶栏顺序，也是第一次用的人该走的顺序
 const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['me', '我的', '状态、名单、名词表、这几条底线']];
@@ -521,7 +524,7 @@ function renderCase() {
       ${caseHead(c, v)}
       ${conclusionHtml(v)}
       ${chartsHtml(v)}
-      ${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc(v.judgment_summary || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}
+      ${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc((SHOW_JUDGMENTS && v.judgment_summary) || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}
       ${tabsHtml(v)}
       <div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>
       <footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>
@@ -744,11 +747,11 @@ function tabsHtml(v) {
   // （判断挪了三条、材料变化一条没有）标签上会写「变化 0」，而开头那句正说着有三条要重新核实。
   const mchg = v.changes.filter(x => x.kind !== 'unchanged').length;
   const jchg = (v.judgment_changes || []).filter(c => c.kind !== 'same').length;
-  const changed = Math.max(mchg, jchg);
+  const changed = SHOW_JUDGMENTS ? Math.max(mchg, jchg) : mchg;
   const jug = v.judgments || [];
   const counts = { judgments: [jug.length, jug.some(j => j.state === 'needs_check')], changes: [changed, changed > 0], signals: [flagged, flagged > 0], claims: [v.assertions.length + v.missing.length, (v.tally.red || 0) > 0],
     questions: [v.questions.length, false], raw: [v.raw_ids.length, false] };
-  const tabs = Object.keys(TABS).filter(k => (k !== 'changes' || v.no > 1) && (k !== 'judgments' || jug.length));
+  const tabs = Object.keys(TABS).filter(k => (k !== 'changes' || v.no > 1) && (k !== 'judgments' || (SHOW_JUDGMENTS && jug.length)));
   return `<nav class="tabs" role="tablist" aria-label="报告的各层">${tabs.map(k => `<button type="button" class="tab" role="tab" data-act="tab" data-tab="${k}" aria-selected="${S.tab === k}">${TABS[k]}<span class="n${counts[k][1] ? ' hot' : ''}">${counts[k][0]}</span></button>`).join('')}</nav>`;
 }
 function panelHtml(v) {
@@ -850,7 +853,7 @@ function fivePanel(v) {
 }
 
 function changesPanel(v) {
-  if ((v.judgment_changes || []).length) return fivePanel(v);
+  if (SHOW_JUDGMENTS && (v.judgment_changes || []).length) return fivePanel(v);
   const changed = v.changes.filter(x => x.kind !== 'unchanged');
   const same = v.changes.filter(x => x.kind === 'unchanged');
   return `<p class="panel-lede">第 ${v.no} 版（${esc(v.trigger_label)}）和第 ${v.no - 1} 版逐条比对的结果，由程序算出。</p>
