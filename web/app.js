@@ -1,4 +1,4 @@
-/* X-Ray 前端：原生 JS，不打包。契约以 backend/app/models.py 为准。
+/* 企er 前端：原生 JS，不打包。契约以 backend/app/models.py 为准。
  *
  * 路由：#/ 输入页；#/case/<id> 最新版报告；#/case/<id>/v/<n> 第 n 版。
  * 报告页：一页结论在最上面；四个信号、宣称 vs 记录、该问对方的、原始数据放在下面的标签页里，按需展开。
@@ -173,7 +173,7 @@ async function renderHome() {
   $('#view').innerHTML = `
   <div class="home">
     <section class="home-hero">
-      <div class="kicker">X-RAY · 透视·真相</div>
+      <div class="kicker">企er · 透视·真相</div>
       <h1>把钱交给一家公司之前，先看清它。</h1>
       <p>输入公司全称，说一句你要做什么。官方记录会汇到一起，对照它的说法，给你一份看得懂的报告。</p>
     </section>
