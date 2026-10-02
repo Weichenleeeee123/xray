@@ -1,6 +1,8 @@
 /* 企er 前端：原生 JS，不打包。契约以 backend/app/models.py 为准。
  *
- * 路由：#/ 输入页；#/case/<id> 最新版报告；#/case/<id>/v/<n> 第 n 版。
+ * 壳子分三个分区，顶栏一排按钮：查企（#/check）、案卷（#/cases）、我的（#/me）。
+ * 报告不占分区，它属于案卷：#/case/<id> 最新版报告；#/case/<id>/v/<n> 第 n 版。
+ * 右侧一栏是小企（AI）。三个分区里都在，没开案卷时它只说明自己能答什么、不能答什么，不假装能答。
  * 报告页：一页结论在最上面；四个信号、宣称 vs 记录、该问对方的、原始数据放在下面的标签页里，按需展开。
  * 页面里所有可点的东西都用 data-act 声明，统一在 onClick 里分发。
  * 条目 id：A1 说法、M1 缺项、risk.bank_list 信号条目、Q1 问题、R1 原始数据。R 开头的打开原始数据，其余跳到所在标签页里那一条。
@@ -20,6 +22,9 @@ const FLAG = new Set(['bad', 'warn', 'miss']);   // 要看的；ok、none 默认
 const CHANGE = { new_concern: '新疑点', worse: '更严重', clarified: '疑点减轻', unchanged: '没变', added: '新增', removed: '这版没有了' };
 const MODE = { model: '模型回答', replay: '离线回放', template: '模板回答', guard: '已拦截' };
 const TABS = { changes: '变化', signals: '四个信号', claims: '宣称 vs 记录', questions: '该问对方的', raw: '原始数据' };
+// 三个分区。顺序就是顶栏顺序，也是第一次用的人该走的顺序
+const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['me', '我的', '状态、名单、名词表、这几条底线']];
+const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
 const SUP_KIND = {
   material: { label: '新材料', help: '宣传单、合同、聊天记录的文字。可以上传图片、PDF、Word，读出来的文字会填进下面，你可以改。' },
   reply: { label: '对方的回复', help: '对方怎么回答你的问题。会记为"对方说的，未核实"，只用来对照，不当作事实。' },
@@ -118,7 +123,7 @@ function termPop(el, id) {
   const note = t.origin === 'model' ? 'AI 解释：词表里没有这个词，报告生成时由模型补充，没有经过人工核对。' : (basis ? `依据：${basis}` : '');
   popAt(el, `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}`);
 }
-const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问助手">${S.selected.has(id) ? '已选' : '问'}</button>`;
+const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问小企">${S.selected.has(id) ? '已选' : '问'}</button>`;
 const goLink = id => {
   const t = id.startsWith('term.') && termOf(id.slice(5));
   return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}">${esc(t ? `名词·${t.term}` : id)}</button>`;
@@ -149,11 +154,14 @@ const chgTag = (id, cm) => (cm[id] ? `<span class="chg-tag ${cm[id]}" title="和
 
 function renderTop() {
   const onCase = S.case && location.hash.startsWith('#/case/');
+  const sec = onCase ? 'cases' : (location.hash.match(/^#\/(check|cases|me)/) || [])[1] || 'check';
+  $('#shellNav').innerHTML = NAV.map(([k, label, hint]) =>
+    `<button type="button" class="snav-b" data-act="go" data-sec="${k}" aria-current="${k === sec}" title="${esc(hint)}">${label}</button>`).join('');
   $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : '';
   const llm = S.health && S.health.llm;
   let b = '';
   if (llm) {
-    if (!llm.configured || llm.mode === 'off') b += '<span class="tb off" title="没接模型：需求识别用关键词，助手用模板回答">未接模型</span>';
+    if (!llm.configured || llm.mode === 'off') b += '<span class="tb off" title="没接模型：需求识别用关键词，小企用模板回答">未接模型</span>';
     else if (llm.mode === 'replay') b += '<span class="tb replay" title="断网演示：只用录好的模型响应">离线回放</span>';
     else b += `<span class="tb live" title="${esc(llm.model || '')}">模型在线</span>`;
   }
@@ -161,31 +169,165 @@ function renderTop() {
   $('#topBadges').innerHTML = b;
 }
 
-// ---------- 首页 ----------
+// ---------- 壳子：三个分区 + 小企栏 ----------
 
-async function renderHome() {
+// 每个分区都长这样：左边是这一区的内容，右边一栏是小企。报告页用的也是这套结构（.case-layout），
+// 所以窄屏下小企栏会像报告页那样收成右下角一个球，不用另写一套。
+function shellHtml(main) {
+  return `<div class="case-layout">
+    <main class="report" id="report">${main}</main>
+    <aside class="assist" id="assist" aria-label="小企（AI 栏）">${qibarHtml()}</aside>
+  </div>
+  <button type="button" class="fab" data-act="open-assist">小企</button>`;
+}
+
+// 小企栏：开着案卷就是问答，没开案卷就说清楚它现在答不了、以及它能答什么
+function qibarHtml() {
+  if (S.case && /^#\/case\//.test(location.hash)) return assistHtml();
+  const llm = S.health && S.health.llm;
+  const line = llm && llm.configured && llm.mode !== 'off' ? '只答案卷里的数据，每句带出处。' : '没接模型，只摘案卷里的原话。';
+  return `<div class="as-head"><div><h3>小企</h3><p class="small muted">${esc(line)}</p></div>
+    <button type="button" class="as-x" data-act="close-assist" aria-label="收起小企">×</button></div>
+  <div class="as-body">
+    <p class="qi-lede">现在没有打开的案卷。小企只答案卷里有的东西，数据里没有就说没查到，不凭常识猜。</p>
+    <p class="small muted">打开一份案卷后，可以这样问它：</p>
+    <div class="chips">${QI_SUG.map(q => `<button type="button" class="chip" data-act="qi-nudge" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+    <ul class="qi-what">
+      <li>每句都带出处，能点开看原始记录和日期</li>
+      <li>数据里没有的，它说没查到</li>
+      <li>它不会改报告；新情况要点"加入案卷"才会重新判断</li>
+      <li>它不给公司定性，也不打安全分</li>
+    </ul>
+    <div class="qi-go"><a class="btn sm" href="#/check">去查一家公司</a><a class="linkish small" href="#/cases">看案卷</a></div>
+  </div>`;
+}
+
+// 官方名单那一行（查企页和我的页共用）
+function listLine(h) {
+  if (!h) return '名单没读到，先确认后端在跑。';
+  const SHORT = { nfra_insurance: '保险', csrc_futures: '期货', pbc_payment: '支付', amac_managers: '私募' };
+  const lists = [{ title: '银行业', count: h.licensed_count },
+    ...Object.entries(h.official_lists || {}).map(([k, l]) => ({ title: SHORT[k] || l.title, count: l.count }))];
+  return `每家公司都查 ${lists.length} 份官方名单：${lists.map(l => `${esc(l.title)} ${(l.count || 0).toLocaleString()} 家`).join('、')}。要过验证码的网站（企业登记、被执行、裁判文书）我们不绕过，查不到的写"没查"。`;
+}
+
+// ---------- 分区一：查企 ----------
+
+async function renderCheck() {
   S.case = null; useTerms(S.terms); renderTop();
   S.form = { userScenario: null, showScen: false, dirty: {}, intake: null };
-  const h = S.health;
-  const SHORT = { nfra_insurance: '保险', csrc_futures: '期货', pbc_payment: '支付', amac_managers: '私募' };
-  const lists = h ? [{ title: '银行业', count: h.licensed_count },
-    ...Object.entries(h.official_lists || {}).map(([k, l]) => ({ title: SHORT[k] || l.title, count: l.count }))] : [];
-  $('#view').innerHTML = `
+  $('#view').innerHTML = shellHtml(`
   <div class="home">
     <section class="home-hero">
-      <div class="kicker">企er · 透视·真相</div>
+      <div class="kicker">查企</div>
       <h1>把钱交给一家公司之前，先看清它。</h1>
       <p>输入公司全称，说一句你要做什么。官方记录会汇到一起，对照它的说法，给你一份看得懂的报告。</p>
     </section>
     <div id="formWrap">${formHtml()}</div>
-    <section class="recent" id="recent"></section>
-    ${lists.length ? `<p class="lists-line">每家公司都查 ${lists.length} 份官方名单：${lists.map(l => `${esc(l.title)} ${(l.count || 0).toLocaleString()} 家`).join('、')}。要过验证码的网站（企业登记、被执行、裁判文书）我们不绕过，查不到的写"没查"。</p>` : ''}
-  </div>`;
+    <p class="check-more" id="checkMore"></p>
+    <p class="lists-line">${listLine(S.health)}</p>
+  </div>`);
   bindForm();
   try {
     S.cases = await api('/api/cases');
-    if (S.cases.length) $('#recent').innerHTML = `<h2>最近的案卷</h2>${S.cases.slice(0, 5).map(c => `<a href="#/case/${esc(c.id)}"><b>${esc(c.company_name)}</b><span>${esc(c.scenario_label)} · ${c.versions} 版 · ${esc(fmtTime(c.created_at).slice(5))}</span></a>`).join('')}`;
+    if (S.cases.length) $('#checkMore').innerHTML = `<a href="#/cases">你查过 ${S.cases.length} 家，都在「案卷」里 →</a>`;
   } catch (e) { /* 列表读不到不影响新建 */ }
+}
+
+// ---------- 分区二：案卷 ----------
+
+async function renderCases() {
+  S.case = null; useTerms(S.terms); renderTop();
+  $('#view').innerHTML = shellHtml(`
+  <div class="home">
+    <section class="home-hero">
+      <div class="kicker">案卷</div>
+      <h1>查过的公司</h1>
+      <p>每查一家就留一份案卷。补材料、贴对方的回复、改需求，都记在同一份里，按版排下去，改动逐条列出。点开就是那份报告。</p>
+    </section>
+    <div class="cases" id="caseList"><p class="muted">读取案卷…</p></div>
+    <p class="lists-line">这一页按新建时间排。要按"最后一次变化的时间"排，需要在列表接口里多一个字段，现在还没有，所以这里只写新建时间。</p>
+  </div>`);
+  try {
+    S.cases = (await api('/api/cases')) || [];
+    $('#caseList').innerHTML = S.cases.length
+      ? S.cases.map(caseRow).join('')
+      : '<div class="empty-case"><p>还没有案卷。查一家公司，这里就会留一份。</p><a class="btn sm" href="#/check">去查一家公司</a></div>';
+  } catch (e) {
+    $('#caseList').innerHTML = `<p class="err">读不到案卷列表：${esc(e.message)}</p>`;
+  }
+}
+
+function caseRow(c) {
+  return `<a class="case-row" href="#/case/${esc(c.id)}">
+    <div class="cr-h"><b>${esc(c.company_name)}</b><span class="cr-n">${c.versions} 版</span></div>
+    ${c.need ? `<div class="cr-need">“${esc(c.need)}”</div>` : ''}
+    <div class="cr-m"><span>${esc(c.scenario_label)}</span><span>${esc(fmtTime(c.created_at))} 新建</span><span class="cr-go">打开 →</span></div>
+  </a>`;
+}
+
+// ---------- 分区三：我的 ----------
+
+async function renderMe() {
+  S.case = null; useTerms(S.terms); renderTop();
+  try { S.cases = (await api('/api/cases')) || []; } catch (e) { /* 读不到就不显示份数 */ }
+  const h = S.health || {}, llm = h.llm || {}, com = h.commercial || {};
+  const model = !llm.configured || llm.mode === 'off'
+    ? '没接模型。需求识别用关键词，小企用模板回答，只摘报告里的原话。'
+    : llm.mode === 'replay'
+      ? `离线回放。只用录好的模型回答（已录 ${llm.cached_replies || 0} 条），界面上会标出录于什么时候。`
+      : `模型在线（${llm.model || ''}）。需求识别、报告短句、小企的回答都走它；数字和措辞由程序逐条核对。`;
+  const commercial = com.configured
+    ? `已接（${com.provider || ''}）。这次演示最多调用 ${com.max_calls || 0} 次，已用 ${com.calls || 0} 次。`
+    : '没接。企业登记、年报这类数据，现在只能靠证据包、人工采集或演示数据顶上。';
+  const terms = S.terms.slice(0, 8);
+  $('#view').innerHTML = shellHtml(`
+  <div class="home">
+    <section class="home-hero">
+      <div class="kicker">我的</div>
+      <h1>这一版查得到什么，查不到什么</h1>
+      <p>这里是这套东西的底账：接没接模型、有没有商业数据源、名词怎么解释、材料放在哪，还有几条我们自己守着的规矩。</p>
+    </section>
+
+    <section class="me-sec"><h2>现在是什么状态</h2>
+      <dl class="kv-me">
+        <dt>模型</dt><dd>${esc(model)}</dd>
+        <dt>商业数据源</dt><dd>${esc(commercial)}</dd>
+        <dt>案卷</dt><dd>${S.cases.length ? `${S.cases.length} 份，在「案卷」里` : '这台上还没有案卷'}</dd>
+        <dt>名单版本</dt><dd>银行名单截至 ${esc(h.licensed_as_of || '—')}；企业登记截至 ${esc(h.registry_as_of || '—')}</dd>
+      </dl>
+    </section>
+
+    <section class="me-sec"><h2>查什么，不查什么</h2>
+      <p class="me-p">${listLine(h)}</p>
+      <p class="me-p">${(h.evidence_packs || []).length ? `已备好的证据包：${h.evidence_packs.map(esc).join('、')}。` : ''}没接商业数据源的时候，企业登记和年报只能用证据包、人工采集或演示数据顶上；缺的部分写成"没查"，不会写成"没问题"。</p>
+    </section>
+
+    <section class="me-sec"><h2>名词解释</h2>
+      <p class="me-p">报告里带虚线的词点一下就有解释，解释来自固定词表。这里是其中几个：</p>
+      ${terms.length ? `<div class="chips">${terms.map(t => `<button type="button" class="chip" data-act="term" data-term="${esc(t.id)}">${esc(t.term)}</button>`).join('')}</div>` : '<p class="muted small">词表没读到。</p>'}
+    </section>
+
+    <section class="me-sec"><h2>材料和数据放在哪</h2>
+      <ul class="me-ul">
+        <li>案卷存在跑后端的那台机器上（backend/data/cases），不进代码仓库。</li>
+        <li>你贴的宣传单、合同、聊天记录只用在这一次判断里，会原样留在案卷的原始数据中，随时能点开核对。</li>
+        <li>要过验证码的网站（企业登记、被执行、裁判文书）不绕过，查不到就写"没查"。</li>
+        <li>模型密钥只在后端的 .env 里，按 gitignore 处理，不进仓库，也不进前端。</li>
+      </ul>
+    </section>
+
+    <section class="me-sec"><h2>几条我们自己守着的规矩</h2>
+      <ul class="me-ul">
+        <li>结论由固定规则推出来，模型不判对错，只负责读材料和说人话。</li>
+        <li>每条结论都能点进原始数据和它的日期。</li>
+        <li>不打安全分，也不给公司定性；"没查"不等于没问题。</li>
+        <li>小企不知道就说没查到，不凭常识补。</li>
+        <li>聊天不会悄悄改报告；新情况要明确点"加入案卷"才会重新判断。</li>
+        <li>虚构的演示案例全程挂着"演示数据 · 公司为虚构"。</li>
+      </ul>
+    </section>
+  </div>`);
 }
 
 function formHtml() {
@@ -368,9 +510,9 @@ function renderCase() {
       <div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>
       <footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>
     </div>
-    <aside class="assist${assistOpen ? ' open' : ''}" id="assist" aria-label="AI 助手">${assistHtml()}</aside>
+    <aside class="assist${assistOpen ? ' open' : ''}" id="assist" aria-label="小企（AI 栏）">${assistHtml()}</aside>
   </div>
-  <button type="button" class="fab" data-act="open-assist">问助手${S.selected.size ? `<em>${S.selected.size}</em>` : ''}</button>`;
+  <button type="button" class="fab" data-act="open-assist">小企${S.selected.size ? `<em>${S.selected.size}</em>` : ''}</button>`;
   loadOnepager(v);
   scrollChat();
 }
@@ -823,7 +965,7 @@ function toggleSel(id) {
   if (S.selected.has(id)) S.selected.delete(id);
   else { if (S.selected.size >= 10) { toast('最多同时选 10 条'); return; } S.selected.add(id); }
   refreshSel();
-  if (S.selected.has(id) && window.matchMedia('(max-width:1280px)').matches) toast(`已选中 ${id}，点右下角"问助手"提问`);
+  if (S.selected.has(id) && window.matchMedia('(max-width:1280px)').matches) toast(`已选中 ${id}，点右下角"小企"提问`);
 }
 function refreshSel() {
   $$('.ask').forEach(b => {
@@ -834,7 +976,7 @@ function refreshSel() {
   const box = $('#asSel');
   if (box) box.innerHTML = selHtml();
   const fab = $('.fab');
-  if (fab) fab.innerHTML = `问助手${S.selected.size ? `<em>${S.selected.size}</em>` : ''}`;
+  if (fab) fab.innerHTML = `小企${S.selected.size ? `<em>${S.selected.size}</em>` : ''}`;
 }
 function tabFor(id) {
   if (/^[AM]\d+$/.test(id)) return 'claims';
@@ -861,7 +1003,7 @@ function gotoItem(id) {
   el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
 }
 
-// ---------- AI 助手 ----------
+// ---------- 小企（AI 栏）----------
 
 function modeLine() {
   const llm = S.health && S.health.llm;
@@ -871,8 +1013,8 @@ function modeLine() {
   return '只用这份案卷里的数据回答，关键事实标出处；没查到就直说。';
 }
 function assistHtml() {
-  return `<div class="as-head"><div><h3>问助手</h3><p class="small muted">${esc(modeLine())}</p></div>
-    <button type="button" class="as-x" data-act="close-assist" aria-label="关闭助手">×</button></div>
+  return `<div class="as-head"><div><h3>小企</h3><p class="small muted">${esc(modeLine())}</p></div>
+    <button type="button" class="as-x" data-act="close-assist" aria-label="收起小企">×</button></div>
   <div class="as-body" id="asBody">${chatHtml()}</div>
   <div class="as-sel" id="asSel">${selHtml()}</div>
   <form class="as-input" id="asForm"><textarea class="box" name="q" rows="2" maxlength="2000" placeholder="问这份报告里的任何一条…（Enter 发送）" aria-label="提问"></textarea><button class="btn sm" type="submit">问</button></form>`;
@@ -885,7 +1027,7 @@ function chatHtml() {
   const chat = S.case.chat;
   const sugg = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？', '它被处罚或点名过吗？'];
   const intro = `<div class="as-intro"><div class="chips">${sugg.map(q => `<button type="button" class="chip" data-act="ask" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
-    <p class="small muted">助手不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断。</p></div>`;
+    <p class="small muted">小企不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断。</p></div>`;
   return (chat.length ? '' : intro) + chat.map((m, i) => msgHtml(m, chat[i - 1])).join('') + (S.busy ? '<div class="typing" aria-label="正在回答"><i></i><i></i><i></i></div>' : '');
 }
 function citeText(text) {
@@ -939,7 +1081,7 @@ async function ask(q) {
       S.case.chat.pop(); refs.forEach(r => S.selected.add(r)); refreshSel();
       const ta = $('#asForm textarea'); if (ta) ta.value = q;
     }
-    toast('助手没答上来：' + e.message, true);
+    toast('小企没答上来：' + e.message, true);
   } finally { S.busy = false; refreshChat(); }
 }
 
@@ -1035,6 +1177,8 @@ document.addEventListener('click', e => {
   }
   const d = el.dataset;
   switch (d.act) {
+    case 'go': location.hash = `#/${d.sec}`; break;
+    case 'qi-nudge': toast('先打开一份案卷，小企才有数据可答'); break;
     case 'raw': openRaw(d.ref, d.hl ? JSON.parse(d.hl) : []); break;
     case 'goto': if (d.id.startsWith('term.')) termPop(el, d.id.slice(5)); else gotoItem(d.id); break;
     case 'sel': toggleSel(d.id); break;
@@ -1086,10 +1230,14 @@ async function route() {
     const sameCase = S.case && S.case.id === m[1];
     await openCase(m[1], m[2] ? +m[2] : null);
     if (!sameCase) window.scrollTo(0, 0);
-  } else {
-    await renderHome();
-    window.scrollTo(0, 0);
+    return;
   }
+  // 三个分区。#/check、#/cases、#/me，其余（含空 hash）都当查企
+  const sec = (location.hash.match(/^#\/(check|cases|me)/) || [])[1] || 'check';
+  if (sec === 'cases') await renderCases();
+  else if (sec === 'me') await renderMe();
+  else await renderCheck();
+  window.scrollTo(0, 0);
 }
 
 async function boot() {
