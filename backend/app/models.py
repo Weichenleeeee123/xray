@@ -108,6 +108,8 @@ class CompanyProfile(BaseModel):
     restricted: bool = False            # 限制高消费
     listing: dict | None = None         # 上市信息（交易所、股票代码……）；查了没有是 None，要配合 known("listing") 看
     counts: dict[str, int] = Field(default_factory=dict)  # 数据源给的总条数；明细只取了前几条或没取到时，以它为准
+    facts: dict[str, str] = Field(default_factory=dict)  # 失信、限高这类"有/无"项的一句话明细（日期、法院、金额）
+    risk_scan: dict[str, int] | None = None  # 商业数据的风险扫描：各类风险各有几条（含没单列的终本案件、裁判文书……）
     # 实际查过的字段。None 表示全部查过（演示数据）；商业接口、证据包只给了部分字段时，
     # 没列出的字段显示"没查"，不能因为默认是空列表就说成"无"
     checked: list[str] | None = None

@@ -11,7 +11,7 @@
 
 配置（backend/.env）：
     XRAY_COMMERCIAL=qcc_agent
-    QCC_AGENT_KEY=                 平台个人中心的 API Key（不带 "Bearer "）
+    QCC_AGENT_KEY=                 平台个人中心的 API Key；多个用逗号隔开，当前的失效或积分用完自动换下一个
     XRAY_QCC_MAX_POINTS=300        单次运行最多实际花多少积分（缓存命中不算）
 """
 import hashlib
@@ -63,7 +63,19 @@ DEAD = re.compile(r"注销|吊销|撤销|迁出")
 
 
 class QccError(Exception):
-    pass
+    def __init__(self, message: str, switch: bool = False):
+        super().__init__(message)
+        self.switch = switch or bool(SWITCH.search(message))   # 换下一个 Key 再试
+
+
+# 这几类错误是这个 Key 的问题（失效、积分用完、被限流），换个 Key 可能就好；查不到公司之类的不换
+SWITCH = re.compile(r"积分|额度|余额|配额|quota|invalid_token|凭证|token|过期|频率|rate", re.I)
+
+
+def parse_keys(text: str) -> list[str]:
+    """QCC_AGENT_KEY 可以填多个，用逗号隔开；每个前面带不带 "Bearer " 都行。"""
+    keys = [re.sub(r"(?i)^bearer\s+", "", k.strip()) for k in re.split(r"[,，;；\n]", text or "")]
+    return list(dict.fromkeys(k for k in keys if k))
 
 
 def parse_response(text: str) -> dict:
@@ -121,7 +133,22 @@ def _plain_summary(s: str) -> str:
     return "".join(keep).strip()
 
 
-def clean(obj, people: dict[str, str] | None = None):
+CLAUSE = re.compile(r"(?=[一二三四五六七八九十]+、)")
+NAMED = re.compile(r"对([一-龥·]{2,5}?)(给予|处以|处|责令|采取|没收|罚款|警告)")
+
+
+def scrub_text(text: str, company: str | None = None) -> str:
+    """处罚结果这类原文里会点到个人："一、对公司……；二、对某某给予警告，并处罚款"。
+    分条的只留讲到本公司的那几条；其余"对某某给予……"里的个人名字换成"相关个人"。"""
+    parts = [x.strip() for x in CLAUSE.split(text or "") if x.strip()]
+    if company and len(parts) > 1:
+        mine = [x for x in parts if company in x]
+        if mine:
+            text = " ".join(mine)
+    return NAMED.sub(lambda m: f"对相关个人{m.group(2)}" if is_person(m.group(1)) else m.group(0), text)
+
+
+def clean(obj, people: dict[str, str] | None = None, company: str | None = None):
     """存档前清理：删个人信息和定性话，自然人改代号。people 记录真名到代号的对应，同一个人在各处用同一个代号。"""
     people = {} if people is None else people
 
@@ -131,7 +158,9 @@ def clean(obj, people: dict[str, str] | None = None):
         return people[name]
 
     if isinstance(obj, list):
-        return [clean(x, people) for x in obj]
+        return [clean(x, people, company) for x in obj]
+    if isinstance(obj, str):
+        return scrub_text(obj, company) if NAMED.search(obj) else obj
     if not isinstance(obj, dict):
         return obj
     out = {}
@@ -144,12 +173,54 @@ def clean(obj, people: dict[str, str] | None = None):
                 continue
         elif re.search(r"股东.*名称|^股东$|出质人|投资人", k) and isinstance(v, str) and is_person(v):
             v = alias(v)
-        elif re.search(r"人(?:名称)?$", k) and isinstance(v, str) and is_person(v):
-            v = "自然人"                    # 申请人、被申请人等是个人时不写名字
+        elif re.search(r"人(?:名称)?$", k) and isinstance(v, (str, list)):
+            # 申请人、被申请人等是个人时不写名字（平台有时已打码成"华*"，一样换掉）
+            person = lambda x: isinstance(x, str) and (is_person(x) or "*" in x)
+            v = "自然人" if isinstance(v, str) and person(v) else                 [("自然人" if person(x) else x) for x in v] if isinstance(v, list) else v
+        elif k in ("处罚结果", "处罚内容", "处罚事由", "违法事实") and isinstance(v, str):
+            v = scrub_text(v, company)
         else:
-            v = clean(v, people)
+            v = clean(v, people, company)
         out[k] = v
     return out
+
+
+def _money_text(v) -> str:
+    try:
+        x = float(str(v).replace(",", ""))
+    except ValueError:
+        return str(v)
+    return f"{x / 1e4:g} 万元" if x >= 1e4 else f"{x:g} 元"
+
+
+def fact(rs: list[dict], n: int) -> str:
+    """失信、限高、经营异常的一句话：最近一条的日期、机关、案号、金额，多条时注明共几条。"""
+    r = max(rs, key=lambda r: _first(r, "发布日期", "立案日期", "列入日期"))
+    when = _first(r, "发布日期", "立案日期", "列入日期")
+    who = _first(r, "执行法院", "作出决定机关(列入)", "决定机关", "列入机关")
+    what = "，".join(x for x in (_first(r, "案号"), _first(r, "涉案金额", "执行标的") and
+                                 "涉案 " + _money_text(_first(r, "涉案金额", "执行标的")),
+                                 _first(r, "列入经营异常名录原因", "列入原因", "列入严重违法失信企业名单原因")) if x)
+    head = f"共 {n} 条，最近一条：" if n > 1 else ""
+    return f"{head}{when} {who}{'，' + what if what else ''}".strip()
+
+
+def _names(v) -> list[str]:
+    return [str(x) for x in v if x] if isinstance(v, list) else [str(v)] if v else []
+
+
+def _own_rows(fld: str, rs: list[dict], company: str) -> tuple[list[dict], list[dict]]:
+    """股权出质：标的企业是它，才是它的股权被押出去；动产抵押：抵押人是它，才是它的东西被押出去。"""
+    me = normalize(company)
+    subject, creditor = ("标的企业", "质权人") if fld == "pledges" else ("抵押人", "抵押权人")
+    own, theirs = [], []
+    for r in rs:
+        if r.get(subject):
+            mine = any(normalize(x) == me for x in _names(r.get(subject)))
+        else:
+            mine = not any(normalize(x) == me for x in _names(r.get(creditor)))
+        (own if mine else theirs).append(r)
+    return own, theirs
 
 
 def _pct(s) -> float:
@@ -208,9 +279,9 @@ class QccAgentResult:
 class QccAgentClient:
     def __init__(self, key: str | None = None, *, max_points: int | None = None, cache_dir=None,
                  transport: httpx.BaseTransport | None = None, timeout: float = 30):
-        self.key = (key if key is not None else os.getenv("QCC_AGENT_KEY", "")).strip()
-        if self.key.lower().startswith("bearer "):
-            self.key = self.key[7:].strip()
+        # 多个 Key：一直用当前这个，失效、积分不够或被限流才换下一个（结果有缓存，轮流换不省积分）
+        self.keys = parse_keys(key if key is not None else os.getenv("QCC_AGENT_KEY", ""))
+        self.current, self.dropped = 0, {}   # dropped：第几个 Key → 为什么换掉
         self.max_points = max_points if max_points is not None else int(os.getenv("XRAY_QCC_MAX_POINTS", "300"))
         self.cache_dir = cache_dir or config.CACHE_DIR / "qcc_agent"
         self.transport, self.timeout, self.points = transport, timeout, 0
@@ -218,25 +289,40 @@ class QccAgentClient:
 
     @property
     def configured(self) -> bool:
-        return bool(self.key)
+        return bool(self.keys)
 
     def status(self) -> dict:
         return {"provider": self.provider, "configured": self.configured, "points": self.points,
-                "max_points": self.max_points}
+                "max_points": self.max_points, "keys": len(self.keys), "using": self.current + 1,
+                "dropped": {i + 1: why for i, why in self.dropped.items()}}
 
     def _path(self, name: str, tool: str):
         return self.cache_dir / (hashlib.sha256(f"{normalize(name)}|{tool}".encode()).hexdigest()[:24] + ".json")
 
-    def _post(self, server: str, tool: str, name: str) -> dict:
+    def _post(self, server: str, tool: str, name: str, key: str) -> dict:
         payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                    "params": {"name": tool, "arguments": {"searchKey": name}}}
         with httpx.Client(timeout=self.timeout, transport=self.transport) as c:
             r = c.post(f"{BASE_URL}/{server}/stream", json=payload,
-                       headers={"Authorization": f"Bearer {self.key}", "Accept": "application/json, text/event-stream"})
-        if r.status_code in (401, 403):
-            raise QccError("API Key 无效或没有权限")
+                       headers={"Authorization": f"Bearer {key}", "Accept": "application/json, text/event-stream"})
+        if r.status_code in (401, 402, 403, 429):
+            raise QccError({401: "API Key 无效或过期", 402: "积分不足", 403: "没有权限", 429: "调用太频繁"}[r.status_code],
+                           switch=True)
         r.raise_for_status()
         return parse_response(r.text)
+
+    def _post_any(self, server: str, tool: str, name: str) -> dict:
+        """从当前 Key 开始试；这个 Key 的问题就换下一个，都不行才报错。"""
+        while self.current < len(self.keys):
+            try:
+                return self._post(server, tool, name, self.keys[self.current])
+            except QccError as e:
+                if not e.switch:
+                    raise
+                self.dropped[self.current] = str(e)[:60]
+                self.current += 1
+        raise QccError(f"{len(self.keys)} 个 Key 都不能用（" +
+                       "；".join(f"第 {i + 1} 个：{why}" for i, why in self.dropped.items()) + "）")
 
     def call(self, server: str, tool: str, name: str) -> Call:
         path = self._path(name, tool)
@@ -247,11 +333,11 @@ class QccAgentClient:
         cost = COST.get(tool, 5)
         if self.points + cost > self.max_points:
             return Call(None, f"本次运行已花 {self.points} 积分，到上限了，没有再查", False, when)
-        self.points += cost
         try:
-            data = self._post(server, tool, name)
+            data = self._post_any(server, tool, name)
         except (httpx.HTTPError, ValueError, QccError) as e:
             return Call(None, f"查询失败：{e if isinstance(e, QccError) else type(e).__name__}", False, when)
+        self.points += cost
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"query": name, "tool": tool, "retrieved_at": when, "data": data},
                                    ensure_ascii=False), encoding="utf-8")
@@ -274,7 +360,7 @@ class QccAgentClient:
                                   f"按名称查到的是\"{found}\"，和输入的名字对不上，没有采用。请输入公司全称再查", found=False)
 
         people: dict[str, str] = {}
-        content: dict = {"工商信息": clean(reg, people)}
+        content: dict = {"工商信息": clean(reg, people, found)}
         checked = list(BASIC)
         p: dict = dict(name=found, code=reg.get("统一社会信用代码") or None, status=reg.get("登记状态") or "未知",
                        founded=_day(reg.get("成立日期")) or "", reg_capital=parse_money(reg.get("注册资本")) or 0.0,
@@ -290,6 +376,7 @@ class QccAgentClient:
             calls.append("风险扫描")
             factors = {f.get("风险因子"): f.get("条目数") for f in (scan.data or {}).get("风险因子扫描", [])}
             content["风险扫描"] = {k: v for k, v in factors.items()}
+            p["risk_scan"] = {k: v for k, v in factors.items() if isinstance(k, str) and isinstance(v, int)}
             for fld, (factor, tool) in RISK.items():
                 n = factors.get(factor)
                 if not isinstance(n, int):
@@ -308,8 +395,8 @@ class QccAgentClient:
                     gaps.append(f"{factor}明细：{d.error}")
                     continue
                 calls.append(factor)
-                content[factor] = clean(d.data or {}, people)
-                self._details(fld, d.data or {}, p, people)
+                content[factor] = clean(d.data or {}, people, found)
+                self._details(fld, d.data or {}, p, people, found)
 
         for label, tool, fld in (("股东", "get_shareholder_info", "shareholders"),
                                  ("分支机构", "get_branches", "branches"),
@@ -321,7 +408,7 @@ class QccAgentClient:
                 continue
             calls.append(label)
             data = c.data or {}
-            content[label] = clean(data, people)
+            content[label] = clean(data, people, found)
             checked.append(fld)
             if fld == "shareholders":
                 p["shareholders"] = [Shareholder(name=self._alias(n, people) if is_person(n) else n,
@@ -346,22 +433,43 @@ class QccAgentClient:
         clean({"股东名称": name}, people)
         return people[name]
 
-    def _details(self, fld: str, data: dict, p: dict, people: dict[str, str]) -> None:
-        rs = rows(data)
+    def _details(self, fld: str, data: dict, p: dict, people: dict[str, str], company: str) -> None:
+        raw_rows = rows(data)
+        rs = rows(clean(data, people, company))
         if fld == "penalties":
             p["penalties"] = [Penalty(date=_day(_first(r, "处罚日期", "决定日期")) or _first(r, "处罚日期"),
                                       org=_first(r, "处罚单位", "处罚机关", "决定机关"),
                                       reason=_first(r, "处罚事由", "违法事实", "违法行为类型", "决定书文号"),
                                       result=_first(r, "处罚结果", "处罚内容")) for r in rs]
-        elif fld == "pledges":
-            p["pledges"] = [Pledge(date=_day(_first(r, "登记日期", "公示日期")) or "",
-                                   pledgor=self._alias(n, people) if is_person(n := _first(r, "出质人")) else n,
-                                   share=_first(r, "出质股权数额", "出质数额"), pledgee=_first(r, "质权人"))
-                            for r in rs]
-        elif fld in ("mortgages", "executions", "tax_arrears"):
-            p[fld] = clean(rs, people)
+        elif fld in ("pledges", "mortgages"):
+            # 平台把它当质权人、抵押权人（别人押给它，比如银行放贷）的记录也算进来了；只留押的是它自己的
+            own, creditor = _own_rows(fld, raw_rows, company)
+            shown = len(raw_rows) < total(data)
+            p["counts"][fld] = len(own)
+            notes = []
+            if creditor:
+                notes.append(f"另有 {len(creditor)} 条是别人押给它（它是{'质权人' if fld == 'pledges' else '抵押权人'}），"
+                             "不是它的风险")
+            if shown:
+                notes.append(f"共 {total(data)} 条，平台只给了前 {len(raw_rows)} 条明细，其余没核对")
+            if notes:
+                p.setdefault("facts", {})[fld] = "；".join(notes)
+            if fld == "pledges":
+                p["pledges"] = [Pledge(date=_day(_first(r, "登记日期", "公示日期")) or "",
+                                       pledgor="、".join(self._alias(x, people) if is_person(x) else x
+                                                        for x in _names(r.get("出质人"))),
+                                       share=_first(r, "出质股权数额", "股权数额", "出质数额"),
+                                       pledgee="、".join(_names(r.get("质权人")))) for r in own]
+            else:
+                p["mortgages"] = clean(own, people, company)
+        elif fld in ("executions", "tax_arrears"):
+            p[fld] = rs
         elif fld == "abnormal" and rs and all(_first(r, "移出日期") for r in rs):
             p["abnormal"] = False            # 都已移出
+        if fld in ("dishonest", "restricted", "abnormal", "serious_illegal") and rs:
+            p.setdefault("facts", {})[fld] = fact(rs, total(data))
+
+
 
     @staticmethod
     def _listing(data: dict) -> dict:

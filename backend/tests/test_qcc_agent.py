@@ -202,3 +202,86 @@ def test_pack_documents_are_not_counted_again():
     assert web_item.value.startswith("另有 1 份")                    # 2024、2023 两份已在上面列出（http/https 视为同一网址）
     assert not any(i.key == "penalties" for i in credit.items)       # 商业数据里同一天的处罚不再单列
     assert credit.flags == 3
+
+
+# ---------- 实测暴露的问题 ----------
+
+def test_penalty_text_keeps_only_the_company_clause():
+    from app.sources.qcc_agent import scrub_text
+    text = f"一、对{NAME}责令改正，给予警告，并处36万元罚款； 二、对甲某某给予警告，并处21万元罚款。"
+    assert scrub_text(text, NAME) == f"一、对{NAME}责令改正，给予警告，并处36万元罚款；"
+    assert scrub_text("对甲某某给予警告", NAME) == "对相关个人给予警告"
+    out = clean({"限制高消费信息": [{"案号": "（2025）浙01执1号", "限制法定代表人": "甲某", "申请人": ["华*", "某某融资租赁有限公司"]}]})
+    assert out["限制高消费信息"][0] == {"案号": "（2025）浙01执1号", "申请人": ["自然人", "某某融资租赁有限公司"]}
+
+
+def test_pledges_and_mortgages_where_it_is_the_creditor_do_not_count(tmp_path):
+    bank = dict(TOOLS)
+    bank["get_company_risk_scan"] = {"风险因子扫描": [{"风险因子": "股权出质", "条目数": 3}, {"风险因子": "动产抵押", "条目数": 2}]}
+    bank["get_equity_pledge_info"] = {"企业名称": NAME, "摘要": "该查询实体共有3条股权出质记录。", "提示": "已为您展示前2条。",
+                                      "股权出质信息": [{"出质人": ["某影视股份有限公司"], "质权人": [NAME], "股权数额": "100万元",
+                                                      "登记日期": "2024-10-08", "标的企业": "某科技有限公司"},
+                                                     {"出质人": ["乙某"], "质权人": ["某银行股份有限公司"], "股权数额": "50万元",
+                                                      "登记日期": "2023-01-01", "标的企业": NAME}]}
+    bank["get_chattel_mortgage_info"] = {"企业名称": NAME, "摘要": "该查询实体共有2条动产抵押记录。",
+                                         "动产抵押信息": [{"抵押人": "某服饰有限公司", "抵押权人": [NAME], "登记日期": "2019-12-11"},
+                                                        {"抵押人": "某服饰二有限公司", "抵押权人": [NAME], "登记日期": "2019-10-29"}]}
+    p = client(tmp_path, bank).fetch(NAME).profile
+    assert p.n("pledges") == 1 and p.pledges[0].pledgor == "自然人股东A" and p.pledges[0].pledgee == "某银行股份有限公司"
+    assert "别人押给它" in p.facts["pledges"] and "前 2 条" in p.facts["pledges"]
+    assert p.n("mortgages") == 0 and p.known("mortgages") and "抵押权人" in p.facts["mortgages"]
+
+
+def test_other_risks_only_red_for_factors_that_are_its_own():
+    from app.analysis.signals import other_risks_item
+    assert other_risks_item({"裁判文书": 1507, "司法拍卖": 6, "违约事项": 2, "行政处罚": 5})[0].status is Status.warn
+    item = other_risks_item({"终本案件": 2, "裁判文书": 8, "失信信息": 1})[0]
+    assert item.status is Status.bad and item.value == "终本案件 2、裁判文书 8"
+    assert other_risks_item({"裁判文书": 0, "行政处罚": 3}) == []
+
+
+# ---------- 多个 Key ----------
+
+def test_parse_keys_accepts_bearer_prefix_and_commas():
+    from app.sources.qcc_agent import parse_keys
+    assert parse_keys("Bearer A, B ，bearer C,A") == ["A", "B", "C"]
+
+
+def test_switches_key_only_when_the_key_is_the_problem(tmp_path):
+    seen = []
+    inner = server(TOOLS, [])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        key = request.headers["Authorization"]
+        seen.append(key)
+        if key == "Bearer A":
+            return httpx.Response(401, json={"error": "invalid_token"})
+        if key == "Bearer B":
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {
+                "isError": True, "content": [{"type": "text", "text": "积分不足，请充值"}]}})
+        return inner.handle_request(request)
+
+    c = QccAgentClient("A,B,C", cache_dir=tmp_path, transport=httpx.MockTransport(handler))
+    r = c.fetch(NAME)
+    assert r.profile and c.current == 2 and seen[:3] == ["Bearer A", "Bearer B", "Bearer C"]
+    assert set(seen[3:]) == {"Bearer C"}                       # 换到 C 以后一直用 C，不回头试 A、B
+    assert c.status()["using"] == 3 and "积分" in c.status()["dropped"][2]
+
+
+def test_all_keys_bad_reports_each_reason(tmp_path):
+    c = QccAgentClient("A,B", cache_dir=tmp_path,
+                       transport=httpx.MockTransport(lambda r: httpx.Response(401, json={"error": "invalid_token"})))
+    r = c.fetch(NAME)
+    assert r.profile is None and r.failed and "2 个 Key 都不能用" in r.note and "第 1 个" in r.note
+
+
+def test_not_found_does_not_burn_through_keys(tmp_path):
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers["Authorization"])
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {
+            "isError": True, "content": [{"type": "text", "text": "未找到匹配的企业"}]}})
+
+    r = QccAgentClient("A,B", cache_dir=tmp_path, transport=httpx.MockTransport(handler)).fetch(NAME)
+    assert r.profile is None and seen == ["Bearer A"]

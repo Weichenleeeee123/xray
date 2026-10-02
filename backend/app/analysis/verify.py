@@ -36,6 +36,8 @@ VERDICT_META = {
 FIN_SCOPE = re.compile(r"金融|理财|资产管理|基金|存款|贷款|保险|证券|期货|信托|融资")
 # 经营范围里常见"（未经金融监管部门批准，不得从事……金融业务）"，这段是禁止性说明，不能算金融业务
 NEGATED_SCOPE = re.compile(r"[（(][^）)]*不得[^）)]*[）)]")
+# 私募基金管理人登记的公司，经营范围一般写的是这些
+PF_SCOPE = re.compile(r"投资管理|资产管理|股权投资|创业投资|私募")
 STATE_OWNED = re.compile(r"国有资产监督管理|人民政府|财政(?:局|厅|部)|国资|国有")
 GENERIC_BANK = re.compile(r"某|大型|知名|多家|国有大行")
 
@@ -148,11 +150,18 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
     else:
         checks.append(Check(label="理财产品登记编码", result="材料上没有", status=Status.miss, source="material"))
 
+    licensed = license_check.status is Status.ok
     if company is None:
         checks.append(Check(label="经营范围", result=NOT_COVERED, status=Status.none, source="registry"))
-    elif word := financial_scope(company.scope):
+    elif (word := financial_scope(company.scope)) and licensed:
+        checks.append(Check(label="经营范围", result=f"含\"{word}\"，和它的持牌身份一致", status=Status.ok,
+                            source="registry"))
+    elif word:
         checks.append(Check(label="经营范围", result=f"含\"{word}\"——经营范围里写了，不等于有金融牌照",
                             status=Status.warn, source="registry"))
+    elif amac.registered and (m := PF_SCOPE.search(NEGATED_SCOPE.sub("", company.scope))):
+        checks.append(Check(label="经营范围", result=f"含\"{m.group(0)}\"，和私募基金管理人登记相符；私募不是持牌金融机构，"
+                                                   "不能向公众吸收资金", status=Status.ok, source="registry"))
     else:
         checks.append(Check(label="经营范围", result=f"{_short(company.scope)}不含任何金融业务",
                             status=Status.bad, source="registry"))
@@ -380,9 +389,9 @@ def scale_review(claim: RawClaim, company: CompanyProfile | None, amac: AmacHit 
     if company.insured is None:
         checks.append(Check(label="参保人数（年报）", result="未公示（企业可选择不公示）", status=Status.none, source="annual_report"))
     else:
-        short = stores is not None and company.insured < stores
+        short = stores is not None and company.insured < stores or staff is not None and company.insured < staff / 2
         if short:
-            gaps.append(f"年报里只有 {company.insured} 人参保")
+            gaps.append(f"{'年报里' if stores is not None else ''}只有 {company.insured} 人参保")
         checks.append(Check(label="参保人数（年报）", result=f"{company.insured} 人",
                             status=Status.warn if short else Status.ok, source="annual_report"))
     if company.branches is not None and stores is not None:
@@ -396,7 +405,7 @@ def scale_review(claim: RawClaim, company: CompanyProfile | None, amac: AmacHit 
 
     if gaps:
         return checks, Verdict.misleading, f"{said}；{'，'.join(gaps)}。"
-    if stores is None:
+    if stores is None and staff is None and aum is None:
         return checks, Verdict.unverifiable, "会员数没有公开来源，无法核验。"
     return checks, Verdict.consistent, "登记的规模和宣传大致相符。"
 
