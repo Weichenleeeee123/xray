@@ -14,7 +14,7 @@ function harness() {
   }
   const sent = [], stops = [];
   let resolveRequest, rejectRequest;
-  const ctx = vm.createContext({ console, FormData, URLSearchParams, CSS: { escape: s => s },
+  const ctx = vm.createContext({ console, FormData, AbortController, URLSearchParams, CSS: { escape: s => s },
     location: { hash: '#/check', search: '' }, history: { replaceState() {} },
     setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
     window: { addEventListener() {}, matchMedia: () => ({ matches: false }) },

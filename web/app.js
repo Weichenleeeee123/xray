@@ -64,17 +64,19 @@ async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', headers: {...(opts.headers || {})}, credentials: 'same-origin' };
   if (opts.body instanceof FormData) init.body = opts.body;
   else if (opts.body !== undefined) { init.body = JSON.stringify(opts.body); init.headers['Content-Type'] = 'application/json'; }
-  const controller = opts.timeoutMs ? new AbortController() : null;
+  const reading = init.method === 'GET';
+  const timeoutMs = opts.timeoutMs ?? (reading ? 12000 : 0);
+  const controller = timeoutMs ? new AbortController() : null;
   const relay = () => controller?.abort(opts.signal?.reason || 'cancelled');
   if (opts.signal?.aborted) relay();
   else opts.signal?.addEventListener('abort', relay, {once:true});
   init.signal = controller?.signal || opts.signal;
-  const timer = controller ? setTimeout(() => controller.abort('timeout'), opts.timeoutMs) : null;
+  const timer = controller ? setTimeout(() => controller.abort('timeout'), timeoutMs) : null;
   try {
     let r;
     try { r = await fetch(path, init); } catch (e) {
       if (init.signal?.aborted) throw e;
-      throw new Error('连不上后端服务，请确认它在运行');
+      throw new Error('暂时连接不上服务，请检查网络后重试');
     }
     let data = null;
     try { data = await r.json(); } catch (e) { if (init.signal?.aborted) throw e; }
@@ -86,6 +88,8 @@ async function api(path, opts = {}) {
     if (data == null) throw new Error('后端返回的内容格式不正确，请稍后恢复结果');
     return data;
   } catch (e) {
+    if (init.signal?.aborted && reading) throw new Error(init.signal.reason === 'timeout'
+      ? '读取时间较长，请重试。已保存的案卷仍会保留。' : '已取消这次读取');
     if (init.signal?.aborted) throw new Error(init.signal.reason === 'timeout'
       ? '等待时间较长，已停止等待。后台可能仍在处理，可以恢复回答，无需重复提交。'
       : '已停止等待。后台可能仍在处理，可以稍后恢复回答。');
@@ -289,7 +293,10 @@ function listLine(h) {
 
 // ---------- 分区一：查企 ----------
 
-async function renderCheck() {
+async function renderCheck(request = routeRequest) {
+  $('#view').innerHTML = '<div class="home"><p class="muted">准备查询…</p></div>';
+  await startupReady;
+  if (!currentRoute(request)) return;
   S.case = null; useTerms(S.terms); renderTop();
   S.form = { userScenario: null, showScen: false, dirty: {}, intake: null };
   $('#view').innerHTML = shellHtml(`
@@ -305,14 +312,16 @@ async function renderCheck() {
   </div>`);
   bindForm();
   try {
-    S.cases = await api('/api/cases');
-    if (S.cases.length) $('#checkMore').innerHTML = `<a href="#/cases">你查过 ${S.cases.length} 家，都在「案卷」里 →</a>`;
+    const cases = await api('/api/cases', {signal: request?.signal});
+    if (!currentRoute(request)) return;
+    S.cases = cases;
+    if (S.cases.length && $('#checkMore')) $('#checkMore').innerHTML = `<a href="#/cases">你查过 ${S.cases.length} 家，都在「案卷」里 →</a>`;
   } catch (e) { /* 列表读不到不影响新建 */ }
 }
 
 // ---------- 分区二：案卷 ----------
 
-async function renderCases() {
+async function renderCases(request = routeRequest) {
   S.case = null; useTerms(S.terms); renderTop();
   $('#view').innerHTML = shellHtml(`
   <div class="home">
@@ -322,15 +331,18 @@ async function renderCases() {
       <p>每查一家就留一份案卷。补材料、贴对方的回复、改需求，都记在同一份里，按版排下去，改动逐条列出。点开就是那份报告。</p>
     </section>
     <div class="cases" id="caseList"><p class="muted">读取案卷…</p></div>
-    <p class="lists-line">这一页按新建时间排。要按"最后一次变化的时间"排，需要在列表接口里多一个字段，现在还没有，所以这里只写新建时间。</p>
+    <p class="lists-line">按新建时间排列，打开案卷可查看历次变化。</p>
   </div>`);
   try {
-    S.cases = (await api('/api/cases')) || [];
+    const cases = (await api('/api/cases', {signal: request?.signal})) || [];
+    if (!currentRoute(request)) return;
+    S.cases = cases;
     $('#caseList').innerHTML = S.cases.length
       ? S.cases.map(caseRow).join('')
       : '<div class="empty-case"><p>还没有案卷。查一家公司，这里就会留一份。</p><a class="btn sm" href="#/check">去查一家公司</a></div>';
   } catch (e) {
-    $('#caseList').innerHTML = `<p class="err">读不到案卷列表：${esc(e.message)}</p>`;
+    if (!currentRoute(request)) return;
+    $('#caseList').innerHTML = `<p class="err">读不到案卷列表：${esc(e.message)}</p><button class="btn sm" data-act="retry-read">重试</button>`;
   }
 }
 
@@ -344,9 +356,14 @@ function caseRow(c) {
 
 // ---------- 分区三：我的 ----------
 
-async function renderMe() {
+async function renderMe(request = routeRequest) {
   S.case = null; useTerms(S.terms); renderTop();
-  try { S.cases = (await api('/api/cases')) || []; } catch (e) { /* 读不到就不显示份数 */ }
+  $('#view').innerHTML = '<div class="home"><p class="muted">读取服务状态…</p></div>';
+  let cases = [];
+  const caseRead = api('/api/cases', {signal: request?.signal}).then(value => {cases = value || [];}).catch(() => {});
+  await Promise.all([startupReady, caseRead]);
+  if (!currentRoute(request)) return;
+  S.cases = cases;
   const h = S.health || {}, llm = h.llm || {}, com = h.commercial || {};
   const model = !llm.configured || llm.mode === 'off'
     ? '模型未连接：需求用关键词识别，小企提供基础解释和核对步骤。'
@@ -568,12 +585,18 @@ function fillDemo(id) {
 
 // ---------- 报告页 ----------
 
-async function openCase(id, no) {
+async function openCase(id, no, request = routeRequest) {
   if (!S.case || S.case.id !== id) {
+    S.case = null; S.viewNo = null;
     $('#view').innerHTML = '<div class="home"><p class="muted">读取案卷…</p></div>';
-    try { S.case = await api(`/api/cases/${encodeURIComponent(id)}`); }
+    try {
+      const data = await api(`/api/cases/${encodeURIComponent(id)}`, {signal: request?.signal});
+      if (!currentRoute(request)) return;
+      S.case = data;
+    }
     catch (e) {
-      $('#view').innerHTML = `<div class="home"><div class="ask-card"><h2>打不开这个案卷</h2><p class="err">${esc(e.message)}</p><a class="btn sm" href="#/">回到首页</a></div></div>`;
+      if (!currentRoute(request)) return;
+      $('#view').innerHTML = `<div class="home"><div class="ask-card"><h2>打不开这个案卷</h2><p class="err">${esc(e.message)}</p><button class="btn sm" data-act="retry-read">重试</button><a class="btn sm" href="#/cases">返回案卷</a></div></div>`;
       return;
     }
     S.selected.clear(); S.opCache = {}; S.tab = 'signals'; S.openRest.clear();
@@ -784,13 +807,17 @@ function glanceHtml(v, includeSignals = true) {
 }
 const currentOp = v => (S.audience === 'family' && v.onepager) || S.opCache[`${v.no}:${S.audience}`] || null;
 async function loadOnepager(v) {
+  const preview = $('#onepager'), load = {};
+  if (preview) preview._onepagerLoad = load;
   if (currentOp(v)) return;
-  const key = `${v.no}:${S.audience}`;
+  const key = `${v.no}:${S.audience}`, caseId = S.case.id, request = routeRequest, cache = S.opCache;
+  const stillHere = () => request === routeRequest && S.case?.id === caseId && ver() === v
+    && key === `${v.no}:${S.audience}` && preview && $('#onepager') === preview && preview._onepagerLoad === load;
   try {
-    S.opCache[key] = await api(`/api/cases/${encodeURIComponent(S.case.id)}/onepager?audience=${S.audience}&version=${v.no}`);
+    cache[key] = await api(`/api/cases/${encodeURIComponent(caseId)}/onepager?audience=${S.audience}&version=${v.no}`, {signal: request?.signal});
     // 打印预览可能在请求回来之前就关了
-    if (ver() === v && key === `${v.no}:${S.audience}` && $('#onepager')) $('#onepager').innerHTML = opBody(S.opCache[key], v);
-  } catch (e) { if ($('#onepager')) $('#onepager').innerHTML = `<p class="err">一页结论没生成出来：${esc(e.message)}</p>`; }
+    if (stillHere()) preview.innerHTML = opBody(cache[key], v);
+  } catch (e) { if (stillHere()) preview.innerHTML = `<p class="err">一页结论没生成出来：${esc(e.message)}</p>`; }
 }
 function opBody(op, v) {
   if (!op) return '<p class="muted">正在生成…</p>';
@@ -1185,29 +1212,38 @@ async function submitReview(f) {
   if (!S.rvStars) { err.textContent = '先选几星'; return; }
   if (!S.rvRel) { err.textContent = '选一下你和这家公司的关系'; return; }
   if (text.length < 10) { err.textContent = '至少写 10 个字，说说具体遇到了什么事'; return; }
+  const company = S.case.case.company_name, hash = location.hash, request = routeRequest;
+  const stillHere = () => f.isConnected && request === routeRequest && S.case?.case.company_name === company && location.hash === hash;
   const btn = f.querySelector('[type="submit"]');
   btn.disabled = true; btn.textContent = '正在发布…';
   try {
-    S.reviews = await api('/api/reviews', { method: 'POST', body: { company: S.case.case.company_name, stars: S.rvStars,
+    const reviews = await api('/api/reviews', { method: 'POST', body: { company, stars: S.rvStars,
       relation: S.rvRel, text, nickname: f.nickname.value.trim() || null, author: AUTHOR } });
+    if (!stillHere()) { toast('原评价已发布，可在「案卷」查看'); return; }
+    S.reviews = reviews;
     S.rvStars = 0; S.rvRel = null;
     refreshReviewTab();
     toast('已发布。报告要算进这条，点"放进报告"');
   } catch (e) {
+    if (!stillHere()) { toast('原评价的发布未能确认，请到「案卷」查看', true); return; }
     err.textContent = '没发出去：' + e.message;
     btn.disabled = false; btn.textContent = '发布评价';
   }
 }
 async function refreshReviews(el) {
+  const caseId = S.case.id, version = ver().no, hash = location.hash, request = routeRequest;
+  const stillHere = () => el.isConnected && request === routeRequest && S.case?.id === caseId && ver()?.no === version && location.hash === hash;
   el.disabled = true; el.textContent = '正在重新判断…';
   try {
-    const c = await api(`/api/cases/${encodeURIComponent(S.case.id)}/reviews`, { method: 'POST' });
+    const c = await api(`/api/cases/${encodeURIComponent(caseId)}/reviews`, { method: 'POST' });
+    if (!stillHere()) { toast(`原案卷已更新至第 ${c.current} 版，可在「案卷」查看`); return; }
     S.case = c; S.opCache = {}; S.tab = 'changes';
     const target = `#/case/${c.id}/v/${c.current}`;
     if (location.hash === target) { S.viewNo = c.current; renderCase(); } else location.hash = target;
-    setTimeout(() => { const t = $('.chg-banner'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+    setTimeout(() => { if (location.hash !== target || S.case?.id !== c.id) return; const t = $('.chg-banner'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
     toast(`已生成第 ${c.current} 版`);
   } catch (e) {
+    if (!stillHere()) { toast('原案卷的更新未能确认，请到「案卷」查看', true); return; }
     toast('没生成出来：' + e.message, true);
     el.disabled = false; el.textContent = '放进报告';
   }
@@ -1636,15 +1672,20 @@ async function submitResolve(e) {
   const dlg = $('#resDlg'), f = e.target;
   const note = f.note.value.trim();
   if (!note) { $('#resErr').textContent = '写一句说明，别只点按钮'; return; }
+  const caseId = S.case.id, version = ver().no, hash = location.hash, request = routeRequest;
+  const stillHere = () => request === routeRequest && S.case?.id === caseId && ver()?.no === version
+    && location.hash === hash && f.isConnected && dlg.open;
   const go = $('#resGo'); go.disabled = true; go.textContent = '正在出新版本…';
   try {
-    const c = await api(`/api/cases/${encodeURIComponent(S.case.id)}/resolve`, { method: 'POST',
+    const c = await api(`/api/cases/${encodeURIComponent(caseId)}/resolve`, { method: 'POST',
       body: { judgment_id: dlg.dataset.jid, action: dlg.dataset.kind, note, by: '我' } });
+    if (!stillHere()) { toast(`原案卷已更新至第 ${c.current} 版，可在「案卷」查看`); return; }
     S.case = c; S.opCache = {}; S.tab = 'judgments'; dlg.close();
     const target = `#/case/${c.id}/v/${c.current}`;
     if (location.hash === target) { S.viewNo = c.current; renderCase(); } else location.hash = target;
     toast(`已记下，新增第 ${c.current} 版`);
   } catch (err) {
+    if (!stillHere()) { toast('原案卷的更新未能确认，请到「案卷」查看', true); return; }
     $('#resErr').textContent = '没记上：' + err.message;
     go.disabled = false; go.textContent = '记下结论，出新版本';
   }
@@ -1786,6 +1827,7 @@ document.addEventListener('click', e => {
   }
   const d = el.dataset;
   switch (d.act) {
+    case 'retry-read': void route(); break;
     case 'go': location.hash = `#/${d.sec}`; break;
     case 'qi-nudge': toast('先打开一份案卷，小企才有数据可答'); break;
     case 'chat-sources': openChatSources(Number(d.index)); break;
@@ -1852,7 +1894,13 @@ window.addEventListener('scroll', closePop, { passive: true });
 
 // ---------- 路由与启动 ----------
 
+let routeRequest = null;
+let startupReady = Promise.resolve();
+const currentRoute = request => !request || (request === routeRequest && !request.signal.aborted);
+
 async function route() {
+  routeRequest?.abort('navigation');
+  const request = routeRequest = new AbortController();
   researchCleanup();
   document.body.classList.remove("research-mode");
   // The research room owns the homepage. The old full-material form remains at #/new.
@@ -1865,28 +1913,37 @@ async function route() {
   const m = location.hash.match(/^#\/case\/([\w-]+)(?:\/v\/(\d+))?/);
   if (m) {
     const sameCase = S.case && S.case.id === m[1];
-    await openCase(m[1], m[2] ? +m[2] : null);
-    if (!sameCase) window.scrollTo(0, 0);
+    await openCase(m[1], m[2] ? +m[2] : null, request);
+    if (currentRoute(request) && !sameCase) window.scrollTo(0, 0);
     return;
   }
   // 三个分区。#/check、#/cases、#/me，其余（含空 hash）都当查企
   const sec = (location.hash.match(/^#\/(check|cases|me)/) || [])[1] || 'check';
-  if (sec === 'cases') await renderCases();
-  else if (sec === 'me') await renderMe();
-  else await renderCheck();
-  window.scrollTo(0, 0);
+  if (sec === 'cases') await renderCases(request);
+  else if (sec === 'me') await renderMe(request);
+  else await renderCheck(request);
+  if (currentRoute(request)) window.scrollTo(0, 0);
 }
 
 async function boot() {
-  const [health, scenarios, sources, demos, glossary] = await Promise.allSettled([
-    api('/api/health'), api('/api/scenarios'), api('/api/sources'), api('/api/demo/cases'), api('/api/glossary')]);
-  S.health = health.value || null;
-  S.scenarios = scenarios.value || [];
-  S.sources = sources.value || [];
-  S.demos = demos.value || [];
-  setGlossary(glossary.value);
-  if (!S.health) toast('连不上后端：先启动 backend（uvicorn app.main:app --port 8000）', true);
+  startupReady = Promise.allSettled([
+    '/api/health', '/api/scenarios', '/api/sources', '/api/demo/cases', '/api/glossary'
+  ].map(path => api(path, {timeoutMs: 6000}))).then(([health, scenarios, sources, demos, glossary]) => {
+    S.health = health.value || null;
+    S.scenarios = scenarios.value || [];
+    S.sources = sources.value || [];
+    S.demos = demos.value || [];
+    setGlossary(glossary.value);
+    const terms = ver()?.terms;
+    if (terms?.length) useTerms(terms);
+    // Refresh status only: never replace a report or a reader's draft question.
+    renderTop();
+    const mode = $('#assist .as-heading p');
+    if (mode) mode.textContent = modeLine();
+  });
   window.addEventListener('hashchange', route);
-  route();
+  const initialRoute = route();
+  await startupReady;
+  await initialRoute;
 }
 boot();
