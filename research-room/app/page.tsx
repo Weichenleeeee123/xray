@@ -8,11 +8,11 @@ import {
   CirclePause,
   CirclePlay,
   Database,
-  Search,
-  Sparkles,
   Menu,
   MessageCircle,
   Newspaper,
+  Search,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
