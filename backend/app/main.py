@@ -160,10 +160,12 @@ def _stream(first: dict, work: Callable[[], Case]) -> StreamingResponse:
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-def _start_run(first: dict, work: Callable[[], Case]) -> dict:
+def _start_run(first: dict, work: Callable[[], Case], original_input: dict | None = None) -> dict:
     """Launch a case build and retain progress independently of the browser connection."""
     run_id = uuid4().hex[:24]
     started = time.monotonic()
+    if original_input is not None:
+        runs.save_input(RUNS_DIR, run_id, original_input)
 
     def put(event: dict) -> None:
         runs.append(RUNS_DIR, run_id, {**event, "t": round(time.monotonic() - started, 2)})
@@ -190,14 +192,16 @@ def _start_run(first: dict, work: Callable[[], Case]) -> dict:
 
 @app.post("/api/runs", status_code=202)
 def create_run(body: CaseIn) -> dict:
-    return _start_run(progress.begin("create", body.company_name, intake=True), lambda: _create(body))
+    return _start_run(progress.begin("create", body.company_name, intake=True), lambda: _create(body),
+                      {"kind": "create", "body": body.model_dump(mode="json")})
 
 
 @app.post("/api/cases/{case_id}/runs", status_code=202)
 def supplement_run(case_id: str, body: SupplementIn) -> dict:
     case = _case(case_id)
     return _start_run(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
-                      lambda: _supplement(case, body))
+                      lambda: _supplement(case, body),
+                      {"kind": "supplement", "case_id": case_id, "body": body.model_dump(mode="json")})
 
 
 @app.get("/api/runs/{run_id}")
@@ -213,6 +217,8 @@ def get_run(run_id: str, after: int = Query(0, ge=0)) -> dict:
         active = run_id in _active_runs
     status = ("complete" if terminal["type"] == "complete" else "error") if terminal else ("running" if active else "interrupted")
     return {"run_id": run_id, "status": status, "case_id": terminal.get("case_id") if terminal else None,
+            "version": terminal.get("version") if terminal else None,
+            "input": runs.read_input(RUNS_DIR, run_id) if after == 0 else None,
             "events": all_events[after:], "next": len(all_events)}
 
 

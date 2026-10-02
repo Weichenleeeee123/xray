@@ -14,11 +14,12 @@ export type CaseResult = {
   created_at?: string;
   current: number;
   versions: Array<{ no: number; [key: string]: unknown }>;
-  case?: { company_name?: string };
+  case?: { company_name?: string; need?: string; [key: string]: unknown };
   [key: string]: unknown;
 };
 export type CaseReference = Pick<CaseResult, 'id' | 'created_at'> &
   Partial<Pick<CaseResult, 'current'>>;
+export type ResearchInput = { company_name: string; need: string; [key: string]: unknown };
 export type ProgressEvent =
   | {
       type: 'begin';
@@ -128,6 +129,14 @@ export function reduceEvent(
 export const collectionFinished = (state: ResearchState) =>
   state.steps.some((s) => s.lookup) &&
   state.steps.filter((s) => s.lookup).every((s) => s.phase === 'done');
+// Completed processing steps, not a prediction of time or a company safety score.
+// Reading the saved case back is one final, real step.
+export function researchProgress(state: ResearchState) {
+  const saved = state.connection === 'saved' && !!state.result;
+  const completed = state.steps.filter((step) => step.phase === 'done').length + Number(saved);
+  const total = state.steps.length + 1;
+  return { completed, total, percent: saved ? 100 : Math.floor(completed / total * 100) };
+}
 export function stationState(state: ResearchState, id: Station) {
   const definition = stations.find((s) => s.id === id)!;
   const tasks = state.steps.filter((s) =>
@@ -368,6 +377,8 @@ export type RunPage = {
   case_id: string | null;
   events: Array<Record<string, unknown>>;
   next: number;
+  version?: number | null;
+  input?: { kind: string; body: ResearchInput } | null;
 };
 export async function startRun(
   body: unknown,
@@ -399,11 +410,15 @@ export async function followRun(
     signal,
     fetchImpl = fetch,
     interval = 600,
+    onInput,
+    onComplete,
   }: {
     onEvent: (e: ProgressEvent) => void;
     signal?: AbortSignal;
     fetchImpl?: typeof fetch;
     interval?: number;
+    onInput?: (input: ResearchInput) => void;
+    onComplete?: (candidate: CaseReference) => void;
   },
 ): Promise<string> {
   let next = 0;
@@ -418,22 +433,47 @@ export async function followRun(
       );
     if (!response.ok) throw new Error(`进度查询失败（${response.status}）`);
     const page = (await response.json()) as RunPage;
+    if (page.run_id !== undefined && page.run_id !== runId)
+      throw new Error('任务编号校验不一致');
+    if (!Array.isArray(page.events) || !Number.isInteger(page.next) || page.next < next)
+      throw new Error('任务进度数据不完整');
+    if (page.input?.kind === 'create') {
+      const input = page.input.body;
+      if (!input || typeof input.company_name !== 'string' || typeof input.need !== 'string')
+        throw new Error('原始需求数据不完整');
+      onInput?.(input);
+    }
     for (const e of page.events) {
       if (e.type === 'begin' || e.type === 'step') onEvent(e as ProgressEvent);
       if (e.type === 'error')
         throw new BackendError(String(e.message || '后端研究失败'));
     }
     next = page.next;
-    if (page.status === 'complete' && page.case_id) return page.case_id;
+    if (page.status === 'complete' && page.case_id) {
+      const event = page.events.findLast((e) => e.type === 'complete');
+      const version = page.version ?? event?.version;
+      if (event?.case_id !== undefined && event.case_id !== page.case_id)
+        throw new Error('任务案卷校验不一致');
+      if (version !== undefined && version !== null && (!Number.isInteger(version) || Number(version) < 1))
+        throw new Error('任务版本校验不一致');
+      onComplete?.({ id: page.case_id, ...(version ? { current: Number(version) } : {}) });
+      return page.case_id;
+    }
     if (page.status === 'error') throw new BackendError('后端研究失败');
     if (page.status === 'interrupted')
       throw new BackendError('后端中途重启过，这次查询没有跑完，请重新查询');
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, interval);
-      signal?.addEventListener('abort', () => {
+      const stop = () => {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', stop);
         reject(new DOMException('aborted', 'AbortError'));
-      });
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', stop);
+        resolve(undefined);
+      }, interval);
+      if (signal?.aborted) stop();
+      else signal?.addEventListener('abort', stop, { once: true });
     });
   }
 }

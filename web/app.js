@@ -1595,6 +1595,12 @@ async function route() {
   }
   // 三个分区。#/check、#/cases、#/me，其余（含空 hash）都当查企
   const sec = (location.hash.match(/^#\/(check|cases|me)/) || [])[1] || 'check';
+  // Mounted behind the research-room gateway: return to its existing home form.
+  // Direct FastAPI users retain the standalone form and its full input support.
+  if (sec === 'check' && /^\/xray(?:\/|$)/.test(location.pathname || '')) {
+    window.location.assign('/');
+    return;
+  }
   if (sec === 'cases') await renderCases();
   else if (sec === 'me') await renderMe();
   else await renderCheck();

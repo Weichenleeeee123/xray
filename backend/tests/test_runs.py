@@ -62,3 +62,28 @@ def test_failed_run_has_recoverable_error(tmp_path, monkeypatch):
 def test_unknown_run_is_404(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "RUNS_DIR", tmp_path)
     assert client.get("/api/runs/does-not-exist").status_code == 404
+
+
+def test_failed_run_retains_complete_input_without_repeating_it_in_progress(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "RUNS_DIR", tmp_path)
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("provider unavailable")
+    monkeypatch.setattr(main, "new_case", broken)
+    body = {"company_name": DEMO_COMPANY, "need": SAVINGS_NEED,
+            "material_title": "合同全文", "material_text": "付款主体待核对\n原始合同第2段"}
+    created = client.post("/api/runs", json=body).json()
+    settled = _settled(created["run_id"])
+    for key, value in body.items():
+        assert settled["input"]["body"][key] == value
+    assert settled["input"]["kind"] == "create"
+    assert all("input" not in event for event in settled["events"])
+    assert client.get(f"/api/runs/{created['run_id']}?after=1").json()["input"] is None
+
+
+def test_legacy_journal_without_saved_input_remains_readable(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "RUNS_DIR", tmp_path)
+    run_id = "b" * 24
+    main.runs.append(tmp_path, run_id, {"type": "begin", "company": DEMO_COMPANY, "steps": []})
+    result = client.get(f"/api/runs/{run_id}").json()
+    assert result["status"] == "interrupted"
+    assert result["input"] is None

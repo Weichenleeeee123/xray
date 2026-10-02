@@ -26,6 +26,7 @@ import {
   reportPresentation,
 } from './research-events';
 import { ReportDossier } from './report-dossier';
+import { OfficeInstruments } from './office-instruments';
 const icons = {
   enterprise: Building2,
   library: BookOpen,
@@ -74,6 +75,8 @@ export default function Home() {
     step,
     retry,
     retrySave,
+    resume,
+    canResume,
   } = useOfficeResearch();
   const idle = state.connection === 'idle',
     status = idle
@@ -197,6 +200,7 @@ export default function Home() {
         <div className="door-leaf" aria-hidden="true" />
         <div className="ambient-vignette" aria-hidden="true" />
         <div className="window-breeze" aria-hidden="true" />
+        {!idle && <OfficeInstruments state={state} />}
         {breeze.map((item, i) => (
           <span
             key={i}
@@ -285,7 +289,7 @@ export default function Home() {
         )}
         {state.steps.some(
           (s) =>
-            s.id === 'reviews' && s.phase === 'done' && s.coverage === 'found',
+            (s.id === 'reviews' || s.id === 'opinion') && s.phase === 'done' && s.coverage === 'found',
         ) &&
           !scene.socialHandled &&
           door === 0 && (
@@ -467,9 +471,10 @@ export default function Home() {
                 <p>
                   连接中断时，后端可能仍在处理。可先查看已保存案卷，避免重复查询。
                 </p>
-                <a href="/xray/#/cases" target="_blank" rel="noreferrer">
+                <a href="/xray/#/cases">
                   查看已保存案卷
                 </a>
+                {canResume && <button onClick={() => void resume()}>继续此查询</button>}
                 <button onClick={() => setRetryConfirm(true)}>重新查询</button>
               </div>
             )}

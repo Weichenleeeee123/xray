@@ -9,7 +9,7 @@ import {
   reduceEvent,
   confirmSavedCase,
 } from './research-events';
-import type { ResearchState, CaseReference } from './research-events';
+import type { ResearchState, CaseReference, ResearchInput } from './research-events';
 import { OfficeDirector } from './office-director';
 import { fixtureFetch, testNames } from './research-fixtures';
 import type { TestName } from './research-fixtures';
@@ -32,7 +32,9 @@ export function useOfficeResearch() {
     request = useRef<AbortController | null>(null),
     transport = useRef<typeof fetch>(fetch),
     generation = useRef(0),
-    lastInput = useRef({
+    activeRun = useRef<string | null>(null),
+    inputKnown = useRef(false),
+    lastInput = useRef<ResearchInput>({
       company_name: '',
       need: '了解这家公司的登记、资质与公开资料',
     });
@@ -78,6 +80,10 @@ export function useOfficeResearch() {
           controller.signal,
         );
         if (token !== generation.current || controller.signal.aborted) return;
+        if (!inputKnown.current && typeof confirmed.case?.need === 'string') {
+          lastInput.current = { ...confirmed.case, company_name: company, need: confirmed.case.need };
+          inputKnown.current = true;
+        }
         publish({
           ...stateRef.current,
           connection: 'saved',
@@ -99,17 +105,20 @@ export function useOfficeResearch() {
     [publish],
   );
   const run = useCallback(
-    async (company: string, need?: string, resumeId: string | null = null) => {
+    async (company: string, need?: string, resumeId: string | null = null, original?: ResearchInput) => {
       if (!company.trim() && !resumeId) return;
       const token = ++generation.current;
       request.current?.abort();
       const controller = new AbortController();
       request.current = controller;
-      if (!resumeId)
-        lastInput.current = {
+      activeRun.current = resumeId;
+      if (!resumeId) {
+        inputKnown.current = true;
+        lastInput.current = original ?? {
           company_name: company.trim(),
           need: need?.trim() || '了解这家公司的登记、资质与公开资料',
         };
+      }
       director.current = new OfficeDirector();
       setScene(director.current.sample());
       setPaused(false);
@@ -145,12 +154,20 @@ export function useOfficeResearch() {
             resumeId ?? (await startRun(lastInput.current, fetchImpl));
           if (token !== generation.current || controller.signal.aborted) return;
           rememberRun(runId);
+          activeRun.current = runId;
+          let completed: CaseReference | undefined;
           const caseId = await followRun(runId, {
             signal: controller.signal,
             fetchImpl,
             onEvent,
+            onInput: (input) => {
+              if (token !== generation.current) return;
+              lastInput.current = input;
+              inputKnown.current = true;
+            },
+            onComplete: (value) => { completed = value; },
           });
-          candidate = { id: caseId };
+          candidate = completed ?? { id: caseId };
         }
         if (token !== generation.current) return;
         await verifySaved(
@@ -211,6 +228,16 @@ export function useOfficeResearch() {
       lastInput.current.company_name,
     );
   }, [verifySaved]);
+  const resume = useCallback(async () => {
+    if (activeRun.current) await run('', undefined, activeRun.current);
+  }, [run]);
+  const retry = useCallback(async () => {
+    if (!inputKnown.current) {
+      publish({ ...stateRef.current, error: '这次旧任务没有保存完整需求，请切换公司返回首页，确认需求后重新查询。' });
+      return;
+    }
+    await run(lastInput.current.company_name, lastInput.current.need, null, lastInput.current);
+  }, [run, publish]);
   const reset = useCallback(() => {
     generation.current++;
     request.current?.abort();
@@ -218,6 +245,7 @@ export function useOfficeResearch() {
     setScene(director.current.sample());
     setPaused(false);
     rememberRun(null);
+    activeRun.current = null;
     publish(emptyResearch());
   }, [publish]);
   useEffect(() => {
@@ -250,7 +278,9 @@ export function useOfficeResearch() {
     begin,
     reset,
     step,
-    retry: () => begin(lastInput.current.company_name, lastInput.current.need),
+    retry,
+    resume,
+    canResume: !!activeRun.current && state.connection === 'disconnected',
     retrySave,
   };
 }
