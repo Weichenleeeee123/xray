@@ -49,7 +49,8 @@ class CaseStore:
         stat = path.stat()
         try:
             atomic_json(self.dir / "summaries" / path.name,
-                        {"mtime": stat.st_mtime_ns, "size": stat.st_size, "summary": summary.model_dump()})
+                        {"mtime": stat.st_mtime_ns, "size": stat.st_size, "owner_id": case.owner_id,
+                         "summary": summary.model_dump()})
         except OSError:
             pass
         return summary
@@ -82,22 +83,27 @@ class CaseStore:
         out = []
         for path in self.dir.glob("*.json"):
             try:
-                if owner_id is not None:
-                    private_case = self.get(path.stem)
-                    if private_case is None or private_case.owner_id != owner_id:
-                        continue
-                stat = path.stat()
-                try:
-                    entry = json.loads((self.dir / "summaries" / path.name).read_text(encoding="utf-8"))
-                    if entry["mtime"] == stat.st_mtime_ns and entry["size"] == stat.st_size:
-                        out.append(CaseSummary.model_validate(entry["summary"]))
-                        continue
-                except (OSError, ValueError, KeyError, TypeError):
-                    pass
+                # Keep the ownership decision and cache validation in the same
+                # lock as saves. Warm lists never deserialize private histories.
                 with locked(path):
+                    stat = path.stat()
+                    try:
+                        entry = json.loads((self.dir / "summaries" / path.name).read_text(encoding="utf-8"))
+                        cached_owner = entry["owner_id"]  # Old caches must be rebuilt from the case file.
+                        if (entry["mtime"] == stat.st_mtime_ns and entry["size"] == stat.st_size
+                                and (cached_owner is None or isinstance(cached_owner, str))):
+                            summary = CaseSummary.model_validate(entry["summary"])
+                            if summary.id == path.stem:
+                                if owner_id is None or cached_owner == owner_id:
+                                    out.append(summary)
+                                continue
+                    except (OSError, ValueError, KeyError, TypeError):
+                        pass
                     c = self.get(path.stem)
                     if c:
-                        out.append(self._summary(path, c))
+                        summary = self._summary(path, c)
+                        if owner_id is None or c.owner_id == owner_id:
+                            out.append(summary)
             except (ValueError, OSError):
                 continue  # 旧格式或损坏的文件跳过
         ordered = sorted(out, key=lambda s: (s.created_at, s.id), reverse=True)
