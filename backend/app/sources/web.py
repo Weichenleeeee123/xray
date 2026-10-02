@@ -282,5 +282,12 @@ class WebClient:
         """只搜权威媒体网站（人民网、新华网、财新、证券时报……）上提到它的报道。"""
         return self._find(name, ("media",))
 
+    def find_opinion(self, name: str) -> tuple[WebFindings, WebFindings]:
+        """同时搜投诉和权威媒体，每路保留自己的搜索词、失败和回放标记。"""
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            talk = pool.submit(self.find_complaints, name)
+            media = pool.submit(self.find_media, name)
+            return talk.result(), media.result()
+
     def findings(self, name: str) -> WebFindings:
         return self._find(name, ("official", "news"))

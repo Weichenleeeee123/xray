@@ -1,6 +1,11 @@
 """联网查证：用假网关测过滤、分类、缓存回放，以及进报告后的样子。不连网。"""
-import httpx
+import json
+import threading
 
+import httpx
+import pytest
+
+from app import progress
 from app.analysis.pipeline import Services, new_case
 from app.assistant import answer
 from app.models import CaseIn, ChatIn, Status
@@ -31,6 +36,10 @@ NEWS = bocha([
      "summary": "杭州某某理财咨询起诉逾期借款人", "datePublished": "2026-09-02"},
     {"name": "企业信息", "url": "https://www.tianyancha.com/company/1", "siteName": "天眼查",
      "summary": f"{NAME} 注册资本 1000 万，提现难", "datePublished": None},
+])
+MEDIA = bocha([
+    {"name": f"{NAME}回应兑付问题", "url": "https://www.people.com.cn/finance/1.html", "siteName": "人民网",
+     "summary": f"发布日期：2026年9月10日。{NAME}回应兑付问题。", "datePublished": "2026-09-11T08:00:00+08:00"},
 ])
 
 
@@ -83,6 +92,78 @@ def test_off_mode_is_not_configured(tmp_path):
 def services(web):
     return Services(svc.licenses, svc.registry, svc.amac, svc.complaints, svc.packs, svc.extractor, svc.sources,
                     svc.registries, None, web)
+
+
+def opinion_client(tmp_path, *, failed=None, barrier=None):
+    seen, crossed = [], []
+
+    def handler(request):
+        body = json.loads(request.content)
+        kind = ("media" if "people.com.cn" in body.get("include", "") else
+                "official" if body.get("include") else "news")
+        seen.append(kind)
+        if barrier is not None and kind in ("news", "media") and "/bocha/" in request.url.path:
+            try:
+                barrier.wait(timeout=5)
+            except threading.BrokenBarrierError:
+                pass  # The assertion below reports sequential calls without hanging the test.
+            else:
+                crossed.append(kind)
+        if kind == failed:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"official": OFFICIAL, "news": NEWS, "media": MEDIA}[kind])
+
+    web = WebClient(base_url="https://gw.example.com/gateway/v1", api_key="k", mode="live", cache_dir=tmp_path,
+                    transport=httpx.MockTransport(handler))
+    return web, seen, crossed
+
+
+def test_case_opinion_searches_overlap_without_changing_records_or_progress(tmp_path):
+    web, seen, crossed = opinion_client(tmp_path, barrier=threading.Barrier(2))
+    events = []
+    with progress.reporting(events.append):
+        case = new_case(CaseIn(company_name=NAME, need="理财"), keyword_intake("理财"), services(web))
+
+    assert set(crossed) == {"news", "media"}, "both opinion requests must be in flight together"
+    assert sorted(seen) == ["media", "news", "official"]
+    raw = [r for r in case.raw if r.source_id.startswith("web_")]
+    assert [r.source_id for r in raw] == ["web_official", "web_official", "web_news", "web_news", "web_media"]
+    assert [r.as_of for r in raw] == ["2026-05-12", "2026-08-01", "2026-09-01", "2026-09-02", "2026-09-10"]
+    assert all(r.coverage == "found" and "回放" not in r.note for r in raw)
+    sequence = [(e["id"], e["phase"]) for e in events if e.get("id") in ("web", "opinion")]
+    assert sequence == [(step, phase) for step in ("web", "opinion") for phase in ("start", "done")]
+
+
+@pytest.mark.parametrize("failed", ["news", "media"])
+def test_case_failed_opinion_search_keeps_other_source_and_its_query(tmp_path, failed):
+    web, seen, _ = opinion_client(tmp_path, failed=failed)
+    case = new_case(CaseIn(company_name=NAME, need="理财"), keyword_intake("理财"), services(web))
+    records = {kind: [r for r in case.raw if r.source_id == f"web_{kind}"] for kind in ("news", "media")}
+    failed_record = records[failed][0]
+    surviving = "media" if failed == "news" else "news"
+    assert failed_record.coverage == "failed" and failed_record.note == "搜索失败"
+    query = f"{short_name(NAME)} 投诉 维权 兑付" if failed == "news" else short_name(NAME)
+    assert failed_record.content == {"搜索词": [query]}
+    assert all(r.coverage == "found" for r in records[surviving])
+    assert records[surviving][0].as_of == ("2026-09-10" if surviving == "media" else "2026-09-01")
+    # The complaint source alone may use its existing UniFuncs fallback.
+    assert seen.count("official") == seen.count("media") == 1
+    assert seen.count("news") == (2 if failed == "news" else 1)
+
+
+def test_find_opinion_keeps_replay_and_queries_with_their_own_source(tmp_path):
+    warm, _, _ = opinion_client(tmp_path)
+    warm.find_complaints(NAME)
+    web, seen, _ = opinion_client(tmp_path, failed="news")
+
+    talk, media = web.find_opinion(NAME)
+
+    assert talk.replay is True and media.replay is False
+    assert talk.queries == [f"{short_name(NAME)} 投诉 维权 兑付"]
+    assert media.queries == [short_name(NAME)]
+    assert len(talk.news) == 2 and len(media.media) == 1
+    assert not talk.errors and not media.errors
+    assert seen.count("news") == 2 and seen.count("media") == 1 and "official" not in seen
 
 
 def test_web_findings_flow_into_signals_raw_and_questions(tmp_path):

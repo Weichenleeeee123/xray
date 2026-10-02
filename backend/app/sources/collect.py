@@ -257,9 +257,8 @@ def _network_steps(name: str, svc, records: list[RawRecord], *, is_demo: bool,
         records.append(_news_record(news))
     web = official
     if web_on:
-        talk = svc.web.find_complaints(name)
+        talk, media = svc.web.find_opinion(name)
         records.extend(_web_part(talk, "web_news"))
-        media = svc.web.find_media(name)
         records.extend(_web_part(media, "web_media"))
         web = WebFindings(searched=True, official=official.official, news=talk.news, media=media.media,
                           queries=official.queries + talk.queries + media.queries,
