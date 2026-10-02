@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import type { ResearchState } from './research-events';
 import { reportPresentation } from './research-events';
 import type { OfficeDirector } from './office-director';
+import { DossierInscription } from './dossier-inscription';
 
 export function ReportDossier({
   artSrc,
@@ -21,8 +22,6 @@ export function ReportDossier({
 }) {
   const report = reportPresentation(state, scene.phase.id);
   if (!report.visible) return null;
-  const savedCase = state.result ?? state.candidate;
-  const date = savedCase?.created_at?.slice(0, 10);
   const label = opening ? '正在打开报告' : report.label;
   const errorDetail = state.saveError ?? state.error;
   const finishing = ['bind-report', 'push-report', 'present-report'].includes(
@@ -37,7 +36,7 @@ export function ReportDossier({
   } as CSSProperties;
   return (
     <div
-      className={`desk-dossier dossier-${report.status} ${opening ? 'dossier-opening' : ''}`}
+      className={`desk-dossier dossier-${report.status} ${scene.finished ? 'dossier-settled' : ''} ${opening ? 'dossier-opening' : ''}`}
       style={style}
       data-report-status={report.status}
       data-binding={scene.binding.toFixed(3)}
@@ -68,11 +67,7 @@ export function ReportDossier({
               alt=""
               draggable={false}
             />
-            <span className="dossier-inscription">
-              <strong>{state.company}</strong>
-              <span className="dossier-title">企业研究报告</span>
-              <small>{date ?? '资料核对中'}</small>
-            </span>
+            <DossierInscription company={state.company} />
           </span>
         </span>
         <span className="dossier-label" id="dossier-state" aria-live="polite">
