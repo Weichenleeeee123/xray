@@ -76,6 +76,11 @@ class ReviewStore:
         return ReviewList(company=company, count=len(reviews), dist=dist, reviews=reviews)
 
     def add(self, body: ReviewIn) -> ReviewList:
+        from app.persistence import locked
+        with locked(self._path(body.company)):
+            return self._add(body)
+
+    def _add(self, body: ReviewIn) -> ReviewList:
         me = _hash(body.author)
         own = self._own(body.company)
         if any(r.get("author") == me for r in own):
@@ -84,10 +89,8 @@ class ReviewStore:
                      "nickname": redact(body.nickname) if body.nickname else None, "created_at": _now(),
                      "author": me})
         path = self._path(body.company)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"company": body.company, "reviews": own}, ensure_ascii=False, indent=1),
-                       encoding="utf-8")
-        tmp.replace(path)
+        from app.persistence import atomic_json
+        atomic_json(path, {"company": body.company, "reviews": own})
         return self.listing(body.company, body.author)
 
 

@@ -309,13 +309,15 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
     reg, paid = company.reg_capital, company.paid_capital
     due = f"，期限 {company.capital_due}" if company.capital_due else ""
     if paid is None:
-        items.append(SignalItem(key="paid_capital", label="实缴资本", value="年报未公示", detail=f"认缴 {money(reg)}{due}",
+        items.append(SignalItem(key="paid_capital", label="实缴资本", value="年报未公示", detail=f"认缴 {money(reg, company.capital_currency)}{due}",
                                 status=Status.none, source="annual_report"))
     else:
-        items.append(SignalItem(key="paid_capital", label="实缴资本", value=money(paid), detail=f"认缴 {money(reg)}{due}",
-                                status=Status.bad if paid < reg * LOW_PAID_RATIO else Status.ok, source="annual_report"))
+        items.append(SignalItem(key="paid_capital", label="实缴资本", value=money(paid, company.paid_currency), detail=f"认缴 {money(reg, company.capital_currency)}{due}",
+                                status=Status.none if company.capital_currency != company.paid_currency else
+                                Status.bad if paid < reg * LOW_PAID_RATIO else Status.ok, source="annual_report"))
     if not company.known("pledges"):
-        items.append(SignalItem(key="pledges", label="股权出质", value="没查", detail="这次的数据来源不含这一项",
+        items.append(SignalItem(key="pledges", label="股权出质", value="仅部分明细" if "pledges" in company.partial else "没查",
+                                detail=company.facts.get("pledges") or "这次的数据来源不含这一项",
                                 status=Status.none, source="registry"))
     elif company.n("pledges"):
         detail = "；".join(f"{p.date}，{p.pledgor}把 {p.share}押给「{p.pledgee}」" for p in company.pledges) or SHOWN_NONE
@@ -339,7 +341,8 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
                                   ("executions", "被执行", company.executions, Status.bad),
                                   ("tax_arrears", "欠税公告", company.tax_arrears, Status.bad)]:
         if not company.known(key):
-            items.append(SignalItem(key=key, label=label, value="没查", detail="这次的数据来源不含这一项",
+            items.append(SignalItem(key=key, label=label, value="仅部分明细" if key in company.partial else "没查",
+                                    detail=company.facts.get(key) or "这次的数据来源不含这一项",
                                     status=Status.none, source="registry"))
             continue
         n = company.n(key)
@@ -356,11 +359,16 @@ def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings 
     if company is None:
         items = ([integrity] if integrity else []) + _not_covered("registry") + [web_item]
         return Signal(key="credit", title="信用", lede=lede, flags=_flags(items), items=items)
-    months = months_between(company.founded, as_of)
-    status = (Status.bad if DEAD_STATUS.search(company.status)
+    try:
+        months = months_between(company.founded, as_of)
+    except ValueError:
+        months = None
+    status = (Status.none if not company.known("status") or company.status == "未知" or months is None else
+              Status.bad if DEAD_STATUS.search(company.status)
               else Status.warn if months < YOUNG_COMPANY_MONTHS else Status.ok)
     items = [SignalItem(key="status", label="登记状态", value=company.status,
-                        detail=f"成立于 {company.founded}，{months // 12} 年 {months % 12} 个月", status=status, source="registry")]
+                        detail=f"成立于 {company.founded}，{months // 12} 年 {months % 12} 个月" if months is not None else "成立日期未提供或无效",
+                        status=status, source="registry")]
     if not company.known("penalties"):
         items.append(SignalItem(key="penalties", label="行政处罚", value="没查", detail="这次的数据来源不含这一项",
                                 status=Status.none, source="registry"))

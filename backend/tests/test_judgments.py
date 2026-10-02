@@ -161,7 +161,8 @@ def test_recheck_keeps_the_open_questions():
     v = c.post(f"/api/cases/{cid}/resolve", json={"judgment_id": "check.A7", "action": "recheck",
                                                   "by": "范美琳", "note": "还在等对方回话"}).json()["versions"][-1]
     j = next(x for x in v["judgments"] if x["id"] == "check.A7")
-    assert j["state"] == "recheck" and len(j["unknown"]) >= 3
+    assert j["state"] == "needs_check" and len(j["unknown"]) >= 3
+    assert c.get(f"/api/cases/{cid}").status_code == 200
 
 
 def test_resolve_unknown_judgment_is_404():

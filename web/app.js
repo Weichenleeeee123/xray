@@ -20,7 +20,7 @@ const KIND = { none: '没有数据', official: '官方记录', collected: '人�
 const COVERAGE = { found: '查到了', not_found: '查了没有', not_covered: '没查', failed: '查询失败' };
 const STATUS = { bad: '有问题', warn: '要留意', miss: '该有的没有', none: '没查', ok: '没问题' };
 const FLAG = new Set(['bad', 'warn', 'miss']);   // 要看的；ok、none 默认折叠
-const CHANGE = { new_concern: '新疑点', worse: '更严重', clarified: '疑点减轻', unchanged: '没变', added: '新增', removed: '这版没有了' };
+const CHANGE = { new_concern: '新疑点', worse: '更严重', clarified: '疑点减轻', unchanged: '没变', added: '新增', removed: '这版没有了', updated: '事实更新', unavailable: '证据不足' };
 const MODE = { model: '模型回答', replay: '离线回放', template: '模板回答', guard: '已拦截' };
 // 判断页先收起来（地址带 ?judg=1 才显示）：它的逐条比对在"只改需求"时也会报"需要重新核实"，
 // 和"事实没变"打架；记录里查到的官方文书也不该一键撤掉。后端照常存判断，修好再放出来。

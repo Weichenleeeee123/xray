@@ -5,9 +5,24 @@ already-persisted case; it does not duplicate private case data in the journal.
 """
 import json
 import re
+import time
 from pathlib import Path
+from app.persistence import atomic_json
 
 RUN_ID = re.compile(r"^[0-9a-f]{24}$")
+LEASE_SECONDS = 30
+
+
+def touch(directory: Path, run_id: str, *, finished: bool = False):
+    atomic_json(path_for(directory, run_id).with_suffix(".lease"),
+                {"expires": 0 if finished else time.time() + LEASE_SECONDS})
+
+
+def active(directory: Path, run_id: str) -> bool:
+    try:
+        return json.loads(path_for(directory, run_id).with_suffix(".lease").read_text(encoding="utf-8"))["expires"] > time.time()
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def path_for(directory: Path, run_id: str) -> Path:

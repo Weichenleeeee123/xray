@@ -17,11 +17,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 
 from app import config
 from app.sources.licenses import normalize
+from app.persistence import atomic_json
 
 OFFICIAL_DOMAINS = ["nfra.gov.cn", "csrc.gov.cn", "pbc.gov.cn", "samr.gov.cn", "court.gov.cn", "chinacourt.org",
                     "creditchina.gov.cn", "12315.cn", "zj.gov.cn", "hangzhou.gov.cn", "mps.gov.cn", "spp.gov.cn",
@@ -75,8 +77,11 @@ class WebFindings:
 
 
 def _domain(url: str) -> str:
-    m = re.match(r"https?://([^/]+)", url or "")
-    return m.group(1).lower() if m else ""
+    try:
+        parsed = urlsplit(url or "")
+        return (parsed.hostname or "").lower() if parsed.scheme in ("https", "http") else ""
+    except ValueError:
+        return ""
 
 
 def _matches(domain: str, suffixes: list[str]) -> bool:
@@ -175,8 +180,11 @@ class WebClient:
             try:
                 pages = fetch()
                 self.cache_dir.mkdir(parents=True, exist_ok=True)
-                path.write_text(json.dumps({"params": params, "recorded_at": datetime.now().isoformat(timespec="seconds"),
-                                            "pages": pages}, ensure_ascii=False), encoding="utf-8")
+                try:
+                    atomic_json(path, {"params": params, "recorded_at": datetime.now().isoformat(timespec="seconds"),
+                                       "pages": pages})
+                except OSError:
+                    pass
                 return pages, False
             except (httpx.HTTPError, ValueError, KeyError, TypeError):
                 if not path.exists():
@@ -227,7 +235,7 @@ class WebClient:
                 out.queries.append(q)
                 try:
                     pages, replay = futures[k].result()
-                except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+                except (httpx.HTTPError, ValueError, KeyError, TypeError, OSError) as e:
                     out.errors.append(f"{'官方网站' if k == 'official' else '权威媒体' if k == 'media' else '公开报道'}搜索失败：{type(e).__name__}")
                     continue
                 out.replay = out.replay or replay
@@ -242,6 +250,10 @@ class WebClient:
                         continue
                     seen.add(p["url"])
                     official = _matches(domain, OFFICIAL_DOMAINS) or domain.endswith(".gov.cn")
+                    if k == "official" and not official:
+                        continue
+                    if k == "media" and not _matches(domain, MEDIA_DOMAINS):
+                        continue
                     if k != "official" and official:
                         continue  # 官方页面由第一路搜索负责
                     cats = OFFICIAL_CATS if official else OFFICIAL_CATS[:2] + NEWS_CATS if k == "media" else NEWS_CATS

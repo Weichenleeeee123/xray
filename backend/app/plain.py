@@ -111,6 +111,14 @@ def _short_ok(s: str, src: str, data: str, ctx: str | None = None) -> bool:
         return False
     if any(q in src and q not in s for q in QUALIFIERS):
         return False
+    # Do not accept removal of negation merely because most Chinese characters overlap.
+    for concept in ("登记", "处罚", "转账", "持牌", "退款", "保本", "风险", "注销", "营业"):
+        if concept in s and concept in src:
+            negative = rf"(?:没有|未|不|无|禁止|不能|不可|不得)[^，。；（）]{{0,8}}{concept}"
+            if "不需要" in s and "不需要" in src and concept != "登记":
+                continue
+            if bool(re.search(negative, src)) != bool(re.search(negative, s)):
+                return False
     src_nums = {n.replace(",", "") for n in NUM.findall(src)}
     return all(n.replace(",", "") in src_nums for n in NUM.findall(s))   # 不许冒出原句里没有的数字
 

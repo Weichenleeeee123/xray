@@ -112,6 +112,9 @@ def claimed_licenses_check(types: list[str], lic: LicenseHit, amac: AmacHit, oth
     have, missing, unknown = [], [], []
     for t in types:
         rid = LICENSE_LISTS_BY_TYPE.get(t)
+        if rid == "nfra_bank_list" and lic.found:
+            (have if lic.record and t in lic.record.type else unknown).append(t)
+            continue
         (unknown if rid is None or rid not in found else have if found[rid] else missing).append(t)
     parts = []
     if have:
@@ -342,6 +345,9 @@ def capital_review(claim: RawClaim, company: CompanyProfile | None, amac: AmacHi
                 Verdict.unverifiable, NO_DATA_PLAIN)
     checks = []
     claimed, reg, paid = claim.numbers.get("capital"), company.reg_capital, company.paid_capital
+    if company.capital_currency != "人民币" or company.paid_currency != "人民币":
+        return [Check(label="资本币种", result=f"登记 {money(reg, company.capital_currency)}；币种不同或宣传币种未明确，未作数值对比",
+                      status=Status.none, source="registry")], Verdict.unverifiable, "登记涉及外币，先核对币种，不能直接比较金额。"
     same = claimed is not None and abs(claimed - reg) <= reg * 0.01
     due = f"，认缴期限 {company.capital_due}" if company.capital_due else ""
     if claimed is not None:

@@ -1,8 +1,10 @@
 from datetime import date
 
 
-def money(n: float) -> str:
+def money(n: float, currency: str = "人民币") -> str:
     """¥5,000 万 / ¥40,000 / ¥0"""
+    if currency != "人民币":
+        return f"{n / 10000:,.0f} 万{currency}" if n >= 10000 and n % 10000 == 0 else f"{n:,.0f} {currency}"
     if n >= 10000 and n % 10000 == 0:
         return f"¥{n / 10000:,.0f} 万"
     return f"¥{n:,.0f}"

@@ -1,4 +1,5 @@
 import os
+import math
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -54,3 +55,26 @@ HIGH_RETURN_RATIO = 3.0
 LOW_PAID_RATIO = 0.1
 # 成立不满多少个月，标为"成立时间短"
 YOUNG_COMPANY_MONTHS = 24
+
+
+def validate_settings():
+    errors = []
+    for name, value in (("TOKENDANCE_TIMEOUT", LLM_TIMEOUT), ("XRAY_REF_DEPOSIT_RATE", REF_DEPOSIT_RATE)):
+        if not math.isfinite(value) or value <= 0:
+            errors.append(f"{name} 必须是有限正数")
+    if LLM_MODE not in ("live", "replay", "off"):
+        errors.append("XRAY_LLM_MODE 必须为 live/replay/off")
+    if os.getenv("XRAY_COMMERCIAL", "").strip().lower() not in ("", "qcc", "qcc_agent", "tianyancha"):
+        errors.append("XRAY_COMMERCIAL 数据源名称无效")
+    for name, default, minimum in (("XRAY_MAX_RUNS", "4", 1), ("XRAY_QCC_MAX_POINTS", "300", 0),
+                                    ("XRAY_COMMERCIAL_MAX_CALLS", "30", 0), ("XRAY_COMMERCIAL_CACHE_TTL", "86400", 0)):
+        try:
+            if int(os.getenv(name, default)) < minimum:
+                raise ValueError
+        except ValueError:
+            errors.append(f"{name} 必须为不小于 {minimum} 的整数")
+    if errors:
+        raise ValueError("配置错误：" + "；".join(errors))
+
+
+validate_settings()

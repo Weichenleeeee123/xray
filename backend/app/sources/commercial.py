@@ -16,6 +16,8 @@ import json
 import os
 import re
 import time
+import math
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -25,22 +27,36 @@ import httpx
 from app import config
 from app.models import CompanyProfile, Coverage, RawRecord, Source
 from app.sources.licenses import normalize
+from app.persistence import atomic_json, locked
+from app.sources.cache import read_fresh
 
 CST = timezone(timedelta(hours=8))
 QCC_URL = "https://api.qichacha.com/ECIV4/GetBasicDetailsByName"
-TYC_URL = "http://open.api.tianyancha.com/services/open/ic/baseinfo/normal"
+TYC_URL = "https://open.api.tianyancha.com/services/open/ic/baseinfo/normal"
 TITLES = {"qcc": "企查查开放平台 · 企业工商信息", "tianyancha": "天眼查开放平台 · 企业基本信息"}
 SITES = {"qcc": "https://openapi.qcc.com", "tianyancha": "https://open.tianyancha.com"}
 # 这个接口给了哪些字段；其余字段（处罚、出质、被执行……）没查
 CHECKED = ["name", "code", "status", "founded", "reg_capital", "paid_capital", "scope", "insured"]
 
 
+def currency(text) -> str:
+    value = str(text or "")
+    for label, pattern in (("美元", r"美元|USD|US\$"), ("港元", r"港元|港币|HKD"),
+                           ("欧元", r"欧元|EUR"), ("日元", r"日元|JPY"), ("英镑", r"英镑|GBP")):
+        if re.search(pattern, value, re.I):
+            return label
+    rest = re.sub(r"[\d\s.,，亿万元¥￥()（）]|人民币|RMB|CNY", "", value, flags=re.I)
+    return "人民币" if not rest else f"原币（{rest[:16]}）"
+
+
 def parse_money(text) -> float | None:
     """"5000万元人民币" → 50000000；"1.2亿" → 120000000；数字原样。外币不换算，原样按数字给（报告里会带原文）。"""
     if text is None or text == "":
         return None
+    if isinstance(text, str) and re.search(r"-\s*\d", text):
+        return None
     if isinstance(text, (int, float)):
-        return float(text)
+        return float(text) if math.isfinite(text) and text >= 0 else None
     m = re.search(r"(\d+(?:\.\d+)?)\s*(亿|万)?", str(text).replace(",", ""))
     if not m:
         return None
@@ -50,10 +66,13 @@ def parse_money(text) -> float | None:
 def _day(value) -> str | None:
     if value in (None, ""):
         return None
-    if isinstance(value, (int, float)):  # 天眼查给毫秒时间戳
-        return datetime.fromtimestamp(value / 1000, CST).date().isoformat()
-    m = re.search(r"\d{4}-\d{2}-\d{2}", str(value))
-    return m.group(0) if m else None
+    try:
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value / 1000, CST).date().isoformat()
+        m = re.search(r"\d{4}-\d{2}-\d{2}", str(value))
+        return datetime.fromisoformat(m.group(0)).date().isoformat() if m else None
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def to_profile(provider: str, r: dict) -> CompanyProfile | None:
@@ -71,7 +90,11 @@ def to_profile(provider: str, r: dict) -> CompanyProfile | None:
     if not name or not founded or reg is None:
         return None
     return CompanyProfile(name=name, code=code, status=status or "未知", founded=founded, reg_capital=reg,
-                          paid_capital=paid, scope=scope, insured=insured, checked=list(CHECKED))
+                          paid_capital=paid, scope=scope, insured=insured, checked=[k for k in CHECKED
+                          if k not in ("status", "paid_capital", "insured") or
+                          {"status": status, "paid_capital": paid, "insured": insured}.get(k) is not None],
+                          capital_currency=currency(r.get("RegistCapi") if provider == "qcc" else r.get("regCapital")),
+                          paid_currency=currency(r.get("RecCap") if provider == "qcc" else r.get("actualCapital")))
 
 
 @dataclass
@@ -93,7 +116,7 @@ class CommercialResult:
 
     def records(self) -> list[RawRecord]:
         src = self.source
-        cov = Coverage.found if self.profile else (Coverage.failed if not self.response else Coverage.not_found)
+        cov = Coverage.found if self.profile else (Coverage.failed if not self.response or self.record else Coverage.not_found)
         out = [RawRecord(id="", source_id="registry", title=src.name, kind="commercial", coverage=cov,
                          retrieved_at=self.retrieved_at, as_of=self.retrieved_at[:10], url=src.url,
                          content=self.record or self.response or None, note=self.note)]
@@ -114,6 +137,7 @@ class CommercialClient:
         self.provider = provider.strip().lower()
         self.qcc_key, self.qcc_secret, self.tyc_token = qcc_key, qcc_secret, tyc_token
         self.max_calls, self.calls, self.cache_dir, self.transport = max_calls, 0, cache_dir, transport
+        self._budget_lock = threading.Lock()
 
     @property
     def configured(self) -> bool:
@@ -144,34 +168,57 @@ class CommercialClient:
             return response.get("Result") if str(response.get("Status")) == "200" else None
         return response.get("result") if response.get("error_code") == 0 else None
 
-    def fetch(self, name: str) -> CommercialResult | None:
+    def fetch(self, name: str, *, force_refresh: bool = False) -> CommercialResult | None:
+        if not self.configured:
+            return None
+        with locked(self._cache_path(name)):
+            return self._fetch(name, force_refresh)
+
+    def _fetch(self, name: str, force_refresh: bool) -> CommercialResult | None:
         """没配置返回 None；配置了但失败，返回带说明的结果（记一条"查询失败"，不中断分析）。"""
         if not self.configured:
             return None
         path, cached = self._cache_path(name), True
-        if path.exists():
-            saved = json.loads(path.read_text(encoding="utf-8"))
+        saved = read_fresh(path, "response", force=force_refresh)
+        if saved:
             response, retrieved = saved["response"], saved["retrieved_at"]
+            response = self._scrub(response)
         else:
-            if self.calls >= self.max_calls:
-                return CommercialResult(self.provider, name, datetime.now(CST).isoformat(timespec="seconds"), {}, None,
-                                        None, f"本次运行已调用 {self.calls} 次，到上限了，没有再查", False)
-            self.calls += 1
+            with self._budget_lock:
+                if self.calls >= self.max_calls:
+                    return CommercialResult(self.provider, name, datetime.now(CST).isoformat(timespec="seconds"), {}, None,
+                                            None, f"本次运行已调用 {self.calls} 次，到上限了，没有再查", False)
+                self.calls += 1
             retrieved, cached = datetime.now(CST).isoformat(timespec="seconds"), False
             try:
                 response = self._request(name)
             except (httpx.HTTPError, ValueError) as e:
                 return CommercialResult(self.provider, name, retrieved, {}, None, None,
                                         f"查询失败：{type(e).__name__}", False)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({"query": name, "retrieved_at": retrieved, "response": response},
-                                       ensure_ascii=False), encoding="utf-8")
+            # Persist only fields used in this service, never contact/legal-representative details.
+            response = self._scrub(response)
+            try:
+                atomic_json(path, {"query": name, "retrieved_at": retrieved, "response": response, "schema_version": 1})
+            except OSError:
+                pass
         record = self._record(response)
         if record is None:
             return CommercialResult(self.provider, name, retrieved, response, None, None, "查了，没有这家公司的记录", cached)
         profile = to_profile(self.provider, record)
+        if profile is None:
+            return CommercialResult(self.provider, name, retrieved, response, record, None,
+                                    "工商响应缺少有效关键字段，本次未采用", cached)
         if profile and normalize(profile.name) != normalize(name):
             return CommercialResult(self.provider, name, retrieved, response, record, None,
                                     f"按名称查到的是\"{profile.name}\"，和输入的名字对不上，没有采用。请输入公司全称再查", cached)
         note = "缓存（没有重复计费）" if cached else "实时查询"
         return CommercialResult(self.provider, name, retrieved, response, record, profile, note, cached)
+
+    @staticmethod
+    def _scrub(value):
+        private = re.compile(r"opername|legalperson|phone|email|contact|address|法定代表人|电话|邮箱|联系人", re.I)
+        if isinstance(value, dict):
+            return {k: CommercialClient._scrub(v) for k, v in value.items() if not private.search(k)}
+        if isinstance(value, list):
+            return [CommercialClient._scrub(v) for v in value]
+        return value

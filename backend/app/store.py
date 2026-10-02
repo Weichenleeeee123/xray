@@ -1,7 +1,13 @@
-"""案卷存储：一个案卷一个 JSON 文件，重启不丢。演示只有一个人操作，不处理并发。"""
+"""案卷文件存储：原子写入、跨进程锁和乐观并发检查。"""
+import json
 from pathlib import Path
 
 from app.models import Case, CaseSummary
+from app.persistence import locked, atomic_text, atomic_json
+
+
+class ConflictError(Exception):
+    pass
 
 
 class CaseStore:
@@ -16,26 +22,79 @@ class CaseStore:
 
     def save(self, case: Case) -> Case:
         path = self._path(case.id)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(case.model_dump_json(indent=1), encoding="utf-8")
-        tmp.replace(path)  # 先写临时文件再替换，写到一半断电也不会坏
+        with locked(path):
+            current = self.get(case.id)
+            if current and current.revision != case.revision:
+                raise ConflictError("案卷已被更新，请刷新后重试")
+            self._write(case, path)
         return case
+
+    def _write(self, case: Case, path: Path):
+        if len(case.versions) > 100 or len(case.chat) > 1000:
+            raise ConflictError("案卷已达到 100 个版本或 1000 条对话的上限，请新建案卷")
+        checked = Case.model_validate(case.model_dump())
+        if not checked.versions or checked.current != checked.versions[-1].no:
+            raise ValueError("案卷当前版本与版本历史不一致")
+        if [v.no for v in checked.versions] != list(range(1, checked.current + 1)):
+            raise ValueError("案卷版本号不连续")
+        checked.revision += 1
+        atomic_text(path, checked.model_dump_json())
+        case.revision = checked.revision
+        self._summary(path, checked)
+
+    def _summary(self, path: Path, case: Case):
+        v = case.versions[-1]
+        summary = CaseSummary(id=case.id, created_at=case.created_at, company_name=case.case.company_name,
+                              need=case.case.need, scenario_label=v.scenario_label, versions=len(case.versions))
+        stat = path.stat()
+        try:
+            atomic_json(self.dir / "summaries" / path.name,
+                        {"mtime": stat.st_mtime_ns, "size": stat.st_size, "summary": summary.model_dump()})
+        except OSError:
+            pass
+        return summary
+
+    def append_chat(self, case_id: str, messages):
+        path = self._path(case_id)
+        with locked(path):
+            case = self.get(case_id)
+            if case is None:
+                raise KeyError(case_id)
+            case.chat.extend(messages)
+            self._write(case, path)
 
     def get(self, case_id: str) -> Case | None:
         try:
             path = self._path(case_id)
         except KeyError:
             return None
-        return Case.model_validate_json(path.read_text(encoding="utf-8")) if path.exists() else None
+        if not path.exists():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        # Compatibility with the historical resolve action accidentally persisted as a state.
+        for version in data.get("versions", []):
+            for judgment in version.get("judgments", []):
+                if judgment.get("state") == "recheck":
+                    judgment["state"] = "needs_check"
+        return Case.model_validate(data)
 
-    def list(self) -> list[CaseSummary]:
+    def list(self, limit: int | None = None, offset: int = 0) -> list[CaseSummary]:
         out = []
         for path in self.dir.glob("*.json"):
             try:
-                c = Case.model_validate_json(path.read_text(encoding="utf-8"))
-            except ValueError:
+                stat = path.stat()
+                try:
+                    entry = json.loads((self.dir / "summaries" / path.name).read_text(encoding="utf-8"))
+                    if entry["mtime"] == stat.st_mtime_ns and entry["size"] == stat.st_size:
+                        out.append(CaseSummary.model_validate(entry["summary"]))
+                        continue
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+                with locked(path):
+                    c = self.get(path.stem)
+                    if c:
+                        out.append(self._summary(path, c))
+            except (ValueError, OSError):
                 continue  # 旧格式或损坏的文件跳过
-            v = c.versions[-1]
-            out.append(CaseSummary(id=c.id, created_at=c.created_at, company_name=c.case.company_name, need=c.case.need,
-                                   scenario_label=v.scenario_label, versions=len(c.versions)))
-        return sorted(out, key=lambda s: s.created_at, reverse=True)
+        ordered = sorted(out, key=lambda s: (s.created_at, s.id), reverse=True)
+        return ordered[offset:offset + limit] if limit is not None else ordered[offset:]
