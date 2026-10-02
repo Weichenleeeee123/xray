@@ -58,7 +58,7 @@ cd backend && .venv\Scripts\python -m uvicorn app.main:app --port 8000
 
 | 路由 | 页面 | 用到的接口 |
 |---|---|---|
-| `/` | 研究室首页：叠加式公司输入框、默认公开资料研究、真实任务阶段与卷宗；右下角菜单提供其他入口 | `POST /api/runs`、`GET /api/runs/{id}`、`GET /api/cases/{id}` |
+| `/` | 研究室首页：队友原版公司输入框与选填需求栏、真实任务阶段与卷宗；右下角菜单提供其他入口 | `POST /api/runs`、`GET /api/runs/{id}`、`GET /api/cases/{id}` |
 | `/xray/#/new` | 附带材料查询：公司全称、一句需求（停顿 0.8 秒自动识别场景，可改）、替谁看、金额、可选材料（粘贴或上传）；演示案例一键填入 | `GET /api/health`、`/api/scenarios`、`/api/sources`、`/api/demo/cases`；`POST /api/intake`、`/api/read`、`/api/cases/stream` |
 | `#/cases` | 案卷：本机查过的公司及版本 | `GET /api/cases` |
 | `#/me` | 我的：模型、商业数据源和名单状态，名词解释与使用底线 | `GET /api/health`、`/api/glossary`、`/api/cases` |

@@ -8,10 +8,11 @@ import {
   CirclePause,
   CirclePlay,
   Database,
-  CornerDownLeft,
   Menu,
   MessageCircle,
   Newspaper,
+  Search,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,6 +56,7 @@ const clamp = (n: number) => Math.max(0, Math.min(1, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export default function Home() {
   const [query, setQuery] = useState(''),
+    [need, setNeed] = useState(''),
     [inspector, setInspector] = useState(false),
     [retryConfirm, setRetryConfirm] = useState(false),
     [testResult, setTestResult] = useState(false),
@@ -134,7 +136,7 @@ export default function Home() {
   const submit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (query.trim().length < 2) return;
-    void begin(query);
+    void begin(query, need);
   };
   useEffect(() => {
     const context = (
@@ -362,27 +364,37 @@ export default function Home() {
         {idle && (
           <div className="query-layer visible">
             <form className="home-query" onSubmit={submit}>
+              <span className="query-kicker">
+                <Sparkles /> 查企业
+              </span>
+              <h1>想先查哪家公司？</h1>
               <label className="sr-only" htmlFor="company-query">
                 公司全称
               </label>
               <div className="prompt-bar">
+                <Search aria-hidden="true" />
                 <Input
                   id="company-query"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="输入公司全称，开始调查"
-                  autoComplete="organization"
-                  enterKeyHint="go"
+                  placeholder="输入公司全称"
                   maxLength={80}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
-                      event.preventDefault();
-                  }}
                 />
-                <Button type="submit" disabled={query.trim().length < 2} aria-label="开始查询" title="回车开始查询">
-                  <CornerDownLeft aria-hidden="true" />
+                <Button type="submit" disabled={query.trim().length < 2}>
+                  开始查询
                 </Button>
               </div>
+              <label className="need-field" htmlFor="research-need">
+                研究需求（选填）
+                <Input
+                  id="research-need"
+                  value={need}
+                  onChange={(e) => setNeed(e.target.value)}
+                  placeholder="例如：了解这家公司的登记、资质与公开资料"
+                  maxLength={500}
+                />
+              </label>
+              <p>资料覆盖情况来自真实后端，不代表安全评级。</p>
             </form>
           </div>
         )}
