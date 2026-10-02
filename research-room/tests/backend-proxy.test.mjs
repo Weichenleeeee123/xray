@@ -15,6 +15,24 @@ test('production proxy preserves complete input, query, status and streamed resp
   assert.match(response.headers.get('Content-Type'),/ndjson/);
   assert.equal(await response.text(),'{"type":"begin"}\n');
 });
+
+test('private guest identity and no-store headers survive the production proxy', async () => {
+  const cookie = '__Host-qier_guest=synthetic-test-token';
+  const response = await proxyBackend(new Request('https://penguin.test/api/session', {
+    headers: {Cookie:cookie, Origin:'https://penguin.test'},
+  }), 'https://backend.test', async request => {
+    assert.equal(request.headers.get('Cookie'), cookie);
+    assert.equal(request.headers.get('Origin'), 'https://penguin.test');
+    assert.equal(request.headers.get('X-Forwarded-Proto'), 'https');
+    return Response.json({private:true}, {headers:{
+      'Set-Cookie':cookie+'; Path=/; Secure; HttpOnly; SameSite=Lax',
+      'Cache-Control':'private, no-store', Vary:'Cookie, Origin',
+    }});
+  });
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(response.headers.get('Vary'), 'Cookie, Origin');
+  assert.match(response.headers.get('Set-Cookie'), /__Host-qier_guest=.*Secure; HttpOnly/);
+});
 test('report, assets and offline replay use the same configured backend', async () => {
   for (const [path,want] of [['/xray/','/xray/'],['/xray/app.js','/xray/app.js'],['/research-assets/goose-actions-v2.png','/research-assets/goose-actions-v2.png'],['/demo/','/demo/']]) {
     const r=await proxyBackend(new Request('https://penguin.test'+path),'https://backend.test',async req=>{
