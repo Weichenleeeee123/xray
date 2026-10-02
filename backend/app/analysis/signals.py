@@ -1,7 +1,8 @@
 """把散在各处的记录归进赛题的四个信号：风险、财务、信用、口碑。"""
 import re
+from collections import Counter
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from urllib.parse import urlsplit
 
 from app.analysis.extract import Extraction
@@ -15,6 +16,8 @@ from app.sources.web import OFFICIAL_DOMAINS, WebFindings, WebHit
 from app.sources import finance as fin
 from app.sources.finance import FinancialFindings
 from app.sources.news import NewsFindings
+from app.sources import qcc_more
+from app.sources.cninfo import CninfoFindings
 
 NO_WEB = "联网搜索没开（没配模型网关，或处于离线模式）"
 
@@ -436,6 +439,151 @@ def web_reputation(web: WebFindings, refs: dict[str, str], lede: str) -> Signal:
     return Signal(key="reputation", title="口碑", lede=lede, flags=_flags(items), items=items, extra=extra)
 
 
+# ---------- 企查查补充信息、巨潮公告、权威媒体 ----------
+# 都只列事实和条数；能标"要留意"的只有几种：近一年改名或换法定代表人、近两年当被告的投资类纠纷或劳动纠纷、
+# 近一年交易所公告里有处罚或监管措施、权威媒体报道过它被处罚或警示。没有一项会标"有问题"。
+
+def _part_none(key: str, label: str, part, source: str) -> SignalItem | None:
+    if part.coverage == "failed":
+        return SignalItem(key=key, label=label, value="没查成", detail=part.error, status=Status.none, source=source)
+    return None
+
+
+def controller_item(x: "qcc_more.QccExtras") -> SignalItem | None:
+    p = x.get("controller")
+    if p.coverage == "not_found":
+        return SignalItem(key="controller", label="实际控制人", value="平台没有记录",
+                          detail="股权分散或没穿透出来；不等于没有人控制", status=Status.ok, source="qcc_controller")
+    if p.coverage != "found":
+        return _part_none("controller", "实际控制人", p, "qcc_controller")
+    c = p.rows[0]
+    who = "自然人（个人）" if c.get("是自然人") else c.get("名称")
+    share = "，".join(x for x in (f"持股 {c['总持股比例']}" if c.get("总持股比例") else "",
+                                 f"表决权 {c['表决权比例']}" if c.get("表决权比例") else "") if x)
+    return SignalItem(key="controller", label="实际控制人", value=who, detail=share or None, status=Status.ok,
+                      source="qcc_controller")
+
+
+def license_item(x: "qcc_more.QccExtras") -> SignalItem | None:
+    lic, qual = x.get("licenses"), x.get("qualifications")
+    if lic.coverage == "failed" and qual.coverage == "failed":
+        return _part_none("permits", "行政许可和资质", lic, "qcc_licenses")
+    fin = qcc_more.financial_licenses(x)
+    value = f"行政许可 {lic.total} 条、资质证书 {qual.total} 个"
+    detail = ("其中和金融有关的：" + "、".join(fin[:6])) if fin else "没有金融牌照类的资质（金融牌照以监管名单为准）"
+    return SignalItem(key="permits", label="行政许可和资质", value=value, detail=detail, status=Status.ok,
+                      source="qcc_qualifications" if qual.total else "qcc_licenses")
+
+
+def change_item(x: "qcc_more.QccExtras", today: date) -> SignalItem | None:
+    p = x.get("changes")
+    if p.coverage != "found":
+        return _part_none("changes", "工商变更", p, "qcc_changes")
+    last = qcc_more.recent(p.rows, today, 365)
+    flagged = [r for r in last if qcc_more.FLAG_CHANGE.search(r.get("项目") or "")]
+    kinds = list(dict.fromkeys(re.sub(r"（.*?）|\(.*?\)", "", r.get("项目") or "") for r in last))
+    detail = (f"近一年 {len(last)} 次：" + "、".join(kinds[:5])) if last else "近一年没有变更"
+    if flagged:
+        detail = "近一年改过名称或法定代表人。跑路前常见改名、换人，但正常经营也会改，要问清原因。" + detail
+    return SignalItem(key="changes", label="工商变更", value=f"共 {p.total} 次", detail=detail,
+                      status=Status.warn if flagged else Status.ok, source="qcc_changes")
+
+
+def lawsuit_items(x: "qcc_more.QccExtras", today: date) -> list[SignalItem]:
+    items = []
+    h, f = x.get("hearings"), x.get("filings")
+    if h.coverage == "found" or f.coverage == "found":
+        shown = len(h.rows) + len(f.rows)
+        mine = qcc_more.recent(qcc_more.defendant_cases(x), today, 730)
+        invest = [r for r in mine if qcc_more.INVEST.search(r.get("案由") or "")]
+        causes = Counter(r.get("案由") or "未写案由" for r in mine).most_common(3)
+        detail = (f"开庭 {h.total}、立案 {f.total} 条；看了返回的最近 {shown} 条，近两年它当被告 {len(mine)} 条"
+                  + (f"（{'、'.join(f'{c} {n}' for c, n in causes)}）" if causes else "") + "。打官司不等于有错，银行起诉借款人很常见")
+        if invest:
+            detail = f"近两年有 {len(invest)} 起投资、合伙、理财类纠纷是别人告它，可能是投资人在追钱。" + detail
+        items.append(SignalItem(key="lawsuits", label="开庭和立案", value=f"近两年当被告 {len(mine)} 条",
+                                detail=detail, status=Status.warn if invest else Status.ok,
+                                source="qcc_hearings" if h.coverage == "found" else "qcc_filings"))
+    else:
+        none = _part_none("lawsuits", "开庭和立案", h, "qcc_hearings")
+        items += [none] if none else []
+    lab = x.get("labor")
+    labor_cases = [r for r in qcc_more.defendant_cases(x) if qcc_more.LABOR.search(r.get("案由") or "")]
+    labor_recent = qcc_more.recent(lab.rows, today, 730) + qcc_more.recent(labor_cases, today, 730)
+    if lab.coverage == "found" or labor_cases:
+        items.append(SignalItem(key="labor", label="劳动仲裁和劳动纠纷",
+                                value=f"劳动仲裁 {lab.total} 条，当被告的劳动官司 {len(labor_cases)} 条",
+                                detail=f"近两年 {len(labor_recent)} 条" + ("。求职前可以问问对方怎么回事" if labor_recent else ""),
+                                status=Status.warn if labor_recent else Status.ok,
+                                source="qcc_labor" if lab.coverage == "found" else "qcc_hearings"))
+    elif lab.coverage == "not_found":
+        items.append(SignalItem(key="labor", label="劳动仲裁", value="无", status=Status.ok, source="qcc_labor"))
+    return items
+
+
+def jobs_item(x: "qcc_more.QccExtras", company: CompanyProfile | None, today: date) -> SignalItem | None:
+    p = x.get("jobs")
+    if p.coverage != "found":
+        return _part_none("jobs", "招聘", p, "qcc_jobs")
+    cities = list(dict.fromkeys(str(r.get("地点")) for r in p.rows if r.get("地点")))
+    latest = max((str(r.get("日期") or "") for r in p.rows), default="")
+    pay = [str(r.get("月薪")) for r in p.rows if r.get("月薪")]
+    detail = f"最近一条 {latest or '日期不详'}；招聘地点 {len(cities)} 个（{'、'.join(cities[:5])}）" + \
+             (f"；月薪如 {'、'.join(dict.fromkeys(pay[:3]))}" if pay else "")
+    insured = company.insured if company is not None else None
+    fresh = latest >= (today - timedelta(days=3 * 365)).isoformat()
+    odd = insured is not None and insured < 10 and len(cities) >= 3 and fresh
+    if odd:
+        detail = f"在 {len(cities)} 个城市招人，但年报里参保只有 {insured} 人，对不上，要问清楚员工归谁。" + detail
+    elif insured is not None and len(cities) >= 3:
+        detail += f"；年报参保 {insured} 人（招聘较早，不直接比）" if not fresh else f"；年报参保 {insured} 人"
+    return SignalItem(key="jobs", label="招聘", value=f"{p.total} 条", detail=detail,
+                      status=Status.warn if odd else Status.ok, source="qcc_jobs")
+
+
+def cninfo_items(c: CninfoFindings | None) -> tuple[list[SignalItem], list[SignalItem]]:
+    """返回（财务卡片的年报原文，信用卡片的公告）。"""
+    if c is None or c.coverage == "not_covered":
+        return [], []
+    if c.coverage != "found":
+        bad = SignalItem(key="cninfo", label="交易所公告（巨潮资讯网）", value="没查成" if c.coverage == "failed" else "没有",
+                         detail=c.error, status=Status.none, source="cninfo")
+        return [], [bad]
+    fin_items = []
+    if c.annual:
+        fin_items.append(SignalItem(key="annual_report_pdf", label="最新年报原文", value=f"{c.annual.title}（{c.annual.date}）",
+                                    detail="巨潮资讯网上的 PDF 原文；上面的财务数字以它为准", status=Status.ok,
+                                    source="cninfo"))
+    pen = [n for n in c.risky if n.category == "penalty"]
+    others = [n for n in c.risky if n.category != "penalty"]
+    detail = f"最近一年公告 {c.total} 条，看了 {c.scanned} 条标题"
+    if c.risky:
+        top = (pen or others)[0]
+        detail += f"；最近一条：{top.date}《{top.title}》"
+    credit = SignalItem(key="cninfo", label="交易所公告里的处罚、诉讼、问询",
+                        value=(f"处罚或监管措施 {len(pen)} 条，诉讼或问询 {len(others)} 条") if c.risky else "没有",
+                        detail=detail, status=Status.warn if pen else Status.ok, source="cninfo")
+    return fin_items, [credit]
+
+
+def media_item(web: WebFindings | None) -> SignalItem | None:
+    if web is None or not web.searched:
+        return None
+    hits = sorted(web.media, key=lambda h: h.date or "", reverse=True)
+    if not hits:
+        failed = any("权威媒体" in e for e in web.errors)
+        return SignalItem(key="media", label="权威媒体报道", value="没查成" if failed else "没搜到",
+                          detail="只搜人民网、新华网、财新、证券时报等二十多家；没搜到不等于没有",
+                          status=Status.none if failed else Status.ok, source="web_media")
+    reg = [h for h in hits if h.category in ("penalty", "warning") and h.subject]
+    top = (reg or hits)[0]
+    detail = f"最近：{top.date or '日期不详'} {top.site}《{top.title}》"
+    if reg:
+        detail = f"有 {len(reg)} 篇说到它被处罚、警示或涉嫌违规。" + detail
+    return SignalItem(key="media", label="权威媒体报道", value=f"{len(hits)} 篇", detail=detail,
+                      status=Status.warn if reg else Status.ok, source="web_media")
+
+
 def news_items(news: NewsFindings, today: date) -> list[SignalItem]:
     """企查查新闻舆情。负面是平台的模型标的：最多到"要留意"，不到"有问题"。"""
     if news.coverage != "found":
@@ -515,7 +663,8 @@ def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseH
                   assertions: list[Assertion] = (), others: list[RegistryHit] = (),
                   web: WebFindings | None = None, web_refs: dict[str, str] | None = None,
                   amount: float | None = None, reviews: list[dict] | None = None,
-                  finance: FinancialFindings | None = None, news: NewsFindings | None = None) -> list[Signal]:
+                  finance: FinancialFindings | None = None, news: NewsFindings | None = None,
+                  extras: "qcc_more.QccExtras | None" = None, cninfo: CninfoFindings | None = None) -> list[Signal]:
     """四个信号的内容不随场景变；场景只改排序和开头那句话。"""
     scale = ext.claims.get(ClaimKind.scale)
     stores = scale.numbers.get("stores") if scale else None
@@ -524,6 +673,26 @@ def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseH
                                               amount),
                                   finance_signal(company, stores, amac, finance), credit_signal(company, as_of, web, refs, amac),
                                   reputation_signal(complaints, web, refs)]}
+    fin_cn, credit_cn = cninfo_items(cninfo)
+    adds: dict[str, list[SignalItem | None]] = {"finance": list(fin_cn), "credit": list(credit_cn), "risk": []}
+    if extras is not None:
+        adds["risk"] += [controller_item(extras), license_item(extras), change_item(extras, as_of)]
+        adds["credit"] += lawsuit_items(extras, as_of)
+        adds["finance"].append(jobs_item(extras, company, as_of))
+    for key, new in adds.items():
+        new = [i for i in new if i is not None]
+        if new and key in signals:
+            signals[key].items += new
+            signals[key].flags = _flags(signals[key].items)
+    if web is not None and (item := media_item(web)) is not None:
+        signals["reputation"].items.append(item)
+        if web.media:
+            signals["reputation"].extra = (signals["reputation"].extra or {}) | {"media": [
+                {"category": h.category_label, "title": h.title, "url": h.url, "site": h.site, "date": h.date,
+                 "excerpt": h.excerpt, "ref": refs.get(h.url)} for h in sorted(web.media, key=lambda h: h.date or "", reverse=True)]}
+        signals["reputation"].flags = _flags(signals["reputation"].items)
+    if cninfo is not None and cninfo.coverage == "found" and cninfo.risky:
+        signals["credit"].extra = (signals["credit"].extra or {}) | {"notices": [n.__dict__ for n in cninfo.risky]}
     if news is not None:
         rep = signals["reputation"]
         if rep.items and rep.items[0].key == "complaints" and rep.items[0].status is Status.none:

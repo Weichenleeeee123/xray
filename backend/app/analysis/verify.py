@@ -292,6 +292,23 @@ def background_review(claim: RawClaim, company: CompanyProfile | None) -> Review
         checks.append(Check(label="股东", result=f"{holders}；其中 {state[0].name} 疑似国有主体",
                             status=Status.warn, source="registry"))
         return checks, Verdict.attention, f"股东中有国有背景的 {state[0].name}（{state[0].pct:g}%）；但国资持股不等于国家担保。"
+    ctrl = (company.controller or [None])[0] if company.controller is not None else None
+    claims_state = any(STATE_WORD.search(w) for w in claim.words)
+    if claims_state and ctrl:
+        share = "，".join(x for x in (f"持股 {ctrl['总持股比例']}" if ctrl.get("总持股比例") else "",
+                                     f"表决权 {ctrl['表决权比例']}" if ctrl.get("表决权比例") else "") if x)
+        checks.append(Check(label="股东", result=f"{holders}", status=Status.ok, source="registry"))
+        if ctrl.get("是自然人"):
+            checks.append(Check(label="实际控制人", result=f"自然人（个人）{('，' + share) if share else ''}",
+                                status=Status.bad, source="qcc_controller"))
+            return checks, Verdict.mismatch, "股东虽然是企业，但往上穿透，实际控制人是个人，不是国资。"
+        if STATE_OWNED.search(str(ctrl.get("名称") or "")):
+            checks.append(Check(label="实际控制人", result=f"{ctrl['名称']}{('，' + share) if share else ''}",
+                                status=Status.warn, source="qcc_controller"))
+            return checks, Verdict.attention, f"实际控制人是 {ctrl['名称']}，有国资背景；但国资控股不等于国家担保。"
+        checks.append(Check(label="实际控制人", result=f"{ctrl['名称']}{('，' + share) if share else ''}",
+                            status=Status.warn, source="qcc_controller"))
+        return checks, Verdict.unverifiable, f"实际控制人是 {ctrl['名称']}，看名字不是国资机构，要再往上查。"
     checks.append(Check(label="股东", result=f"{holders}；股东是企业，需要继续往上穿透",
                         status=Status.warn, source="registry"))
     return checks, Verdict.unverifiable, "股东是企业，要继续往上查才能确认有没有国资。"

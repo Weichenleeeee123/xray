@@ -27,7 +27,7 @@ OFFICIAL_DOMAINS = ["nfra.gov.cn", "csrc.gov.cn", "pbc.gov.cn", "samr.gov.cn", "
                     "creditchina.gov.cn", "12315.cn", "zj.gov.cn", "hangzhou.gov.cn", "mps.gov.cn", "spp.gov.cn",
                     "chinatax.gov.cn", "mohrss.gov.cn", "mofcom.gov.cn", "amac.org.cn"]
 # 商业数据网站：内容要授权，不用
-AGGREGATORS = ["tianyancha.com", "qcc.com", "qixin.com", "aiqicha.baidu.com", "qichacha.com", "xiniudata.com",
+AGGREGATORS = ["tianyancha.com", "qcc.com", "qixin.com", "aiqicha.baidu.com", "aiqicha.com", "qichacha.com", "xiniudata.com",
                "riskbird.com", "11467.com", "shuidi.cn"]
 OFFICIAL_CATS = [
     ("penalty", "行政处罚 / 监管措施", re.compile(r"处罚|罚决|罚款|责令改正|监管措施|警示函|没收|吊销|取缔|通报批评")),
@@ -35,6 +35,11 @@ OFFICIAL_CATS = [
     ("judicial", "法院文书", re.compile(r"法院|判决|裁定|被执行|破产|开庭|诉讼|仲裁")),
     ("license", "许可 / 批复", re.compile(r"批复|核准|许可|备案|准予|同意.{0,8}(设立|开业|变更)")),
 ]
+# 权威媒体：中央和地方党报、通讯社、财经媒体、证监会指定的信息披露报刊。只搜这些网站
+MEDIA_DOMAINS = ["people.com.cn", "xinhuanet.com", "news.cn", "cctv.com", "ce.cn", "chinanews.com.cn", "gmw.cn",
+                 "chinadaily.com.cn", "thepaper.cn", "caixin.com", "yicai.com", "21jingji.com", "eeo.com.cn",
+                 "jiemian.com", "stcn.com", "cs.com.cn", "cnstock.com", "zqrb.cn", "financialnews.com.cn",
+                 "jjckb.cn", "zjol.com.cn", "hangzhou.com.cn"]
 NEWS_CATS = [
     # 不用"逾期""拖欠"：银行起诉逾期借款人这类文章会被误判成"它兑付不了"
     ("cash", "兑付 / 提现 / 跑路", re.compile(r"兑付|提现难|提不了现|无法提现|取不出|无法赎回|跑路|失联|爆雷|暴雷|"
@@ -63,6 +68,7 @@ class WebFindings:
     searched: bool
     official: list[WebHit] = field(default_factory=list)
     news: list[WebHit] = field(default_factory=list)
+    media: list[WebHit] = field(default_factory=list)   # 权威媒体的报道
     queries: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     replay: bool = False   # 用的是录下来的搜索结果
@@ -100,7 +106,28 @@ DOC_DATE = re.compile(r"(?:发文|发布|成文)日期[:：]?\s*(\d{4})[-年./](
 # 处罚决定书里常写当事人的出生年月和住址，存进案卷前遮掉
 PERSONAL = [(re.compile(r"[男女][，,]\s*\d{4}\s*年\s*\d{1,2}\s*月(?:\s*\d{1,2}\s*日)?\s*出生"), "（出生信息略）"),
             (re.compile(r"住址[:：][^，。；,;]{1,40}"), "住址：略"),
-            (re.compile(r"身份证(?:号码?)?[:：]?\s*\d{6}[\d*]{8,11}[\dXx*]"), "身份证：略")]
+            (re.compile(r"身份证(?:号码?)?[:：]?\s*\d{6}[\d*]{8,11}[\dXx*]"), "身份证：略"),
+            # 法定代表人、实控人的名字（爱企查摘要、媒体报道里常见）。名字按 2~3 个汉字算；
+            # 后面紧跟"变更、的、信息……"这类词的不是名字，不动
+            (re.compile(r"(法定代表人|法人代表|实际控制人|实控人)(\s*(?:为|是|[:：])?\s*)"
+                        r"(?!变更|的|及|和|等|签|身份|职|信息|人|均|都|未|不|已|由|之|与|认定)[一-龥·]{2,3}"),
+             r"\1\2（姓名略）"),
+            # 处罚决定书里"某某某，男，19xx 年出生"：出生信息先遮掉，前面的名字跟着换
+            (re.compile(r"[一-龥·]{2,3}(?=[，,]\s*（出生信息略）)"), "相关个人")]
+# 标题括号里列的当事人："行政处罚决定书（巨鲸财富、某某某）"
+PAREN = re.compile(r"[（(]([^（）()]{1,40})[）)]")
+NAME_ONLY = re.compile(r"^[一-龥·]{2,4}$")
+ORGISH = re.compile(r"公司|合伙|中心|企业|集团|银行|基金|局|厅|委员会|政府|证券|资产|财富|投资|管理|控股|股份|系")
+
+
+def scrub_title(title: str, company: str) -> str:
+    """标题括号里的人名换成"相关个人"；公司简称（出现在全称里）、机构名保留。"""
+    def fix(m: re.Match) -> str:
+        parts = re.split(r"([、，,；;])", m.group(1))
+        keep = [p if i % 2 or not NAME_ONLY.match(p.strip()) or ORGISH.search(p) or p.strip() in company
+                else "相关个人" for i, p in enumerate(parts)]
+        return m.group(0)[0] + "".join(keep) + m.group(0)[-1]
+    return redact(PAREN.sub(fix, title or ""))
 
 
 def doc_date(text: str) -> str | None:
@@ -191,7 +218,8 @@ class WebClient:
         out = WebFindings(searched=True)
         short = short_name(name)
         jobs = {"official": (name, OFFICIAL_DOMAINS, None),
-                "news": (f"{short or name} 投诉 维权 兑付", None, AGGREGATORS)}
+                "news": (f"{short or name} 投诉 维权 兑付", None, AGGREGATORS),
+                "media": (short or name, MEDIA_DOMAINS, None)}
         jobs = {k: jobs[k] for k in kinds}
         with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             futures = {k: pool.submit(self.search, q, inc, exc) for k, (q, inc, exc) in jobs.items()}
@@ -200,7 +228,7 @@ class WebClient:
                 try:
                     pages, replay = futures[k].result()
                 except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
-                    out.errors.append(f"{'官方网站' if k == 'official' else '公开报道'}搜索失败：{type(e).__name__}")
+                    out.errors.append(f"{'官方网站' if k == 'official' else '权威媒体' if k == 'media' else '公开报道'}搜索失败：{type(e).__name__}")
                     continue
                 out.replay = out.replay or replay
                 seen = set()
@@ -216,14 +244,18 @@ class WebClient:
                     official = _matches(domain, OFFICIAL_DOMAINS) or domain.endswith(".gov.cn")
                     if k != "official" and official:
                         continue  # 官方页面由第一路搜索负责
-                    cat, label = _classify(p["name"] + excerpt, OFFICIAL_CATS if official else NEWS_CATS)
+                    cats = OFFICIAL_CATS if official else OFFICIAL_CATS[:2] + NEWS_CATS if k == "media" else NEWS_CATS
+                    cat, label = _classify(p["name"] + excerpt, cats)
                     found = doc_date(p["text"])
-                    hit = WebHit(cat, label, official, p["name"], p["url"], p["site"] or domain, found or p["date"],
+                    hit = WebHit(cat, label, official, scrub_title(p["name"], name), p["url"], p["site"] or domain, found or p["date"],
                                  # 风险提示点名的公司多写在正文里，提到就算点名；处罚、法院文书要它是当事人
-                                 redact(excerpt), by_short,
-                                 subject=not official or cat == "warning" or is_subject(p["name"], p["text"], name),
+                                 scrub_title(excerpt, name), by_short,
+                                 # 媒体报道：标题里有它的名字才算"写的是它"（同一实控人的兄弟公司常被一起报道）
+                                 subject=(normalize(name) in normalize(p["name"]) or bool(short and short in p["name"]))
+                                 if k == "media" else
+                                 not official or cat == "warning" or is_subject(p["name"], p["text"], name),
                                  dated=found is not None)
-                    (out.official if k == "official" else out.news).append(hit)
+                    (out.official if k == "official" else out.media if k == "media" else out.news).append(hit)
         return out
 
     def find_official(self, name: str) -> WebFindings:
@@ -233,6 +265,10 @@ class WebClient:
     def find_complaints(self, name: str) -> WebFindings:
         """全网搜"简称 + 投诉 维权 兑付"：网上的投诉和维权帖、报道。"""
         return self._find(name, ("news",))
+
+    def find_media(self, name: str) -> WebFindings:
+        """只搜权威媒体网站（人民网、新华网、财新、证券时报……）上提到它的报道。"""
+        return self._find(name, ("media",))
 
     def findings(self, name: str) -> WebFindings:
         return self._find(name, ("official", "news"))

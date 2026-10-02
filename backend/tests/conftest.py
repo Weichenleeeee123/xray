@@ -10,3 +10,4 @@ os.environ["XRAY_RUNS_DIR"] = os.path.join(_tmp, "runs")
 os.environ["XRAY_LLM_MODE"] = "off"
 os.environ["XRAY_COMMERCIAL"] = ""  # 商业接口按次计费，测试绝不调用
 os.environ["XRAY_AMAC_DETAIL"] = "0"  # 不联网取中基协详情页
+os.environ["XRAY_CNINFO"] = "0"  # 巨潮也联网，测试不查

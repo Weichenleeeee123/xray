@@ -25,6 +25,7 @@ from app.reviews import SOURCE_ID as REVIEW_SOURCE, ReviewStore, review_record
 from app.sources.amac_detail import AmacDetailClient
 from app.sources.catalog import build_sources, registry_sources
 from app.sources.collect import Collected, collect, now
+from app.sources.cninfo import CninfoClient
 from app.sources.commercial import CommercialClient
 from app.sources.fixtures import FixtureAmac, FixtureComplaints, FixtureRegistry
 from app.sources.licenses import LicenseIndex
@@ -52,6 +53,7 @@ class Services:
     web: WebClient | None = None                                       # 联网查证，网关配置了才用
     amac_detail: AmacDetailClient | None = None                        # 中基协公示详情页
     reviews: ReviewStore | None = None                                 # 用户评价（按公司存）
+    cninfo: CninfoClient | None = None                                 # 巨潮资讯网公告（上市公司），联网才查
 
 
 def load_services() -> Services:
@@ -65,7 +67,9 @@ def load_services() -> Services:
     return Services(licenses, registry, amac, complaints, EvidencePacks.load(), RuleExtractor(), sources, registries,
                     commercial if commercial.configured else None, web if web.configured else None,
                     AmacDetailClient(config.CACHE_DIR / "amac") if config.AMAC_DETAIL else None,
-                    ReviewStore(config.REVIEWS_DIR, config.FIXTURES_DIR / "reviews.json"))
+                    ReviewStore(config.REVIEWS_DIR, config.FIXTURES_DIR / "reviews.json"),
+                    CninfoClient(config.CACHE_DIR / "cninfo", mode=config.LLM_MODE)
+                    if os.getenv("XRAY_CNINFO", "1") == "1" and config.LLM_MODE != "off" else None)
 
 
 # ---------- 原始数据 ----------
@@ -125,7 +129,7 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     amount = inp.amount or intake.amount
     signals = build_signals(ext, company, lic, amac, collected.complaints, collected.as_of, scenario, assertions,
                             collected.others, collected.web, web_refs, amount, collected.reviews,
-                            collected.finance, collected.news)
+                            collected.finance, collected.news, collected.extras, collected.cninfo)
     pack_items = official_pack_items(inp.company_name, [raw_by_id[rid] for rid in collected_ids])
     add_pack_items(signals, pack_items, raw, company, collected.web, web_refs)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}

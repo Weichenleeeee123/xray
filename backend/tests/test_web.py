@@ -134,7 +134,7 @@ def test_doc_date_subject_and_personal_info():
     assert is_subject(f"关于对{name}采取出具警示函措施的决定", "", name)
     assert is_subject("行政处罚决定书[2024]35号(某某财富、王某)", f"当事人:{name}(以下简称某某财富)", name)
     assert not is_subject("关于对杭州某某资产管理有限公司采取出具警示函措施的决定", f"三、公司员工在{name}兼职。", name)
-    assert redact("王某,男,1978年8月出生,法定代表人,住址:浙江省杭州市西湖区。") == "王某,（出生信息略）,法定代表人,住址：略。"
+    assert redact("王某,男,1978年8月出生,法定代表人,住址:浙江省杭州市西湖区。") == "相关个人,（出生信息略）,法定代表人,住址：略。"
 
 
 def test_documents_that_only_mention_it_are_not_counted_as_naming_it():

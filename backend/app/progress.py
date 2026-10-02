@@ -36,8 +36,10 @@ STEPS = {
 # 查资料的步骤：done 带 coverage。其余三步（读需求、对照规则、写短句）是处理，coverage 为 null
 LOOKUPS = {"lists", "amac", "registry", "finance", "pack", "web", "opinion", "reviews"}
 GROUPS = {"lists": {"nfra_bank_list", *LICENSE_LISTS}, "amac": {"amac", "amac_detail"},
-          "registry": {"registry", "annual_report"}, "finance": {"qcc_finance"}, "web": {"web_official"},
-          "opinion": {"qcc_news", "web_news", "complaints"}, "reviews": {"user_reviews"}}
+          "registry": {"registry", "annual_report", "qcc_controller", "qcc_licenses", "qcc_qualifications",
+                       "qcc_changes", "qcc_hearings", "qcc_filings", "qcc_labor"},
+          "finance": {"qcc_finance", "cninfo", "qcc_jobs"}, "web": {"web_official"},
+          "opinion": {"qcc_news", "web_news", "web_media", "complaints"}, "reviews": {"user_reviews"}}
 GROUPED = set().union(*GROUPS.values())
 KIND_LABEL = {"collected": "人工证据包", "commercial": "企查查商业数据", "demo": "演示数据"}
 
@@ -85,6 +87,9 @@ def _registry_text(recs: list[RawRecord]) -> str:
     if reg is None or reg.coverage is Coverage.not_covered:
         return "没查：要人工到国家企业信用信息公示系统查"
     label = KIND_LABEL.get(reg.kind, reg.kind)
+    more = sum(r.source_id.startswith("qcc_") and r.coverage is Coverage.found for r in recs)
+    if reg.coverage is Coverage.found and more:
+        return f"查到登记信息，另有实控人、许可、变更、涉诉等 {more} 项（{label}）"
     return {Coverage.found: f"查到登记信息（{label}）", Coverage.not_found: f"查了，没查到这家公司（{label}）",
             Coverage.failed: f"没查成（{label}）"}[reg.coverage]
 
@@ -116,6 +121,7 @@ def _opinion_text(recs: list[RawRecord]) -> str:
         parts.append(f"新闻 {news.content.get('平台记录总数', 0)} 条（最近 {news.content.get('返回的最近几条', 0)} 条里"
                      f"企查查标负面 {neg} 条）")
     parts += [f"网上投诉和报道 {n} 条" for n in [sum(r.source_id == "web_news" for r in found)] if n]
+    parts += [f"权威媒体报道 {n} 条" for n in [sum(r.source_id == "web_media" for r in found)] if n]
     parts += ["投诉记录（演示数据）" for r in found if r.source_id == "complaints"][:1]
     failed = any(r.coverage is Coverage.failed for r in recs)
     if parts:
@@ -135,6 +141,17 @@ def _reviews_text(recs: list[RawRecord]) -> str:
 
 
 def _finance_text(recs: list[RawRecord]) -> str:
+    extra = []
+    cn = next((r for r in recs if r.source_id == "cninfo" and r.coverage is Coverage.found), None)
+    if cn is not None:
+        extra.append("巨潮年报原文和公告")
+    if any(r.source_id == "qcc_jobs" and r.coverage is Coverage.found for r in recs):
+        extra.append("招聘信息")
+    tail = ("；另取到" + "、".join(extra)) if extra else ""
+    return _finance_core([r for r in recs if r.source_id == "qcc_finance"]) + tail
+
+
+def _finance_core(recs: list[RawRecord]) -> str:
     rec = next(iter(recs), None)
     if rec is None or rec.coverage is Coverage.not_covered:
         return "没查"

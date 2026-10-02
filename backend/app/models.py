@@ -107,6 +107,7 @@ class CompanyProfile(BaseModel):
     dishonest: bool = False
     restricted: bool = False            # 限制高消费
     listing: dict | None = None         # 上市信息（交易所、股票代码……）；查了没有是 None，要配合 known("listing") 看
+    controller: list[dict] | None = None  # 实际控制人（企查查）：[{名称, 是自然人, 总持股比例, 表决权比例}]；个人只写"自然人"
     counts: dict[str, int] = Field(default_factory=dict)  # 数据源给的总条数；明细只取了前几条或没取到时，以它为准
     facts: dict[str, str] = Field(default_factory=dict)  # 失信、限高这类"有/无"项的一句话明细（日期、法院、金额）
     risk_scan: dict[str, int] | None = None  # 商业数据的风险扫描：各类风险各有几条（含没单列的终本案件、裁判文书……）

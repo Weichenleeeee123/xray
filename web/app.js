@@ -928,6 +928,20 @@ function sigExtra(sig, v) {
       <div class="wm">${esc(n.source || '')}${n.date ? ' · ' + esc(n.date) : ''}</div></li>`).join('')}</ul>
       <div class="small muted">"负面"是企查查的模型标的，标题不等于事实，点开看原文。</div></details>`;
   }
+  // 权威媒体报道：只搜人民网、新华网、财新、证券时报等网站
+  if (Array.isArray(x.media) && x.media.length) {
+    out += `<details class="webhits"><summary>权威媒体的 ${x.media.length} 篇报道</summary><ul>${x.media.map(hh => `<li>
+      <a href="${esc(hh.url)}" target="_blank" rel="noopener noreferrer">${esc(hh.title)}</a>
+      <div class="wm">${esc(hh.category || '其他')} · ${esc(hh.site || '')}${hh.date ? ' · ' + esc(hh.date) : ''}${hh.ref ? ` · <button type="button" class="cite" data-act="raw" data-ref="${esc(hh.ref)}">${esc(hh.ref)}</button>` : ''}</div>
+      ${hh.excerpt ? `<div class="small">${esc(hh.excerpt)}</div>` : ''}</li>`).join('')}</ul></details>`;
+  }
+  // 巨潮资讯网：最近一年标题带处罚、诉讼、问询字样的公告
+  if (Array.isArray(x.notices) && x.notices.length) {
+    out += `<details class="webhits"><summary>交易所公告里的 ${x.notices.length} 条（巨潮资讯网）</summary><ul>${x.notices.map(n => `<li>
+      <a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a>
+      <div class="wm">${esc(n.category_label || '')}${n.date ? ' · ' + esc(n.date) : ''}</div></li>`).join('')}</ul>
+      <div class="small muted">按标题关键词挑出来的，标题不等于结论，点开看公告原文。</div></details>`;
+  }
   // 企查查财务数据：近几年年报，只列数
   if (Array.isArray(x.reports) && x.reports.length) {
     out += `<table class="fin-t"><thead><tr><th>年报</th><th>营业收入</th><th>同比</th><th>净利润</th></tr></thead><tbody>${x.reports.map(r => `<tr>

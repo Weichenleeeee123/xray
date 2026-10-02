@@ -2,8 +2,9 @@
 
 官方名单（真实，每家公司都查）：银行业、保险、期货、支付机构名单，中基协私募管理人名单。
 企业登记按顺序找：证据包（人工采集的官方记录）→ 商业接口（企查查/天眼查，配置了才用）→ 演示数据 → 记"没查"。
-财务数据、新闻舆情：企查查（配置了才查；上市、发债的公司才有财报）。
-联网搜索（配了模型网关才搜）：政府网站点名它的文件；网上的投诉、维权帖和报道。
+企查查补充信息（配置了才查）：实际控制人、行政许可和资质、变更记录、开庭和立案、劳动仲裁、招聘。
+财务数据、新闻舆情：企查查（上市、发债的公司才有财报）；上市公司再到巨潮资讯网取年报原文和最近一年的公告。
+联网搜索（配了模型网关才搜）：政府网站点名它的文件；网上的投诉、维权帖和报道；权威媒体的报道。
 用户评价：有就记一条快照（别人说的，未核实）；没有不记。
 
 步骤顺序（和 progress.STEPS 一致）：持牌名单 → 中基协 → 工商 → 财务 → 证据包 → 政府网站 → 舆情 → 本站评价。
@@ -16,6 +17,8 @@ from app.models import AmacHit, CompanyProfile, Coverage, LicenseHit, RawRecord,
 from app.reviews import review_record
 from app.sources.amac_detail import summary as amac_summary
 from app.sources import finance as fin
+from app.sources import qcc_more
+from app.sources.cninfo import CninfoFindings
 from app.sources import news as news_src
 from app.sources.finance import FinancialFindings
 from app.sources.licenses import normalize
@@ -46,6 +49,8 @@ class Collected:
     web: WebFindings | None = None       # 联网查证；没开或是虚构公司时为 None
     finance: FinancialFindings | None = None   # 企查查财务数据；没查时为 None
     news: NewsFindings | None = None           # 企查查新闻舆情；没查时为 None
+    extras: "qcc_more.QccExtras | None" = None  # 企查查补充信息；没查时为 None
+    cninfo: CninfoFindings | None = None       # 巨潮资讯网公告（上市公司）
     reviews: list[dict] = field(default_factory=list)  # 用户评价（含作者哈希，只在后端用；原始数据里不带）
 
 
@@ -117,7 +122,8 @@ def _real_amac(name: str, svc) -> tuple[AmacHit, list[RawRecord]] | None:
 def _web_records(web: WebFindings) -> list[RawRecord]:
     records = []
     for hits, sid, label, tag in ((web.official, "web_official", "监管、法院、政府网站", "官方"),
-                                  (web.news, "web_news", "网上的投诉和报道", "报道")):
+                                  (web.news, "web_news", "网上的投诉和报道", "报道"),
+                                  (web.media, "web_media", "权威媒体报道", "权威媒体")):
         for h in hits:
             records.append(_raw(sid, h.title or h.site, "official" if h.official else "web", Coverage.found,
                                 {"类别": h.category_label, "网站": h.site, "命中原文": h.excerpt}, as_of=h.date,
@@ -142,12 +148,47 @@ def _qcc(svc):
     return c if c is not None and hasattr(c, "financials") else None
 
 
-def _finance_step(name: str, svc, records: list[RawRecord], *, is_demo: bool) -> FinancialFindings | None:
+def _extras(name: str, svc, company: CompanyProfile | None, records: list[RawRecord]) -> "qcc_more.QccExtras | None":
+    """企查查补充信息：只在企查查查到了这家公司时才查（名字对不上、虚构公司都不查）。实控人写进公司记录给核验用。"""
+    qcc = _qcc(svc)
+    if qcc is None or company is None or company.name != name and normalize(company.name) != normalize(name):
+        return None
+    extras = qcc_more.fetch(qcc, company.name)
+    records.extend(qcc_more.records(extras))
+    ctrl = extras.get("controller")
+    if ctrl.coverage in ("found", "not_found"):
+        company.controller = ctrl.rows
+        if company.checked is not None and "controller" not in company.checked:
+            company.checked.append("controller")
+    return extras
+
+
+def _cninfo_record(c: CninfoFindings) -> RawRecord:
+    if c.coverage == "found":
+        content = {"股票代码": c.code, "最新年度报告": c.annual.__dict__ if c.annual else None,
+                   "最近一年公告总数": c.total, "看了标题的条数": c.scanned,
+                   "标题带处罚、诉讼、问询等字样的": [n.__dict__ for n in c.risky]}
+        return _raw("cninfo", "巨潮资讯网 · 公告", "official", Coverage.found, content,
+                    url=c.annual.url if c.annual else "http://www.cninfo.com.cn", as_of=c.annual.date if c.annual else None,
+                    note="证监会指定的上市公司信息披露网站；按标题关键词分类，标题不等于结论，点开原文看" +
+                         ("；离线回放" if c.replay else ""))
+    return _raw("cninfo", "巨潮资讯网 · 公告", "official",
+                Coverage.failed if c.coverage == "failed" else Coverage(c.coverage), {"股票代码": c.code},
+                url="http://www.cninfo.com.cn", note=c.error or "查了，巨潮没有这只股票")
+
+
+def _finance_step(name: str, svc, records: list[RawRecord], *, is_demo: bool,
+                  company: CompanyProfile | None = None) -> tuple[FinancialFindings | None, CninfoFindings | None]:
     qcc = _qcc(svc)
     if qcc is None or is_demo:
         progress.skip("finance", "没查：虚构的演示公司" if is_demo else "没查：没配企查查")
-        return None
+        return None, None
     progress.start("finance")
+    cninfo = None
+    code = str((company.listing or {}).get("股票代码") or "") if company is not None and company.listing else ""
+    if code and getattr(svc, "cninfo", None) is not None:
+        cninfo = svc.cninfo.find(code, date.today())
+        records.append(_cninfo_record(cninfo))
     call = qcc.financials(name)
     found = fin.findings(call)
     who = (call.data or {}).get("企业名称")
@@ -156,7 +197,7 @@ def _finance_step(name: str, svc, records: list[RawRecord], *, is_demo: bool) ->
                                   error=f"返回的是\"{who}\"，和查询的公司对不上，没有采用")
     records.append(_finance_record(found))
     progress.done("finance", records)
-    return found
+    return found, cninfo
 
 
 def _finance_record(f: FinancialFindings) -> RawRecord:
@@ -218,9 +259,12 @@ def _network_steps(name: str, svc, records: list[RawRecord], *, is_demo: bool,
     if web_on:
         talk = svc.web.find_complaints(name)
         records.extend(_web_part(talk, "web_news"))
-        web = WebFindings(searched=True, official=official.official, news=talk.news,
-                          queries=official.queries + talk.queries, errors=official.errors + talk.errors,
-                          replay=official.replay or talk.replay)
+        media = svc.web.find_media(name)
+        records.extend(_web_part(media, "web_media"))
+        web = WebFindings(searched=True, official=official.official, news=talk.news, media=media.media,
+                          queries=official.queries + talk.queries + media.queries,
+                          errors=official.errors + talk.errors + media.errors,
+                          replay=official.replay or talk.replay or media.replay)
     progress.done("opinion", records)
     return web, news
 
@@ -291,9 +335,10 @@ def _collect(name: str, svc) -> Collected:
         records.append(_raw("registry", "企业登记信息", "demo", Coverage.not_covered,
                             note="没查：还没有这家公司的登记数据。真实公司要人工到国家企业信用信息公示系统查询，存进证据包，"
                                  "或者配置商业接口"))
-    progress.done("registry", records)
     is_demo = company is not None and sources["registry"].kind == "demo"
-    finance = _finance_step(name, svc, records, is_demo=is_demo)
+    extras = None if is_demo or commercial is None else _extras(name, svc, company, records)
+    progress.done("registry", records)
+    finance, cninfo = _finance_step(name, svc, records, is_demo=is_demo, company=company)
     progress.skip("pack", "没有人工摘录的材料")
 
     records.extend(amac_records)
@@ -307,7 +352,8 @@ def _collect(name: str, svc) -> Collected:
                             note="没查：还没有这家公司的投诉数据，联网搜索也没开"))
     web, news = _network_steps(name, svc, records, is_demo=is_demo, complaints=complaints)
     return Collected(company=company, license=lic, amac=amac, complaints=complaints, as_of=date.fromisoformat(as_of),
-                     sources=sources, records=records, others=others, note=note, web=web, finance=finance, news=news)
+                     sources=sources, records=records, others=others, note=note, web=web, finance=finance, news=news,
+                     extras=extras, cninfo=cninfo)
 
 
 def _use_commercial(commercial, sources: dict[str, Source], records: list[RawRecord]) -> CompanyProfile | None:
@@ -350,8 +396,9 @@ def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], amac: Ama
             sources[sid] = Source(id=sid, name=SECTIONS[sid], kind="collected", note="证据包里没有这一项")
             records.append(_raw(sid, SECTIONS[sid], "collected", Coverage.not_covered,
                                 note="没查：证据包里没有这一项"))
+    extras = _extras(pack.company, svc, company, records) if commercial is not None else None
     progress.done("registry", records)
-    finance = _finance_step(pack.company, svc, records, is_demo=False)
+    finance, cninfo = _finance_step(pack.company, svc, records, is_demo=False, company=company)
     for s in pack.self_description:
         records.append(_raw("self_description", s.title or "公司自己的公开说法", "web", Coverage.found, s.data,
                             retrieved_at=s.retrieved_at, url=s.source.url, screenshot=s.screenshot,
@@ -366,4 +413,5 @@ def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], amac: Ama
     as_of = date.fromisoformat((pack.as_of or now())[:10])
     web, news = _network_steps(pack.company, svc, records, is_demo=False, complaints=complaints)
     return Collected(company=company, license=lic, amac=amac, complaints=complaints, as_of=as_of,
-                     sources=sources, records=records, others=others, note=pack.note, web=web, finance=finance, news=news)
+                     sources=sources, records=records, others=others, note=pack.note, web=web, finance=finance, news=news,
+                     extras=extras, cninfo=cninfo)
