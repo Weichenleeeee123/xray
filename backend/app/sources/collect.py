@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from app.models import AmacHit, CompanyProfile, Coverage, LicenseHit, RawRecord, RegistryHit, Source
+from app.sources.amac_detail import summary as amac_summary
 from app.sources.packs import SECTIONS, Pack
 from app.sources.registries import AMAC_ID, LICENSE_LISTS
 from app.sources.web import WebFindings
@@ -68,7 +69,7 @@ def _official_lists(name: str, svc) -> tuple[list[RegistryHit], list[RawRecord]]
     return hits, records
 
 
-def _real_amac(name: str, svc) -> tuple[AmacHit, RawRecord] | None:
+def _real_amac(name: str, svc) -> tuple[AmacHit, list[RawRecord]] | None:
     index = svc.registries.get(AMAC_ID)
     if index is None:
         return None
@@ -76,10 +77,24 @@ def _real_amac(name: str, svc) -> tuple[AmacHit, RawRecord] | None:
     amac = AmacHit(coverage=Coverage.found if hit.found else Coverage.not_found, registered=hit.found,
                    record=hit.record, as_of=hit.as_of, count=hit.count)
     url = (hit.record or {}).get("detail_url") or index.meta.get("url")
-    record = _raw("amac", "私募基金管理人公示 · 按名称查询", "official", amac.coverage,
-                  _hit_content(name, hit.found, hit.record, hit.suggestions), as_of=hit.as_of, url=url,
-                  note=f"中基协公示的全部 {hit.count:,} 家私募基金管理人；special_tips/credit_tips 为 1 表示协会有特别提示/诚信信息")
-    return amac, record
+    records = [_raw("amac", "私募基金管理人公示 · 按名称查询", "official", amac.coverage,
+                    _hit_content(name, hit.found, hit.record, hit.suggestions), as_of=hit.as_of, url=url,
+                    note=f"中基协公示的全部 {hit.count:,} 家私募基金管理人；special_tips/credit_tips 为 1 表示协会有特别提示/诚信信息")]
+    detail_url = (hit.record or {}).get("detail_url")
+    client = getattr(svc, "amac_detail", None)
+    if hit.found and detail_url and client:
+        detail, when, cached = client.fetch(detail_url)
+        if detail:
+            s = amac_summary(detail)
+            amac.record = {**hit.record, "detail": s}
+            records.append(_raw("amac_detail", "中基协公示详情页：规模、员工、诚信信息、处罚", "official", Coverage.found, s,
+                                retrieved_at=when, as_of=s.get("机构信息最后更新时间"), url=detail_url,
+                                note="中基协公示页面摘录：管理规模、员工人数、资本由管理人自行填报，诚信信息、处罚和提示由协会公示" +
+                                     ("；网络不通，用的是之前缓存的页面" if cached else "")))
+        else:
+            records.append(_raw("amac_detail", "中基协公示详情页", "official", Coverage.failed, url=detail_url,
+                                note="详情页没取到（网络不通，也没有缓存）"))
+    return amac, records
 
 
 def _web_records(web: WebFindings) -> list[RawRecord]:
@@ -142,14 +157,15 @@ def collect(name: str, svc) -> Collected:
                                  "或者配置商业接口"))
 
     if real_amac:
-        amac, amac_record = real_amac
+        amac, amac_records = real_amac
+        records += amac_records
     else:
         amac = svc.amac.lookup(name)
         amac_record = _raw("amac", "私募基金管理人公示", "demo", amac.coverage,
                            {"已登记": amac.registered} if amac.coverage is not Coverage.not_covered else None,
                            as_of=svc.amac.as_of, note="演示数据" if amac.coverage is not Coverage.not_covered else
                            "没查：中基协名单还没下载，也没有人工查询记录")
-    records.append(amac_record)
+        records.append(amac_record)
 
     complaints = svc.complaints.get(name)
     if complaints:
@@ -185,8 +201,8 @@ def _from_pack(pack: Pack, lic: LicenseHit, others: list[RegistryHit], real_amac
         registered = bool(sec["amac"].data.get("registered"))
         amac = AmacHit(coverage=Coverage.found if registered else Coverage.not_found, registered=registered)
     elif real_amac:
-        amac, amac_record = real_amac
-        records.append(amac_record)
+        amac, amac_records = real_amac
+        records += amac_records
     else:
         amac = AmacHit(coverage=Coverage.not_covered)
     complaints = sec["complaints"].data if "complaints" in sec else None

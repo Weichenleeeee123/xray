@@ -30,6 +30,8 @@ _load_env(BASE_DIR / ".env")
 # 运行时数据，git 忽略；测试时用环境变量指到临时目录
 CASES_DIR = Path(os.getenv("XRAY_CASES_DIR", DATA_DIR / "cases"))
 CACHE_DIR = Path(os.getenv("XRAY_CACHE_DIR", DATA_DIR / "cache"))
+# 名单里查到的私募管理人，再取一次中基协公示详情页（公开页面，没有验证码）；测试里关掉
+AMAC_DETAIL = os.getenv("XRAY_AMAC_DETAIL", "1") == "1"
 
 # 模型网关（比赛的 Tokendance，OpenAI 兼容）。没配 Key 时所有功能退回规则和模板。
 LLM_BASE_URL = os.getenv("TOKENDANCE_BASE_URL", "").rstrip("/")

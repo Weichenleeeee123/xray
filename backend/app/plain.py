@@ -30,7 +30,7 @@ STATUS_LABEL = {"bad": "有问题", "warn": "要留意", "miss": "该有的没�
 QUALIFIERS = ("不需要", "不等于", "不代表")
 
 SYSTEM = """你是 X-Ray 的编辑，把企业核查报告里规则写的长句缩成一眼能看懂的短句，并找出普通人看不懂的名词。必须遵守：
-1. 每个条目都要给短句，id 原样返回。短句不超过 16 个字，只能用原句里的事实和数字，不许加原句里没有的数字、判断或推测。
+1. 每个条目都要给短句，id 原样返回；每条短句只能用它自己那条原句里的内容，不要串到别的条目。短句不超过 16 个字，只能用原句里的事实和数字，不许加原句里没有的数字、判断或推测。
    保留"查不到""没写""是个人"这类关键否定，也保留括号里改变意思的原因（比如"它是持牌机构，不需要私募登记"）。
    短句的意思要和"状态"一致：状态是"没问题"的，读起来就该是没问题。
 2. 不说"安全""可靠""诈骗"之类的定性，不推测后果。
@@ -62,6 +62,14 @@ def short_status(v: Version) -> dict[str, str]:
     return out
 
 
+def short_context(v: Version) -> dict[str, str]:
+    """每条的全部文字（原句、说法原文、检查明细），只用来校验短句，不发给模型。"""
+    out = {a.id: " ".join([a.plain, a.text, *(f"{c.label} {c.result}" for c in a.checks)]) for a in v.assertions}
+    out.update({m.id: f"{m.text} {m.plain}" for m in v.missing})
+    out.update({f"{s.key}.{i.key}": " ".join(filter(None, [i.label, i.value, i.detail])) for s in v.signals for i in s.items})
+    return out
+
+
 def short_sources(v: Version) -> dict[str, str]:
     """要缩短的条目 id → 规则原句：每条说法、缺项、要看的信号条目、回答第一问的条目。"""
     out = {a.id: a.plain for a in v.assertions}
@@ -89,9 +97,16 @@ def visible_text(v: Version) -> str:
     return "\n".join(parts)
 
 
-def _short_ok(s: str, src: str, data: str) -> bool:
+CJK = re.compile(r"[一-龥]")
+
+
+def _short_ok(s: str, src: str, data: str, ctx: str | None = None) -> bool:
     s = s.strip()
     if not s or len(s) > SHORT_MAX or overreach(s, data):
+        return False
+    # 短句里的字大半要出现在这一条自己的原文和检查明细里：模型把 A 的短句错放到 B 上时，这里会拦下
+    chars = set(CJK.findall(s))
+    if chars and len(chars & set(CJK.findall(ctx or src))) / len(chars) < 0.5:
         return False
     if any(q in src and q not in s for q in QUALIFIERS):
         return False
@@ -127,6 +142,7 @@ def build_glance(case: Case, v: Version, llm: LLM, prev: Version | None = None) 
     todo = {i: src for i, src in sources.items() if i not in short}
     known = glossary_names | {t.term for t in prev_terms}
     status = short_status(v)
+    ctx = short_context(v)
 
     mode, dropped, new_terms = (prev.glance.mode if prev and prev.glance else "template"), 0, []
     if todo or prev is None or v.trigger in ("material", "reply"):
@@ -139,7 +155,7 @@ def build_glance(case: Case, v: Version, llm: LLM, prev: Version | None = None) 
             out, reply = llm.chat_json(messages, _Gen)
             mode = reply.mode
             for i, s in out.short.items():
-                if i in todo and _short_ok(s, todo[i], data):
+                if i in todo and _short_ok(s, todo[i], data, ctx.get(i)):
                     short[i] = s.strip()
                 else:
                     dropped += 1

@@ -1,23 +1,27 @@
 {
-  "_note": "演示案例。A、B 用真实公司，由产品负责人选定并采集证据包（data/evidence_packs/）后，把 ready 改成 true、填上 company_name。C 是虚构公司，全程挂虚构标记。文件路径相对 data/fixtures/。",
+  "_note": "演示案例。A、B 用真实公司，由产品负责人选定并采集证据包（data/evidence_packs/）后，把 ready 改成 true、填上 company_name。C 是虚构公司，全程挂虚构标记。文件路径相对 data/fixtures/；真实材料在 data/materials/，用 ../materials/ 引用。",
   "cases": [
     {
       "id": "A",
-      "label": "储蓄托付（真实案例）",
+      "label": "巨鲸财富（真实，储蓄托付）",
       "real": true,
-      "ready": false,
-      "note": "待选定一家已被判决或监管通报认定的非法集资相关公司，并采集证据包；话术用公开报道或判决书里引用的原文",
-      "input": {"company_name": "", "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来"},
-      "material_file": null,
-      "supplements": []
+      "ready": true,
+      "note": "真实公司，全部用公开记录：持牌名单、中基协公示（含详情页的诚信信息、处罚、管理规模）、浙江证监局文件。材料是它自己的公开介绍原文，出处见 data/materials/README.md。不给真实公司编对方回复。",
+      "input": {"company_name": "杭州巨鲸财富管理有限公司", "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来"},
+      "material_file": "../materials/jujing_boss.txt",
+      "material_title": "巨鲸财富招聘主页上的公司介绍（BOSS直聘，搜索引擎摘录，2026-10-02）",
+      "supplements": [
+        {"kind": "material", "title": "投资界机构库里的巨鲸财富简介（数据来自清科私募通，2026-10-02 摘录）", "file": "../materials/jujing_pedaily.txt"},
+        {"kind": "need", "text": "其实我妈能拿出 120 万，想在这家公司买理财，最怕急用时取不出来"}
+      ]
     },
     {
       "id": "B",
-      "label": "求职入职（真实案例，证明通用）",
+      "label": "杭州银行（真实，求职入职）",
       "real": true,
-      "ready": false,
-      "note": "待选定一家正常经营的真实公司并采集证据包；正规公司的说法大部分应判为\"与记录相符\"",
-      "input": {"company_name": "", "need": "我收到这家公司的 offer，想知道它靠不靠谱"},
+      "ready": true,
+      "note": "真实公司，证明它不只会吓人：持牌名单里有它；浙江证监局 2023-07-21 的责令改正决定也会如实列出。登记信息（实缴、股东、参保人数）要人工到公示系统查好放进证据包。",
+      "input": {"company_name": "杭州银行股份有限公司", "need": "我收到杭州银行的 offer，想知道这家单位靠不靠谱"},
       "material_file": null,
       "supplements": []
     },

@@ -18,6 +18,7 @@ class RawClaim:
     numbers: dict[str, float] = field(default_factory=dict)
     words: list[str] = field(default_factory=list)
     banks: list[str] = field(default_factory=list)
+    licenses: list[str] = field(default_factory=list)  # 宣称拥有的牌照类型：信托、证券、期货……
 
     def add(self, quote: str, words: list[str] = (), banks: list[str] = ()) -> None:
         if quote not in self.quotes:
@@ -53,7 +54,14 @@ BACKGROUND = re.compile(r"国资背景|国企背景|央企|国有控股|国有�
 CAPITAL = re.compile(r"注册资本[^\d]{0,4}(\d+(?:\.\d+)?)(亿|万)")
 STORES = re.compile(r"(\d+)家(?:门店|分公司|网点|分店|营业部)")
 MEMBERS = re.compile(r"(\d+(?:\.\d+)?)(万|亿)?名?(?:会员|客户|用户|投资人)")
-FINANCIAL = re.compile(r"理财|年化|保本|保息|收益率|收益权|认购|存管|基金|固定收益|还本付息|业绩比较基准")
+# 像不像在卖理财产品。"基金""存管"这类词公司介绍里也常有，不算
+FINANCIAL = re.compile(r"理财|年化|保本|保息|收益率|收益权|认购|固定收益|还本付息|业绩比较基准")
+# 真实文案的写法：拥有信托、证券……等牌照 / 集团管理资产 3800 亿元 / 公司规模 100-499 人
+LICENSE_CLAIM = re.compile(r"(?:拥有|具有|具备|持有|取得|获得|手握)[^。；]{0,30}?牌照|全牌照")
+LICENSE_TYPE = re.compile(r"信托|证券|期货|公募|私募|基金|保险|银行|支付|股权投资|融资租赁|小额贷款|小贷")
+AUM = re.compile(r"(?:管理|受托管理|资产管理)的?(?:资产|规模|资金)(?:规模)?[^\d]{0,6}(\d+(?:\.\d+)?)\s*(亿|万)")
+STAFF = re.compile(r"(\d+)\s*[-~—至到]\s*\d+\s*人|员工(?:人数)?[^\d]{0,4}(\d+)\s*(?:余|多)?\s*人")
+GROUP_BACKING = re.compile(r"(?:大型|知名|综合)[^。；，,]{0,8}集团[^。；]{0,8}(?:注资|入股|控股|投资)")
 BANK_WM_DISCLOSURE = re.compile(r"理财非存款")
 ANY_DISCLOSURE = re.compile(r"理财非存款|投资有风险|投资须谨慎|投资需谨慎|市场有风险|产品有风险")
 PRODUCT_CODE = re.compile(r"(?<![A-Za-z0-9])Z\d{10,14}(?!\d)")
@@ -100,10 +108,18 @@ class RuleExtractor:
         def claim(kind: ClaimKind) -> RawClaim:
             return claims.setdefault(kind, RawClaim(kind))
 
-        for line in lines:
+        # 长段落按句拆开，说法的原文只取那一句
+        units = [u.strip() for line in lines
+                 for u in (re.split(r"(?<=[。；！!？?])", line) if len(line) > 40 else [line]) if u.strip()]
+        for line in units:
             f = _flat(line)
-            if words := QUALIFICATION.findall(f):
-                claim(ClaimKind.qualification).add(line, words)
+            words = QUALIFICATION.findall(f)
+            lic = LICENSE_CLAIM.search(f)
+            if words or lic:
+                c = claim(ClaimKind.qualification)
+                c.add(line, words + (["牌照"] if lic else []))
+                if lic:
+                    c.licenses += [t for t in LICENSE_TYPE.findall(lic.group(0)) if t not in c.licenses]
             guarantees, rate = _guarantees(f), ANNUAL_RATE.search(f)
             if guarantees or rate:
                 c = claim(ClaimKind.return_promise)
@@ -112,20 +128,26 @@ class RuleExtractor:
                     c.numbers["annual_rate"] = max(c.numbers.get("annual_rate", 0), float(rate.group(1)))
             if m := PARTNER.search(f):
                 claim(ClaimKind.partner).add(line, banks=[m.group("bank")] if m.group("bank") else [])
-            if words := BACKGROUND.findall(f):
+            if words := BACKGROUND.findall(f) + GROUP_BACKING.findall(f):
                 claim(ClaimKind.background).add(line, words)
             if m := CAPITAL.search(f):
                 c = claim(ClaimKind.capital)
                 c.add(line)
                 c.numbers["capital"] = float(m.group(1)) * UNIT[m.group(2)]
-            stores, members = STORES.search(f), MEMBERS.search(f)
-            if stores or members:
+            stores, members, aum, staff = STORES.search(f), MEMBERS.search(f), AUM.search(f), STAFF.search(f)
+            if stores or members or aum or staff:
                 c = claim(ClaimKind.scale)
                 c.add(line)
                 if stores:
                     c.numbers["stores"] = float(stores.group(1))
                 if members:
                     c.numbers["members"] = float(members.group(1)) * UNIT[members.group(2)]
+                if aum:
+                    c.numbers["aum"] = float(aum.group(1)) * UNIT[aum.group(2)]
+                    if "集团" in f:
+                        c.numbers["aum_group"] = 1  # 说的是"集团"的规模，不是它自己
+                if staff:
+                    c.numbers["staff"] = float(staff.group(1) or staff.group(2))
             names = [m.group("name") for m in PAYEE.finditer(line)]  # 用原行：空格是户名的分隔
             personal = PERSONAL_ACCOUNT.findall(f)
             if names or personal or (TRANSFER.search(f) and ACCOUNT_NO.search(f)):

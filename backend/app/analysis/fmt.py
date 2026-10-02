@@ -9,7 +9,9 @@ def money(n: float) -> str:
 
 
 def wan(n: float) -> str:
-    """5000 万 / 4 万 / 800 元"""
+    """3800 亿 / 5000 万 / 4 万 / 800 元"""
+    if n >= 1e8:
+        return f"{n / 1e8:g} 亿"
     if n >= 10000:
         return f"{n / 10000:g} 万"
     return f"{n:,.0f} 元"
