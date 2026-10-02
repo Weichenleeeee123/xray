@@ -30,6 +30,8 @@ import { ReportDossier } from './report-dossier';
 import { OfficeInstruments } from './office-instruments';
 import { SceneStatus } from './scene-status';
 import { DemoExamples } from './demo-examples';
+import { candidateLine, resolveCompany } from './company-resolve';
+import type { CompanyResolution } from './company-resolve';
 import { useProgressiveImages } from './use-progressive-images';
 import type { DemoCase } from './research-input';
 import type { Station } from './research-events';
@@ -71,7 +73,9 @@ export default function Home() {
     [inspectorSource, setInspectorSource] = useState<Station | null>(null),
     [retryConfirm, setRetryConfirm] = useState(false),
     [testResult, setTestResult] = useState(false),
-    [opening, setOpening] = useState<{ id: string; href: string } | null>(null);
+    [opening, setOpening] = useState<{ id: string; href: string } | null>(null),
+    [candidates, setCandidates] = useState<CompanyResolution | null>(null),
+    [resolving, setResolving] = useState(false);
   const {
     state,
     scene,
@@ -145,10 +149,28 @@ export default function Home() {
     }, 400);
     return () => clearTimeout(timer);
   }, [opening, state.result?.id, state.connection, testMode]);
-  const submit = (event: SyntheticEvent<HTMLFormElement>) => {
+  const submit = async (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (query.trim().length < 2) return;
-    void begin(query, need, selectedDemo?.input);
+    if (query.trim().length < 2 || resolving) return;
+    if (selectedDemo) {
+      void begin(query, need, selectedDemo.input);   // 示例填的就是全称
+      return;
+    }
+    // 简称也行：先定成全称；有几家同名就列出来让用户选
+    setResolving(true);
+    const found = await resolveCompany(query);
+    setResolving(false);
+    if (!found || found.exact) {
+      setCandidates(null);
+      void begin(found?.name ?? query, need);
+      return;
+    }
+    setCandidates(found);
+  };
+  const pick = (name: string) => {
+    setQuery(name);
+    setCandidates(null);
+    void begin(name, need);
   };
   useEffect(() => {
     const context = (
@@ -395,7 +417,7 @@ export default function Home() {
               </span>
               <h1>想先查哪家公司？</h1>
               <label className="sr-only" htmlFor="company-query">
-                公司全称
+                公司名称
               </label>
               <div className="prompt-bar">
                 <Search aria-hidden="true" />
@@ -405,8 +427,9 @@ export default function Home() {
                   onChange={(e) => {
                     setQuery(e.target.value);
                     setSelectedDemo(null);
+                    setCandidates(null);
                   }}
-                  placeholder="输入公司全称"
+                  placeholder="输入公司名称，简称也行"
                   autoComplete="organization"
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
@@ -414,10 +437,21 @@ export default function Home() {
                   }}
                   maxLength={80}
                 />
-                <Button type="submit" disabled={query.trim().length < 2}>
-                  开始查询
+                <Button type="submit" disabled={query.trim().length < 2 || resolving}>
+                  {resolving ? '正在找这家公司' : '开始查询'}
                 </Button>
               </div>
+              {candidates && (
+                <div className="name-cands" role="group" aria-label="同名的公司">
+                  <p>{candidates.note ?? '请选一家'}</p>
+                  {candidates.candidates.map((c) => (
+                    <button key={c.name} type="button" className="name-cand" onClick={() => pick(c.name)}>
+                      <b>{c.name}</b>
+                      <small>{candidateLine(c)}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
               <label className="need-field" htmlFor="research-need">
                 研究需求（选填）
                 <Input

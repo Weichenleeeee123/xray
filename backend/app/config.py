@@ -67,7 +67,7 @@ def validate_settings():
         errors.append("XRAY_LLM_MODE 必须为 live/replay/off")
     if os.getenv("XRAY_COMMERCIAL", "").strip().lower() not in ("", "qcc", "qcc_agent", "tianyancha"):
         errors.append("XRAY_COMMERCIAL 数据源名称无效")
-    for name, default, minimum in (("XRAY_MAX_RUNS", "4", 1), ("XRAY_QCC_MAX_POINTS", "300", 0),
+    for name, default, minimum in (("XRAY_MAX_RUNS", "4", 1), ("XRAY_QCC_MAX_POINTS", "1500", 0),
                                     ("XRAY_COMMERCIAL_MAX_CALLS", "30", 0), ("XRAY_COMMERCIAL_CACHE_TTL", "86400", 0)):
         try:
             if int(os.getenv(name, default)) < minimum:

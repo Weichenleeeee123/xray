@@ -313,8 +313,12 @@ def _collect(name: str, svc) -> Collected:
         progress.done("amac", amac_records)
 
     progress.start("registry")  # 企查查要查好几秒，算在这一步里
-    # 证据包里有人工采集的登记信息就用它；没有（只摘了几份文书）才查商业接口
-    commercial = svc.commercial.fetch(name) if svc.commercial and not (pack and "registry" in pack.sections) else None
+    # 证据包里有人工采集的登记信息就用它；没有（只摘了几份文书）才查商业接口。
+    # 虚构的演示公司（fixtures 里的）不查：商业接口查不到它，查了还会把登记来源换成商业数据，
+    # 它就不再被当作演示公司，接着去查财务、新闻、政府网站，全是"没查成"
+    fictional = svc.registry.get(name) is not None
+    commercial = (svc.commercial.fetch(name) if svc.commercial and not fictional
+                  and not (pack and "registry" in pack.sections) else None)
     if pack:
         return _from_pack(pack, lic, others, amac, amac_records, sources, records, svc, commercial)
 

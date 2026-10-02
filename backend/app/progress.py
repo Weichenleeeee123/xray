@@ -180,6 +180,16 @@ def _emit(event: dict) -> None:
         sink(event)
 
 
+def emit(event: dict) -> None:
+    """原样发一条事件（预制示例回放用）。"""
+    _emit(event)
+
+
+def active() -> bool:
+    """有没有人在收进度（流式接口、后台任务）。"""
+    return _sink.get() is not None
+
+
 def begin(kind: str, company: str, *, intake: bool) -> dict:
     """第一条事件：这次要走哪些步骤。kind 是 create（建案卷）或 supplement（补充信息）。"""
     steps = [s for s in STEPS if intake or s != "intake"]

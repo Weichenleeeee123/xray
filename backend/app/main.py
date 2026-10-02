@@ -5,6 +5,7 @@
 """
 import json
 import hashlib
+from dataclasses import asdict
 import logging
 import os
 import queue
@@ -23,7 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import config, deployment, privacy, progress, runs
+from app import config, demo_prebuilt, deployment, privacy, progress, runs
 from app.models import PublicCase, PublicChatMessage
 from app.analysis.pipeline import NoNewReviews, load_services, new_case, refresh_reviews, resolve, supplement
 from app.analysis.report import onepager
@@ -41,6 +42,7 @@ from app.sources.collect import collect
 from app.store import CaseStore, ConflictError
 from app.persistence import locked, atomic_json
 from app.sources.cache import FORCE_REFRESH
+from app.sources.resolve import resolve as resolve_name
 
 DEMO_CASES = config.DATA_DIR / "demo_cases.json"
 
@@ -169,6 +171,12 @@ def check_license(name: str = Query(min_length=2, description="机构全称；�
     return svc.licenses.lookup(name)
 
 
+@app.get("/api/companies/resolve")
+def resolve_company(q: str = Query(min_length=1, max_length=80, description="用户输入的公司名，简称也行")) -> dict:
+    """开查之前把名字定成全称：精确对上就返回全称；简称返回候选让用户选，不替用户挑。"""
+    return asdict(resolve_name(q, svc))
+
+
 @app.get("/api/companies/profile")
 def company_profile(name: str = Query(min_length=2)) -> dict:
     c = collect(name, svc)
@@ -184,6 +192,8 @@ def _intake(text: str, scenario: str | None, company: str) -> Intake:
 
 
 def _create(body: CaseIn) -> Case:
+    if (bundle := demo_prebuilt.for_create(body)) is not None:   # 示例：交出预制好的案卷，不联网
+        return store.save(demo_prebuilt.start_case(bundle, privacy.identity()))
     info = _intake(body.need, body.scenario, body.company_name)
     token = FORCE_REFRESH.set(body.refresh_sources)
     try:
@@ -195,6 +205,8 @@ def _create(body: CaseIn) -> Case:
 
 
 def _supplement(case: Case, body: SupplementIn) -> Case:
+    if (hit := demo_prebuilt.for_supplement(case, body)) is not None:   # 示例按顺序补充：交出预制的下一版
+        return store.save(demo_prebuilt.next_case(case, *hit))
     info = _intake(body.text, body.scenario, case.case.company_name) if body.kind == "need" else None
     token = FORCE_REFRESH.set(body.refresh_sources)
     try:

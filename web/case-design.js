@@ -26,15 +26,17 @@ const RADAR_ITEM_AXIS = {
 };
 const RADAR_SIGNAL_AXIS = {risk:'qualify',finance:'funds',credit:'stability',reputation:'news'};
 // An axis takes the most severe status among the items actually checked; it is uncovered only when nothing was checked.
+// Unknown items keep their reason (没查成 / 待补材料 …); listed, reference-only and not-applicable items are not gaps.
 function researchRadarAxes(v) {
-  const axes=Object.fromEntries(RADAR_AXES.map(([id,label])=>[id,{id,label,status:'none',checked:0,unchecked:0}]));
+  const axes=Object.fromEntries(RADAR_AXES.map(([id,label])=>[id,{id,label,status:'none',checked:0,unchecked:0,quiet:0,open:[]}]));
   for(const sig of v.signals || []) for(const it of sig.items || []){
     const axis=axes[RADAR_ITEM_AXIS[`${sig.key}.${it.key}`] || RADAR_SIGNAL_AXIS[sig.key]];
     if(!axis) continue;
-    if(it.status==='none'){axis.unchecked++;continue;}
+    if(it.status==='none'){ if(isOpen(it)){axis.unchecked++;axis.open.push(it);} else axis.quiet++; continue; }
     axis.checked++;
     if(axis.status==='none' || (SEV[it.status]||0)>(SEV[axis.status]||0)) axis.status=it.status;
   }
+  for(const axis of Object.values(axes)) axis.failed=axis.status==='none' && axis.open.length>0 && axis.open.every(i=>gapOf(i)==='failed');
   return RADAR_AXES.map(([id])=>axes[id]);
 }
 function researchRadar(v) {
@@ -43,9 +45,10 @@ function researchRadar(v) {
   const coords=p=>p.map(n=>n.toFixed(1)).join(',');
   const level={ok:115,warn:78,miss:62,bad:46};
   const dots=dimensions.map((d,i)=>d.status==='none'?null:pt(i,level[d.status]||46));
-  const title = {ok:'未见异常',warn:'有待关注',bad:'有异常记录',miss:'缺应有记录',none:'未覆盖'};
-  const count = d => d.status==='none' ? '这一维没有查到数据' : `查了 ${d.checked} 项${d.unchecked?`，另有 ${d.unchecked} 项没查`:''}`;
-  return `<div class="research-radar"><div class="radar-caption"><span>企业六维轮廓</span><span>定性示意 · 不设评分</span></div><svg viewBox="0 0 460 410" role="img" aria-label="六维雷达：${dimensions.map(d=>`${d.label}${title[d.status]}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="230" y1="205" x2="${pt(i,132)[0]}" y2="${pt(i,132)[1]}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${dots.map((p,i)=>p?`<path d="M230 205L${coords(p)}${dots[(i+1)%6]?'L'+coords(dots[(i+1)%6]):''}Z" fill="#dfb477" fill-opacity=".12" stroke="#dfb477" stroke-width="1.6"/>`:'').join('')}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.status}"><title>${d.label}：${title[d.status]}，${count(d)}</title><text x="${p[0]}" y="${p[1]-3}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0]}" y="${p[1]+17}" text-anchor="middle" fill="${d.status==='none'?'#ac9781':d.status==='bad'?'#ed9b89':'#d4b38b'}" font-size="12">${title[d.status]}</text>${dots[i]?`<circle cx="${dots[i][0]}" cy="${dots[i][1]}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>依据现有记录作定性展示：越靠外越没发现问题，越靠里问题越多。虚线为未覆盖维度，不代表能力低；不用于比较投资表现。</p></div>`;
+  const titles = {ok:'未见异常',warn:'有待关注',bad:'有异常记录',miss:'缺应有记录',none:'未覆盖'};
+  const label = d => d.failed ? '没查成' : titles[d.status];
+  const count = d => d.status==='none' ? (d.open.length ? pendingNote(d.open) : '这一维没有查到数据') : `查了 ${d.checked} 项${d.unchecked?`，另有 ${pendingNote(d.open)}`:''}`;
+  return `<div class="research-radar"><div class="radar-caption"><span>企业六维轮廓</span><span>定性示意 · 不设评分</span></div><svg viewBox="0 0 460 410" role="img" aria-label="六维雷达：${dimensions.map(d=>`${d.label}${label(d)}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="230" y1="205" x2="${pt(i,132)[0]}" y2="${pt(i,132)[1]}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${dots.map((p,i)=>p?`<path d="M230 205L${coords(p)}${dots[(i+1)%6]?'L'+coords(dots[(i+1)%6]):''}Z" fill="#dfb477" fill-opacity=".12" stroke="#dfb477" stroke-width="1.6"/>`:'').join('')}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.failed?'failed':d.status}"><title>${d.label}：${label(d)}，${count(d)}</title><text x="${p[0]}" y="${p[1]-3}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0]}" y="${p[1]+17}" text-anchor="middle" fill="${d.failed?'#e3a76f':d.status==='none'?'#ac9781':d.status==='bad'?'#ed9b89':'#d4b38b'}" font-size="12">${label(d)}</text>${dots[i]?`<circle cx="${dots[i][0]}" cy="${dots[i][1]}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>依据现有记录作定性展示：越靠外越没发现问题，越靠里问题越多。虚线为未覆盖维度，不代表能力低；不用于比较投资表现。</p></div>`;
 }
 function researchOverview(v) {
   const html=document.createElement('div'); html.innerHTML=glanceHtml(v);

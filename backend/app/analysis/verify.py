@@ -87,7 +87,7 @@ def _license_check(lic: LicenseHit, others: list[RegistryHit]) -> tuple[Check, R
 def _amac_check(amac: AmacHit) -> Check:
     if amac.coverage is Coverage.not_covered:
         return Check(label="私募基金管理人登记", result="没查：中基协名单还没下载，也没有人工查询记录",
-                     status=Status.none, source=amac.source)
+                     status=Status.none, source=amac.source, gap="not_covered")
     if amac.registered:
         r = amac.record or {}
         credit, special = str(r.get("credit_tips")) == "1", str(r.get("special_tips")) == "1"
@@ -148,14 +148,14 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
         checks.append(Check(label="理财产品登记编码", result=f"材料上写了 {'、'.join(ext.product_codes)}，待到中国理财网核验",
                             status=Status.warn, source="material"))
     elif not ext.is_financial:
-        checks.append(Check(label="理财产品登记编码", result="还没有理财宣传材料，无从核对", status=Status.none,
-                            source="material"))
+        checks.append(Check(label="理财产品登记编码", result="要看理财宣传材料或合同上的产品编码，补充材料后核对",
+                            status=Status.none, source="material", gap="needs_input"))
     else:
         checks.append(Check(label="理财产品登记编码", result="材料上没有", status=Status.miss, source="material"))
 
     licensed = license_check.status is Status.ok
     if company is None:
-        checks.append(Check(label="经营范围", result=NOT_COVERED, status=Status.none, source="registry"))
+        checks.append(Check(label="经营范围", result=NOT_COVERED, status=Status.none, source="registry", gap="not_covered"))
     elif (word := financial_scope(company.scope)) and licensed:
         checks.append(Check(label="经营范围", result=f"含\"{word}\"，和它的持牌身份一致", status=Status.ok,
                             source="registry"))
@@ -242,7 +242,7 @@ def listing_check(claim: RawClaim, company: CompanyProfile | None) -> tuple[Chec
     """宣称上市：对照上市信息里的交易所和股票代码。没查返回 (检查, None, "")。"""
     if company is None or not company.known("listing"):
         return Check(label="上市信息", result="没查：这次的数据来源不含上市信息", status=Status.none,
-                     source="registry"), None, ""
+                     source="registry", gap="not_covered"), None, ""
     said = "".join(claim.quotes)
     said_ex = _exchange("".join(re.findall(r"[^。；，,]{0,12}(?:交易所|上交所|深交所|北交所|港交所)", said)))
     said_code = (re.search(r"(?:股票|证券)代码[:：为是]?\s*(\d{6})", said) or [None, None])[1]
@@ -272,7 +272,7 @@ def background_review(claim: RawClaim, company: CompanyProfile | None) -> Review
         known = company is not None and company.known("shareholders")
         checks.append(Check(label="股东", result="查了，数据源没给股东" if known else
                             NOT_COVERED if company is None else "没查：这次的数据来源不含股东",
-                            status=Status.none, source="registry"))
+                            status=Status.none, source="registry", gap="not_found" if known else "not_covered"))
         return checks, Verdict.unverifiable, NO_DATA_PLAIN if company is None else "没有股东数据，暂时无法核验。"
 
     holders = "、".join(f"{h.name} {h.pct:g}%" for h in company.shareholders)
@@ -341,13 +341,13 @@ def capital_review(claim: RawClaim, company: CompanyProfile | None, amac: AmacHi
         tail = f"、实缴 {wan(paid)}" if paid is not None else ""
         return checks, Verdict.consistent, f"中基协公示注册资本 {wan(reg)}{tail}，和宣传说的不矛盾（管理人自行填报）。"
     if company is None:
-        return ([Check(label="注册资本", result=NOT_COVERED, status=Status.none, source="registry")],
+        return ([Check(label="注册资本", result=NOT_COVERED, status=Status.none, source="registry", gap="not_covered")],
                 Verdict.unverifiable, NO_DATA_PLAIN)
     checks = []
     claimed, reg, paid = claim.numbers.get("capital"), company.reg_capital, company.paid_capital
     if company.capital_currency != "人民币" or company.paid_currency != "人民币":
         return [Check(label="资本币种", result=f"登记 {money(reg, company.capital_currency)}；币种不同或宣传币种未明确，未作数值对比",
-                      status=Status.none, source="registry")], Verdict.unverifiable, "登记涉及外币，先核对币种，不能直接比较金额。"
+                      status=Status.none, source="registry", gap="not_applicable")], Verdict.unverifiable, "登记涉及外币，先核对币种，不能直接比较金额。"
     same = claimed is not None and abs(claimed - reg) <= reg * 0.01
     due = f"，认缴期限 {company.capital_due}" if company.capital_due else ""
     if claimed is not None:
@@ -355,7 +355,7 @@ def capital_review(claim: RawClaim, company: CompanyProfile | None, amac: AmacHi
                             result=f"{money(reg)}{due}，与宣传一致" if same else f"登记为 {money(reg)}，宣传写 {money(claimed)}",
                             status=Status.ok if same else Status.bad, source="registry"))
     if paid is None:
-        checks.append(Check(label="实缴资本", result="年报未公示", status=Status.none, source="annual_report"))
+        checks.append(Check(label="实缴资本", result="年报未公示", status=Status.none, source="annual_report", gap="undisclosed"))
     else:
         checks.append(Check(label="实缴资本（2025 年报）", result=f"{money(paid)}（企业自行填报，未经审计）",
                             status=Status.bad if paid < reg * LOW_PAID_RATIO else Status.ok, source="annual_report"))
@@ -406,11 +406,12 @@ def scale_review(claim: RawClaim, company: CompanyProfile | None, amac: AmacHit 
             if amac_gaps:
                 return amac_checks, Verdict.misleading, f"{said}；{'，'.join(amac_gaps)}。"
             return amac_checks, Verdict.consistent, "中基协公示的规模和宣传大致相符。"
-        return ([Check(label="规模", result=NOT_COVERED, status=Status.none, source="registry")],
+        return ([Check(label="规模", result=NOT_COVERED, status=Status.none, source="registry", gap="not_covered")],
                 Verdict.unverifiable, NO_DATA_PLAIN)
     checks, gaps = list(amac_checks), list(amac_gaps)
     if company.insured is None:
-        checks.append(Check(label="参保人数（年报）", result="未公示（企业可选择不公示）", status=Status.none, source="annual_report"))
+        checks.append(Check(label="参保人数（年报）", result="未公示（企业可选择不公示）", status=Status.none, source="annual_report",
+                            gap="undisclosed"))
     else:
         short = stores is not None and company.insured < stores or staff is not None and company.insured < staff / 2
         if short:

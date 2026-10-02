@@ -10,6 +10,7 @@ __pycache__/
 
 # 运行时数据（案卷、模型响应缓存）
 backend/data/cases/
+backend/data/demo_prebuilt/
 backend/data/runs/
 backend/data/cache/
 backend/data/private/

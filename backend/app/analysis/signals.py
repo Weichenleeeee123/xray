@@ -38,7 +38,7 @@ def _flags(items: list[SignalItem]) -> int:
 
 def _not_covered(key: str) -> list[SignalItem]:
     return [SignalItem(key=key, label="登记数据", value="没查", detail="还没有这家公司的登记数据",
-                       status=Status.none, source="registry")]
+                       status=Status.none, source="registry", gap="not_covered")]
 
 
 def official_pack_items(company_name: str, records: list[RawRecord]) -> list[SignalItem]:
@@ -115,10 +115,10 @@ def official_web_item(web: WebFindings | None, refs: dict[str, str], listed: tup
     label = "政府网站点名"
     if web is None:
         return SignalItem(key="official_web", label=label, value="没查", detail=NO_WEB, status=Status.none,
-                          source="web_official")
+                          source="web_official", gap="not_covered")
     if not web.official and any("官方" in e for e in web.errors):
-        return SignalItem(key="official_web", label=label, value="查询失败", detail="；".join(web.errors),
-                          status=Status.none, source="web_official")
+        return SignalItem(key="official_web", label=label, value="没查成", detail="；".join(web.errors),
+                          status=Status.none, source="web_official", gap="failed")
     # 只算它是当事人的文件；正文里顺带提到它的（比如别家公司的处罚决定里写"员工在它那里兼职"）单独说
     shown = [h for h in web.official if any(_same_url(h.url, u) for u in listed)]
     if shown:
@@ -148,7 +148,7 @@ def official_web_item(web: WebFindings | None, refs: dict[str, str], listed: tup
     if shown:
         return SignalItem(key="official_web", label=label, value=f"搜到的 {len(shown)} 份都已在上面单独列出",
                           detail="搜索结果里没有别的点名它的处罚或警示；搜索覆盖有限，没搜到不等于没有",
-                          status=Status.none, source="web_official", ref=refs.get(shown[0].url))
+                          status=Status.none, source="web_official", ref=refs.get(shown[0].url), gap="listed")
     return SignalItem(key="official_web", label=label, value="没搜到",
                       detail="搜了监管、法院和政府网站，没找到点名它的处罚或警示；搜索覆盖有限，没搜到不等于没有",
                       status=Status.ok, source="web_official")
@@ -218,8 +218,14 @@ def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit
                                warnings[0], Status.bad, refs or {}, "web_official"))
     if scenario.license_checks or ext.is_financial or lic.found or any(h.found for h in others):
         checks, _, _ = qualification_review(ext, company, lic, amac, others)
-        items += [SignalItem(key=k, label=c.label, value=c.result, status=c.status, source=c.source)
-                  for c in checks if (k := QUAL_KEYS.get(c.label))]
+        for c in checks:
+            if not (k := QUAL_KEYS.get(c.label)):
+                continue
+            item = SignalItem(key=k, label=c.label, value=c.result, status=c.status, source=c.source, gap=c.gap)
+            if k == "product_code" and c.gap == "needs_input" and not scenario.license_checks:
+                # 这次不是买理财（求职、签合同……），没有理财材料就不用核对产品编码
+                item.value, item.gap = "这次不是买理财产品，不用核对", "not_applicable"
+            items.append(item)
         if "amac" in scenario.license_checks and (pf := pf_threshold_item(amac, amount)):
             items.append(pf)
         if tips := amac_tips_item(amac):
@@ -264,7 +270,7 @@ def report_items(finance: FinancialFindings | None) -> list[SignalItem]:
         failed = finance.coverage == "failed"
         return [SignalItem(key="reports", label="公开的财务数据", value="没查成" if failed else "没有",
                            detail=finance.error if failed else "只有上市、发债等要公开披露的公司才有财报；没有不等于经营有问题",
-                           status=Status.none, source="qcc_finance")]
+                           status=Status.none, source="qcc_finance", gap="failed" if failed else "undisclosed")]
     annual, latest = finance.latest_annual, finance.latest
     items = []
     if annual:
@@ -310,15 +316,17 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
     due = f"，期限 {company.capital_due}" if company.capital_due else ""
     if paid is None:
         items.append(SignalItem(key="paid_capital", label="实缴资本", value="年报未公示", detail=f"认缴 {money(reg, company.capital_currency)}{due}",
-                                status=Status.none, source="annual_report"))
+                                status=Status.none, source="annual_report", gap="undisclosed"))
     else:
         items.append(SignalItem(key="paid_capital", label="实缴资本", value=money(paid, company.paid_currency), detail=f"认缴 {money(reg, company.capital_currency)}{due}",
                                 status=Status.none if company.capital_currency != company.paid_currency else
-                                Status.bad if paid < reg * LOW_PAID_RATIO else Status.ok, source="annual_report"))
+                                Status.bad if paid < reg * LOW_PAID_RATIO else Status.ok, source="annual_report",
+                                gap="not_applicable" if company.capital_currency != company.paid_currency else None))
     if not company.known("pledges"):
         items.append(SignalItem(key="pledges", label="股权出质", value="仅部分明细" if "pledges" in company.partial else "没查",
                                 detail=company.facts.get("pledges") or "这次的数据来源不含这一项",
-                                status=Status.none, source="registry"))
+                                status=Status.none, source="registry",
+                                gap="partial" if "pledges" in company.partial else "not_covered"))
     elif company.n("pledges"):
         detail = "；".join(f"{p.date}，{p.pledgor}把 {p.share}押给「{p.pledgee}」" for p in company.pledges) or SHOWN_NONE
         listed = company.known("listing") and bool(company.listing)
@@ -331,7 +339,7 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
                                 status=Status.ok, source="registry"))
     if company.insured is None:
         items.append(SignalItem(key="insured", label="参保人数", value="未公示", detail="企业可选择不公示",
-                                status=Status.none, source="annual_report"))
+                                status=Status.none, source="annual_report", gap="undisclosed"))
     else:
         short = claimed_stores is not None and company.insured < claimed_stores
         items.append(SignalItem(key="insured", label="参保人数", value=f"{company.insured} 人",
@@ -343,7 +351,8 @@ def finance_signal(company: CompanyProfile | None, claimed_stores: float | None,
         if not company.known(key):
             items.append(SignalItem(key=key, label=label, value="仅部分明细" if key in company.partial else "没查",
                                     detail=company.facts.get(key) or "这次的数据来源不含这一项",
-                                    status=Status.none, source="registry"))
+                                    status=Status.none, source="registry",
+                                    gap="partial" if key in company.partial else "not_covered"))
             continue
         n = company.n(key)
         items.append(SignalItem(key=key, label=label, value=f"{n} 条" if n else "无", detail=company.facts.get(key),
@@ -368,10 +377,10 @@ def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings 
               else Status.warn if months < YOUNG_COMPANY_MONTHS else Status.ok)
     items = [SignalItem(key="status", label="登记状态", value=company.status,
                         detail=f"成立于 {company.founded}，{months // 12} 年 {months % 12} 个月" if months is not None else "成立日期未提供或无效",
-                        status=status, source="registry")]
+                        status=status, source="registry", gap="not_covered" if status is Status.none else None)]
     if not company.known("penalties"):
         items.append(SignalItem(key="penalties", label="行政处罚", value="没查", detail="这次的数据来源不含这一项",
-                                status=Status.none, source="registry"))
+                                status=Status.none, source="registry", gap="not_covered"))
     elif company.n("penalties"):
         detail = "；".join(f"{p.date or '日期未公示'} {p.org}：{p.reason + '，' if p.reason else ''}{p.result}"
                            for p in company.penalties[:5]) or SHOWN_NONE
@@ -388,7 +397,7 @@ def credit_signal(company: CompanyProfile | None, as_of: date, web: WebFindings 
         if not company.known(key):
             if key != "restricted":  # 限制高消费只有商业接口给，没查就不占一行
                 items.append(SignalItem(key=key, label=label, value="没查", detail="这次的数据来源不含这一项",
-                                        status=Status.none, source="registry"))
+                                        status=Status.none, source="registry", gap="not_covered"))
             continue
         n = company.counts.get(key, 0)
         items.append(SignalItem(key=key, label=label, value=(f"{yes}（{n} 条）" if n > 1 else yes) if hit else no,
@@ -424,8 +433,8 @@ def other_risks_item(scan: dict[str, int]) -> list[SignalItem]:
 
 def web_reputation(web: WebFindings, refs: dict[str, str], lede: str) -> Signal:
     if not web.news and any("报道" in e for e in web.errors):
-        items = [SignalItem(key="web_total", label="公开报道和投诉", value="查询失败", detail="；".join(web.errors),
-                            status=Status.none, source="web_news")]
+        items = [SignalItem(key="web_total", label="公开报道和投诉", value="没查成", detail="；".join(web.errors),
+                            status=Status.none, source="web_news", gap="failed")]
         return Signal(key="reputation", title="口碑", lede=lede, flags=0, items=items)
     cash = [h for h in web.news if h.category == "cash"]
     complaint = [h for h in web.news if h.category == "complaint"]
@@ -453,7 +462,8 @@ def web_reputation(web: WebFindings, refs: dict[str, str], lede: str) -> Signal:
 
 def _part_none(key: str, label: str, part, source: str) -> SignalItem | None:
     if part.coverage == "failed":
-        return SignalItem(key=key, label=label, value="没查成", detail=part.error, status=Status.none, source=source)
+        return SignalItem(key=key, label=label, value="没查成", detail=part.error, status=Status.none, source=source,
+                          gap="failed")
     return None
 
 
@@ -555,7 +565,8 @@ def cninfo_items(c: CninfoFindings | None) -> tuple[list[SignalItem], list[Signa
         return [], []
     if c.coverage != "found":
         bad = SignalItem(key="cninfo", label="交易所公告（巨潮资讯网）", value="没查成" if c.coverage == "failed" else "没有",
-                         detail=c.error, status=Status.none, source="cninfo")
+                         detail=c.error, status=Status.none, source="cninfo",
+                         gap="failed" if c.coverage == "failed" else "not_applicable")
         return [], [bad]
     fin_items = []
     if c.annual:
@@ -582,7 +593,7 @@ def media_item(web: WebFindings | None) -> SignalItem | None:
         failed = any("权威媒体" in e for e in web.errors)
         return SignalItem(key="media", label="权威媒体报道", value="没查成" if failed else "没搜到",
                           detail="只搜人民网、新华网、财新、证券时报等二十多家；没搜到不等于没有",
-                          status=Status.none if failed else Status.ok, source="web_media")
+                          status=Status.none if failed else Status.ok, source="web_media", gap="failed" if failed else None)
     reg = [h for h in hits if h.category in ("penalty", "warning") and h.subject]
     top = (reg or hits)[0]
     detail = f"最近：{top.date or '日期不详'} {top.site}《{top.title}》"
@@ -598,7 +609,7 @@ def news_items(news: NewsFindings, today: date) -> list[SignalItem]:
         failed = news.coverage == "failed"
         return [SignalItem(key="news", label="新闻舆情", value="没查成" if failed else "没有新闻",
                            detail=news.error if failed else "平台没有收录这家公司的新闻；没有不等于没人说过",
-                           status=Status.none, source="qcc_news")]
+                           status=Status.none, source="qcc_news", gap="failed" if failed else "not_found")]
     recent = news.recent_negatives(today)
     shown = len(news.items)
     items = [SignalItem(key="news", label="新闻舆情", value=f"共 {news.total} 条",
@@ -621,7 +632,7 @@ def reputation_signal(data: dict | None, web: WebFindings | None = None, refs: d
     if data is None:
         return Signal(key="reputation", title="口碑", lede=lede, flags=0,
                       items=[SignalItem(key="complaints", label="投诉", value="没查", detail="还没有这家公司的投诉数据",
-                                        status=Status.none, source="complaints")])
+                                        status=Status.none, source="complaints", gap="not_covered")])
     counts = data["counts"]
     total, last3 = sum(counts), sum(counts[-3:])
     share = last3 / total if total else 0.0
@@ -663,7 +674,7 @@ def review_item(reviews: list[dict] | None) -> SignalItem | None:
     else:
         status, detail = Status.none, "差评不集中，只作参考。好评多不代表没问题；用户自己写的，系统不判断真假"
     return SignalItem(key="user_reviews", label="用户评价（未核实）", value=f"{n} 条：{dist}", detail=detail,
-                      status=status, source="user_reviews")
+                      status=status, source="user_reviews", gap="reference" if status is Status.none else None)
 
 
 def build_signals(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit, amac: AmacHit,

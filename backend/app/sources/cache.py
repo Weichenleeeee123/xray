@@ -10,6 +10,17 @@ from app.persistence import atomic_text
 FORCE_REFRESH = ContextVar("force_refresh", default=False)
 
 
+def read_saved(path: Path, field: str) -> dict | None:
+    """不管新旧，读出上次存的结果。只在实时查询失败时兜底用（断网、积分用完），调用方要标明是哪天的数据。"""
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(saved, dict) and isinstance(saved.get(field), dict) and saved.get("retrieved_at"):
+            return saved
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 def read_fresh(path: Path, field: str, *, force: bool = False) -> dict | None:
     try:
         text = path.read_text(encoding="utf-8")

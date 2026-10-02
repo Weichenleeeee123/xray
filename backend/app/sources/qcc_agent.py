@@ -12,7 +12,7 @@
 配置（backend/.env）：
     XRAY_COMMERCIAL=qcc_agent
     QCC_AGENT_KEY=                 平台个人中心的 API Key；多个用逗号隔开，当前的失效或积分用完自动换下一个
-    XRAY_QCC_MAX_POINTS=300        单次运行最多实际花多少积分（缓存命中不算）
+    XRAY_QCC_MAX_POINTS=1500       一个后端进程最多实际花多少积分（缓存命中不算，重启清零）
 """
 import hashlib
 import json
@@ -30,7 +30,7 @@ from app.models import CompanyProfile, Coverage, Pledge, Penalty, RawRecord, Sha
 from app.sources.commercial import CST, _day, parse_money
 from app.sources.licenses import normalize
 from app.persistence import atomic_json, locked
-from app.sources.cache import read_fresh
+from app.sources.cache import read_fresh, read_saved
 from app.sources.commercial import currency
 
 BASE_URL = "https://agent.qcc.com/mcp"
@@ -39,7 +39,7 @@ TITLE = "企查查智能体数据平台 · 工商登记、风险、股东"
 NOTE = "第三方商业数据，由国家企业信用信息公示系统、法院公开信息等加工而来；有出入时以官方公示为准"
 
 # 每个工具每次调用扣的积分（平台工具详情页标的价）
-COST = {"get_company_registration_info": 3, "get_company_risk_scan": 5, "get_shareholder_info": 20,
+COST = {"get_company_by_query": 5, "get_company_registration_info": 3, "get_company_risk_scan": 5, "get_shareholder_info": 20,
         "get_branches": 5, "get_listing_info": 1, "get_administrative_penalty": 3, "get_judgment_debtor_info": 3,
         "get_dishonest_info": 3, "get_high_consumption_restriction": 3, "get_business_exception": 3,
         "get_serious_violation": 3, "get_equity_pledge_info": 3, "get_chattel_mortgage_info": 3,
@@ -254,6 +254,7 @@ class Call:
     error: str | None
     cached: bool
     retrieved_at: str
+    stale: str | None = None    # 实时查询没成功、用了上次存的结果时：为什么没查成
 
 
 @dataclass
@@ -290,7 +291,7 @@ class QccAgentClient:
         # 多个 Key：一直用当前这个，失效、积分不够或被限流才换下一个（结果有缓存，轮流换不省积分）
         self.keys = parse_keys(key if key is not None else os.getenv("QCC_AGENT_KEY", ""))
         self.current, self.dropped = 0, {}   # dropped：第几个 Key → 为什么换掉
-        self.max_points = max_points if max_points is not None else int(os.getenv("XRAY_QCC_MAX_POINTS", "300"))
+        self.max_points = max_points if max_points is not None else int(os.getenv("XRAY_QCC_MAX_POINTS", "1500"))
         self.cache_dir = cache_dir or config.CACHE_DIR / "qcc_agent"
         self.transport, self.timeout, self.points = transport, timeout, 0
         self.provider = "qcc_agent"
@@ -371,18 +372,23 @@ class QccAgentClient:
         when = datetime.now(CST).isoformat(timespec="seconds")
         cost = COST.get(tool, 5)
         with self._budget_lock:
-            if self.points + self._reserved + cost > self.max_points:
-                return Call(None, f"服务进程已花 {self.points} 积分，到上限了，没有再查", False, when)
-            self._reserved += cost
+            over = self.points + self._reserved + cost > self.max_points
+            if not over:
+                self._reserved += cost
+        if over:
+            why = f"服务进程已花 {self.points} 积分，到上限了，没有再查"
+            return self._stale(path, name, why) or Call(None, why, False, when)
         try:
-            data = self._post_any(server, tool, name)
+            data = self._post_retry(server, tool, name)
             with self._budget_lock:
                 self.points += cost
         except (httpx.HTTPError, ValueError, QccError) as e:
-            return Call(None, f"查询失败：{e if isinstance(e, QccError) else type(e).__name__}", False, when)
+            why = f"查询失败：{e if isinstance(e, QccError) else type(e).__name__}"
+            return self._stale(path, name, why) or Call(None, why, False, when)
         finally:
-            with self._budget_lock:
-                self._reserved -= cost
+            if not over:
+                with self._budget_lock:
+                    self._reserved -= cost
         if data.get("企业名称") and normalize(data["企业名称"]) != normalize(name):
             return Call(None, "返回的企业名称和输入对不上，没有采用", False, when)
         data = clean(data, company=name)
@@ -391,6 +397,28 @@ class QccAgentClient:
         except OSError:
             pass
         return Call(data, None, False, when)
+
+    def _post_retry(self, server: str, tool: str, name: str) -> dict:
+        """网络抖一下（连不上、超时、服务端 5xx）就再试一次；Key、积分、名字这类问题重试也没用，直接报。"""
+        try:
+            return self._post_any(server, tool, name)
+        except httpx.TransportError:
+            pass
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code < 500:
+                raise
+        time.sleep(0.5)
+        return self._post_any(server, tool, name)
+
+    def _stale(self, path, name: str, why: str) -> Call | None:
+        """实时查询不成（断网、积分用完）时，有上次存的结果就先用它，并记下是哪天查的、为什么没实时查。"""
+        saved = read_saved(path, "data")
+        if not saved:
+            return None
+        data = clean(saved["data"], company=name)
+        if data.get("企业名称") and normalize(data["企业名称"]) != normalize(name):
+            return None
+        return Call(data, None, True, saved["retrieved_at"], stale=why)
 
     def financials(self, name: str) -> Call:
         """财务数据（上市、发债等公开披露的公司才有）。解析在 app/sources/finance.py。"""
@@ -413,6 +441,7 @@ class QccAgentClient:
             return None
         base = self.call("company", "get_company_registration_info", name)
         when, calls, cached = base.retrieved_at, ["工商信息"], [base.cached]
+        stale = [base.stale]
         if base.error:
             return QccAgentResult(name, when, None, {}, base.error, failed=True)
         reg = base.data or {}
@@ -439,6 +468,7 @@ class QccAgentClient:
 
         scan = self.call("risk", "get_company_risk_scan", name)
         cached.append(scan.cached)
+        stale.append(scan.stale)
         if scan.error:
             gaps.append(f"风险扫描：{scan.error}")
         else:
@@ -460,6 +490,7 @@ class QccAgentClient:
                     p[fld] = True
                 d = self.call("risk", tool, name)
                 cached.append(d.cached)
+                stale.append(d.stale)
                 if d.error:
                     gaps.append(f"{factor}明细：{d.error}")
                     continue
@@ -472,6 +503,7 @@ class QccAgentClient:
                                  ("上市信息", "get_listing_info", "listing")):
             c = self.call("company", tool, name)
             cached.append(c.cached)
+            stale.append(c.stale)
             if c.error:
                 gaps.append(f"{label}：{c.error}")
                 continue
@@ -496,7 +528,9 @@ class QccAgentClient:
 
         p["checked"] = [field for field in checked if field not in p.get("partial", [])]
         profile = CompanyProfile(**p)
-        note = ("缓存（没有重复扣积分）" if all(cached) else f"实时查询，服务进程累计 {self.points} 积分") + \
+        offline = next((why for why in stale if why), None)
+        note = (f"实时查询没成功（{offline}），用的是 {when[:10]} 存下的结果" if offline else
+                "缓存（没有重复扣积分）" if all(cached) else f"实时查询，服务进程累计 {self.points} 积分") + \
                f"；查了：{'、'.join(calls)}" + (f"；没查成：{'；'.join(gaps)}" if gaps else "")
         return QccAgentResult(name, when, profile, content, note, calls=calls)
 

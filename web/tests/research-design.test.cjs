@@ -9,6 +9,10 @@ function harness(){
  FLAG:new Set(['bad','warn','miss']),SEV:{bad:4,warn:3,miss:2,none:1,ok:0},selCls:()=>'',chgTag:()=>'',askBtn:()=>'',stLabel:i=>i.status,
  srcLink:(s,r)=>`<button data-ref="${escape(r)}">${escape(s)}</button>`,sigExtra:()=>'',KIND:{official:'官方记录'},COVERAGE:{found:'查到了'},
  versionRaws:v=>v.raws,srcOf:id=>({name:id,kind:'official'})});
+ // Gap helpers live in app.js; load exactly those definitions so the radar is tested with the real wording.
+ const app=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
+ const start=app.indexOf('const GAP = '), end=app.indexOf('const stLabel = ');
+ vm.runInContext(app.slice(start,end).replace(/^const /gm,'var ').replace(/^function /gm,'function '),ctx);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../case-design.js'),'utf8'),ctx);
  return {ctx,run:code=>vm.runInContext(code,ctx)};
 }
@@ -81,7 +85,7 @@ test('radar axes use every signal item once and an unchecked item does not hide 
  assert.equal(by['宣传承诺'].status,'bad');
  assert.equal(by['消息面'].status,'none','nothing checked is uncovered');
  const total=h.ctx.v.signals.reduce((n,s)=>n+s.items.length,0);
- assert.equal(axes.reduce((n,a)=>n+a.checked+a.unchecked,0),total);
+ assert.equal(axes.reduce((n,a)=>n+a.checked+a.unchecked+a.quiet,0),total);
  const svg=h.run('researchRadar(v)');
  assert.match(svg,/资金面未见异常（查了 11 项，另有 1 项没查）/);
  assert.match(svg,/消息面未覆盖/);
@@ -91,4 +95,18 @@ test('an axis whose items were all unchecked stays uncovered',()=>{
  const h=harness();h.ctx.v={signals:[{key:'finance',items:[{key:'pledges',status:'none'},{key:'revenue',status:'none'}]}]};
  const axes=JSON.parse(h.run('JSON.stringify(researchRadarAxes(v))'));
  assert.ok(axes.every(a=>a.status==='none'));
+});
+test('radar names failed lookups and pending material instead of calling them unchecked',()=>{
+ const h=harness();
+ h.ctx.v={signals:[
+  {key:'finance',items:[{key:'registry',status:'none',gap:'failed'},{key:'reports',status:'none',gap:'failed'}]},
+  {key:'risk',items:[{key:'bank_list',status:'ok'},{key:'product_code',status:'none',gap:'needs_input'},{key:'scope',status:'none',gap:'failed'}]},
+  {key:'credit',items:[{key:'penalties',status:'ok'},{key:'official_web',status:'none',gap:'listed'}]}]};
+ const by=Object.fromEntries(JSON.parse(h.run('JSON.stringify(researchRadarAxes(v))')).map(a=>[a.label,a]));
+ assert.equal(by['资金面'].failed,true);
+ assert.equal(by['风险稳定性'].status,'ok');assert.equal(by['风险稳定性'].unchecked,0,'a listed item is not a gap');
+ const svg=h.run('researchRadar(v)');
+ assert.match(svg,/资金面没查成（2 项没查成）/);
+ assert.match(svg,/经营资格未见异常（查了 1 项，另有 1 项没查成、1 项待补材料）/);
+ assert.match(svg,/data-status="failed"/);
 });

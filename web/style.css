@@ -97,6 +97,11 @@ textarea.big-inp{resize:vertical;font-size:15.5px}
 .ask-card{background:var(--paper-hi);border:1px solid var(--rule);border-radius:6px;padding:22px 24px 20px;box-shadow:0 20px 44px -32px rgba(25,15,5,.5)}
 .ask-card h2{font-family:var(--serif);font-weight:900;font-size:20px;margin:4px 0 6px}
 .f-row{margin-bottom:14px}
+.name-cands{margin-top:8px;padding:10px 12px;border:1px solid var(--rule);border-radius:6px;background:var(--paper)}
+.name-cands p{margin:0 0 6px;font-size:13px;color:var(--ink-2)}
+.name-cand{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;background:transparent;border:0;border-top:1px solid var(--rule);padding:8px 4px;color:var(--ink);cursor:pointer}
+.name-cand:hover,.name-cand:focus-visible{background:var(--paper-hi)}
+.name-cand small{color:var(--ink-3);font-size:12px;overflow-wrap:anywhere}
 .f-l{display:block;font-size:13px;color:var(--ink-3);margin-bottom:4px}
 .intake{margin-top:8px;font-size:14px;min-height:24px}
 .intake.busy{opacity:.55}

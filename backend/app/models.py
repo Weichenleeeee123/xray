@@ -184,12 +184,25 @@ class RawRecord(BaseModel):
 
 # ---------- 分析结果 ----------
 
+# status 是 none（不知道）时，为什么不知道。"没查成"和"没查"要分开说，用户才知道该重试、该补材料，还是本来就不适用
+Gap = Literal["failed",          # 查了，但查询出错（接口失败、积分用完、名字对不上……），重试可能就有
+              "not_found",       # 查了，数据源里没有这家公司或这项记录
+              "not_covered",     # 这次的数据源不含这一项
+              "needs_input",     # 要用户补材料才能核对（比如理财产品登记编码要看宣传材料）
+              "not_applicable",  # 对这家公司不适用（虚构的演示公司不联网搜索、币种不同不能比）
+              "undisclosed",     # 企业自己没公开（年报未公示、非上市公司没有财报）
+              "partial",         # 只拿到部分明细
+              "reference",       # 查到了，但只作参考，不算结论（评价太少）
+              "listed"]          # 已在上面的条目里单独列出，这里不重复算
+
+
 class Check(BaseModel):
     label: str
     result: str
     status: Status
     source: str
     ref: str | None = None               # RawRecord id；法规、参数类来源没有
+    gap: Gap | None = None               # status 是 none 时：为什么不知道
 
 
 class Assertion(BaseModel):
@@ -222,6 +235,7 @@ class SignalItem(BaseModel):
     status: Status
     source: str
     ref: str | None = None
+    gap: Gap | None = None               # status 是 none 时：为什么不知道
 
 
 class Signal(BaseModel):

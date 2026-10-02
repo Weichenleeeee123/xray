@@ -4,6 +4,7 @@ import tempfile
 
 _tmp = tempfile.mkdtemp(prefix="xray-test-")
 os.environ["XRAY_CASES_DIR"] = os.path.join(_tmp, "cases")
+os.environ["XRAY_DEMO_PREBUILT_DIR"] = os.path.join(_tmp, "demo_prebuilt")  # 本机生成的预制示例不影响测试
 os.environ["XRAY_CACHE_DIR"] = os.path.join(_tmp, "cache")
 os.environ["XRAY_REVIEWS_DIR"] = os.path.join(_tmp, "reviews")
 os.environ["XRAY_RUNS_DIR"] = os.path.join(_tmp, "runs")

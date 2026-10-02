@@ -15,6 +15,7 @@ from app.analysis.extract import ClaimExtractor, RuleExtractor
 from app.analysis.followup import build_questions
 from app.analysis.judgments import attach_disputes, build as build_judgments, update as update_judgments
 from app.analysis.report import onepager
+from app.analysis.gaps import explain_gaps
 from app.analysis.signals import add_pack_items, build_signals, official_pack_items
 from app.analysis.verify import verify
 from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, JudgmentChange, MissingItem, RawRecord,
@@ -135,6 +136,9 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     add_pack_items(signals, pack_items, raw, company, collected.web, web_refs)
     by_source = {raw_by_id[rid].source_id: rid for rid in collected_ids}
     link_refs(assertions, missing, signals, by_source, texts)
+    registry = next((raw_by_id[rid] for rid in collected_ids if raw_by_id[rid].source_id == "registry"), None)
+    gap_note = explain_gaps(signals, assertions, registry,
+                            fictional=company is not None and collected.sources["registry"].kind == "demo")
     charts = build_charts(ext, company, assertions, by_source, collected.web, web_refs, collected.complaints,
                           collected.as_of, amac)
 
@@ -149,7 +153,7 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     if company and collected.sources["registry"].kind == "demo":
         notes.append("演示数据 · 公司为虚构：登记、年报、投诉都是编出来的，只用来演示。")
     if company is None:
-        notes.append("还没有这家公司的登记数据：股东、资本、处罚等核验显示为\"没查\"。持牌名单是真实数据，照常核验。")
+        notes.append(gap_note or "还没有这家公司的登记数据：股东、资本、处罚等核验显示为\"没查\"。持牌名单是真实数据，照常核验。")
     if collected.web:
         notes.append("联网查证只能找到公开报道和政府网站上的文件，搜不到不等于没有" +
                      ("；本次用的是离线回放的搜索结果。" if collected.web.replay else "。"))

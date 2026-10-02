@@ -28,7 +28,18 @@ const SHOW_JUDGMENTS = /[?&]judg=1/.test(location.search);
 const TABS = { judgments: '判断', changes: '变化', signals: '四个信号', claims: '宣称 vs 记录', questions: '该问对方的', raw: '原始数据', reviews: '评价' };
 // 用户评价只作参考时（不够集中），既不算"没问题"，也不算"没查"
 const isRef = i => i.source === 'user_reviews' && !FLAG.has(i.status);
-const stLabel = i => (isRef(i) ? '只作参考' : STATUS[i.status] || '');
+// status 是 none 时为什么不知道（后端 models.Gap）。没查成和没查分开说，用户才知道该重查、该补材料，还是本来就不适用
+const GAP = { failed: '没查成', not_found: '查无记录', not_covered: '没查', needs_input: '待补材料', not_applicable: '不适用',
+  undisclosed: '未公开', partial: '部分明细', reference: '只作参考', listed: '已在上面列出' };
+const QUIET_GAPS = new Set(['listed', 'reference', 'not_applicable']);   // 不算缺口：已在别处列出、只作参考、不适用
+const gapOf = i => (i.status === 'none' ? (i.gap || 'not_covered') : null);
+const isOpen = i => i.status === 'none' && !QUIET_GAPS.has(gapOf(i));   // 还缺的：没查成、没查、待补材料、未公开……
+function pendingNote(list) {   // "2 项没查成、1 项待补材料"，没查成排最前
+  const n = {};
+  for (const i of list) if (isOpen(i)) n[gapOf(i)] = (n[gapOf(i)] || 0) + 1;
+  return Object.entries(n).sort(([a], [b]) => (b === 'failed') - (a === 'failed')).map(([g, c]) => `${c} 项${GAP[g]}`).join('、');
+}
+const stLabel = i => (isRef(i) ? '只作参考' : (i.status === 'none' && GAP[i.gap]) || STATUS[i.status] || '');
 // 三个分区。顺序就是顶栏顺序，也是第一次用的人该走的顺序
 const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['me', '我的', '状态、名单、名词表、这几条底线']];
 const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
@@ -398,8 +409,9 @@ async function renderMe() {
 function formHtml() {
   const demos = S.demos.filter(d => d.ready);
   return `<form class="ask-card" id="caseForm" autocomplete="off">
-    <div class="f-row"><label class="f-l" for="fCompany">公司全称</label>
-      <input class="big-inp" id="fCompany" name="company" required minlength="2" placeholder="例如：杭州银行股份有限公司" title="写营业执照上的全称，名单按全称核对"></div>
+    <div class="f-row"><label class="f-l" for="fCompany">公司名称</label>
+      <input class="big-inp" id="fCompany" name="company" required minlength="2" placeholder="全称或简称都行，例如：杭州银行" title="简称也行：开查前会先找到营业执照上的全称，有几家同名的会让你选">
+      <div class="name-cands" id="nameCands" role="group" aria-label="同名的公司" hidden></div></div>
     <div class="f-row"><label class="f-l" for="fNeed">你要做什么</label>
       <textarea class="big-inp" id="fNeed" name="need" rows="2" placeholder="例如：我妈想在这家公司存 20 万理财，最怕急用时取不出来"></textarea>
       <div class="intake" id="intake">${intakeHtml()}</div></div>
@@ -454,6 +466,7 @@ function bindForm() {
   };
   form.need.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(runIntake, 800); });
   form.need.addEventListener('blur', () => { clearTimeout(timer); runIntake(); });
+  form.company.addEventListener('input', () => { $('#nameCands').hidden = true; });
   form.for_whom.addEventListener('input', () => { S.form.dirty.for_whom = true; });
   form.amount.addEventListener('input', () => { S.form.dirty.amount = true; amtHint(); });
   $('#fFile').addEventListener('change', async e => {
@@ -472,10 +485,14 @@ function bindForm() {
   });
   form.addEventListener('submit', async e => {
     e.preventDefault();
-    const company = form.company.value.trim();
-    if (company.length < 2) { $('#formErr').textContent = '请填公司全称'; return; }
+    let company = form.company.value.trim();
+    if (company.length < 2) { $('#formErr').textContent = '请填公司名称'; return; }
     const amount = parseAmount(form.amount.value);
     if (form.amount.value.trim() && !amount) { $('#formErr').textContent = '金额没看懂，写成 200000 或 20万，或者留空'; return; }
+    $('#formErr').textContent = '';
+    company = await resolveCompany(company);
+    if (!company) return;
+    form.company.value = company;
     await createCase({
       company_name: company, need: form.need.value.trim(),
       scenario: S.form.userScenario || null,
@@ -484,6 +501,25 @@ function bindForm() {
       material_title: form.material_title.value.trim() || null,
     });
   });
+}
+
+// 简称很正常，但名单和企查查都按全称核对：开查前先把名字定成全称。精确对上直接查；有几家同名就列出来让用户选，不替他挑
+async function resolveCompany(q) {
+  if (S.form.resolved === q) return q;
+  const box = $('#nameCands'), go = $('#fSubmit');
+  let r;
+  go.disabled = true;
+  try { r = await api(`/api/companies/resolve?q=${encodeURIComponent(q)}`); }
+  catch { return q; }   // 找名字这一步连不上不挡路，按原样查，报告里会写明名字对没对上
+  finally { go.disabled = false; }
+  if (r.exact) { S.form.resolved = r.name; box.hidden = true; return r.name; }
+  box.innerHTML = r.candidates.length
+    ? `<p>${esc(r.note || '请选一家')}</p>${r.candidates.map(c => `<button type="button" class="name-cand" data-act="pick-company" data-name="${esc(c.name)}">
+        <b>${esc(c.name)}</b><small>${[c.status, c.founded && `成立于 ${c.founded}`, c.code].filter(Boolean).map(esc).join(' · ')}</small></button>`).join('')}`
+    : `<p class="err">${esc(r.note || '没找到这家公司，请输入营业执照上的全称')}</p>`;
+  box.hidden = false;
+  box.querySelector('button')?.focus();
+  return null;
 }
 
 async function readFile(file) {
@@ -679,17 +715,17 @@ function glanceItems(v) {
   const m = {};
   for (const a of v.assertions) m[a.id] = { status: COLOR_ST[a.color] || 'none', text: a.plain };
   for (const x of v.missing) m[x.id] = { status: 'miss', text: x.plain };
-  for (const s of v.signals) for (const i of s.items) m[`${s.key}.${i.key}`] = { status: i.status, text: `${i.label}：${i.value}` };
+  for (const s of v.signals) for (const i of s.items) m[`${s.key}.${i.key}`] = { status: i.status, gap: i.gap, text: `${i.label}：${i.value}` };
   return m;
 }
-function answerOf(sts) {
-  const worst = sts.reduce((w, s) => (SEV[s] > SEV[w] ? s : w), 'ok');
+function answerOf(list) {
+  const worst = list.reduce((w, i) => (SEV[i.status] > SEV[w] ? i.status : w), 'ok');
   if (worst === 'bad') return ['bad', '有问题'];
   if (worst === 'warn') return ['warn', '要留意'];
   if (worst === 'miss') return ['miss', '还缺证据'];
-  const none = sts.filter(s => s === 'none').length;
-  if (none === sts.length) return ['none', '没查到数据'];
-  return none ? ['none', '查过的没问题', `另有 ${none} 项没查`] : ['ok', '查过，没发现问题'];
+  const open = list.filter(isOpen), nOk = list.filter(i => i.status === 'ok').length;
+  if (!nOk) return ['none', open.length && open.every(i => gapOf(i) === 'failed') ? '没查成，稍后重查' : '没查到数据'];
+  return open.length ? ['none', '查过的没问题', `另有 ${pendingNote(open)}`] : ['ok', '查过，没发现问题'];
 }
 function glanceHtml(v, includeSignals = true) {
   const items = glanceItems(v), seen = new Set();
@@ -700,7 +736,7 @@ function glanceHtml(v, includeSignals = true) {
   // 第一问
   let first = '';
   if (sc && firstIds.length) {
-    const [st, word, note] = answerOf(firstIds.map(id => items[id].status));
+    const [st, word, note] = answerOf(firstIds.map(id => items[id]));
     // 下面"它说的 ⟷ 记录里的"已经列了说法，这里只列记录本身；没有记录条目才列说法
     const lines = firstIds.filter(id => !/^[AM]\d+$/.test(id));
     const show = lines.length ? lines : firstIds;
@@ -724,10 +760,11 @@ function glanceHtml(v, includeSignals = true) {
   // 四个信号
   const tiles = v.signals.map(s => {
     const flagged = s.items.filter(i => FLAG.has(i.status)).sort((a, b) => SEV[b.status] - SEV[a.status]);
-    const nOk = s.items.filter(i => i.status === 'ok').length, nNone = s.items.filter(i => !isRef(i)).length - flagged.length - nOk;
-    const st = flagged.length ? flagged[0].status : (nOk && !nNone ? 'ok' : 'none');
+    const nOk = s.items.filter(i => i.status === 'ok').length, open = s.items.filter(isOpen);
+    const st = flagged.length ? flagged[0].status : (nOk && !open.length ? 'ok' : 'none');
     const phrase = flagged.length ? shortOf(v, `${s.key}.${flagged[0].key}`, `${flagged[0].label}：${flagged[0].value}`)
-      : !nOk ? '没查到数据' : nNone ? `查过的没问题，${nNone} 项没查` : '查过的没问题';
+      : !nOk ? (open.length && open.every(i => gapOf(i) === 'failed') ? '没查成，稍后重查' : '没查到数据')
+      : open.length ? `查过的没问题，${pendingNote(open)}` : '查过的没问题';
     return `<button type="button" class="tile s-${st}" data-act="sigtile" data-key="${s.key}">
       <span class="t-h"><b>${esc(s.title)}</b><span class="mk">${MARK[st]}</span></span>
       <span class="t-p">${esc(phrase)}</span>${flagged.length > 1 ? `<span class="t-n">共 ${flagged.length} 项要看</span>` : ''}</button>`;
@@ -928,11 +965,12 @@ function signalCard(sig, cm, v) {
   const flagged = sig.items.filter(i => FLAG.has(i.status));
   const rest = sig.items.filter(i => !FLAG.has(i.status));
   const open = S.openRest.has(sig.key) || !flagged.length && rest.length <= 2;
-  const nOk = rest.filter(i => i.status === 'ok').length, nRef = rest.filter(isRef).length, nNone = rest.length - nOk - nRef;
-  const restLabel = [nOk && `${nOk} 项没问题`, nNone && `${nNone} 项没查`, nRef && '用户评价只作参考'].filter(Boolean).join('、');
-  // 没查不等于没问题：有没查的项就不用绿色
+  const nOk = rest.filter(i => i.status === 'ok').length, nRef = rest.filter(isRef).length, unknown = rest.filter(i => isOpen(i) && !isRef(i));
+  const restLabel = [nOk && `${nOk} 项没问题`, unknown.length && pendingNote(unknown), nRef && '用户评价只作参考'].filter(Boolean).join('、');
+  // 没查不等于没问题：有没查（成）的项就不用绿色
   const head = flagged.length ? ['', `${flagged.length} 项要看`]
-    : !nOk ? [' none', '没查到数据'] : nNone ? [' none', `查过的没问题，${nNone} 项没查`] : [' zero', '查过的没问题'];
+    : !nOk ? [' none', unknown.length && unknown.every(i => gapOf(i) === 'failed') ? '没查成，稍后重查' : '没查到数据']
+    : unknown.length ? [' none', `查过的没问题，${pendingNote(unknown)}`] : [' zero', '查过的没问题'];
   return `<section class="sig" aria-labelledby="sig-${sig.key}">
     <header><h3 id="sig-${sig.key}">${esc(sig.title)}</h3><span class="flags${head[0]}">${head[1]}</span></header>
     <p class="sig-lede">${esc(sig.lede)}</p>
@@ -1030,7 +1068,7 @@ function claimCard(a, cm) {
     <div class="cl-f">
       ${a.refs.map(r => `<button type="button" class="linkish" data-act="raw" data-ref="${esc(r)}" data-hl="${esc(JSON.stringify(a.quotes))}">看原文${hideRecordIds() ? '' : ` ${esc(r)}`}</button>`).join('')}
       <details><summary>怎么查的（${a.checks.length} 项）</summary><ul class="checks">${a.checks.map(ck => `<li class="s-${esc(ck.status)}">
-        <span class="ck-l">${termText(ck.label, seen)}</span><span class="ck-s">${STATUS[ck.status] || ''}</span><div>${termText(ck.result, seen)}</div>${srcLink(ck.source, ck.ref)}</li>`).join('')}</ul></details>
+        <span class="ck-l">${termText(ck.label, seen)}</span><span class="ck-s">${stLabel(ck)}</span><div>${termText(ck.result, seen)}</div>${srcLink(ck.source, ck.ref)}</li>`).join('')}</ul></details>
     </div>
   </article>`;
 }
@@ -1782,6 +1820,7 @@ document.addEventListener('click', e => {
     case 'contract': openContract(); break;
     case 'supplement': openSupplement({ kind: d.kind, text: d.text, title: d.title }); break;
     case 'sup-kind': setSupKind(d.kind); break;
+    case 'pick-company': { const f = $('#caseForm'); S.form.resolved = d.name; f.company.value = d.name; $('#nameCands').hidden = true; f.requestSubmit(); } break;
     case 'sup-scen': { const dlg = $('#supDlg'); const on = dlg.dataset.scen !== d.id; dlg.dataset.scen = on ? d.id : '';
       $$('[data-act="sup-scen"]', dlg).forEach(b => b.setAttribute('aria-pressed', on && b.dataset.id === d.id)); } break;
     case 'sup-fill': { const s = demoForCase().supplements[+d.i]; setSupKind(s.kind); const f = $('#supForm'); f.text.value = s.text; f.title.value = s.title || ''; } break;
