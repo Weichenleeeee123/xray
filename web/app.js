@@ -41,7 +41,7 @@ const SUP_KIND = {
 const S = {
   health: null, scenarios: [], sources: [], demos: [], cases: [],
   terms: [], termById: new Map(), termByName: new Map(), termRe: null,
-  case: null, viewNo: null, selected: new Set(), busy: false, audience: 'family', opCache: {},
+  case: null, viewNo: null, selected: new Set(), busy: false, busyCaseId: null, audience: 'family', opCache: {},
   tab: 'signals', openRest: new Set(), showText: false,
   reviews: null, rvStars: 0, rvRel: null,   // 这家公司现在的评价（不随版本变）；写评价表单里选的星级和身份
   form: { userScenario: null, showScen: false, dirty: {}, intake: null },
@@ -200,7 +200,7 @@ function shellHtml(main) {
     <main class="report" id="report">${main}</main>
     <aside class="assist" id="assist" aria-label="小企（AI 栏）">${qibarHtml()}</aside>
   </div>
-  <button type="button" class="fab" data-act="open-assist">小企</button>`;
+  ${qiLauncherHtml()}`;
 }
 
 // 小企栏：开着案卷就是问答，没开案卷就说清楚它现在答不了、以及它能答什么
@@ -208,9 +208,10 @@ function qibarHtml() {
   if (S.case && /^#\/case\//.test(location.hash)) return assistHtml();
   const llm = S.health && S.health.llm;
   const line = llm && llm.configured && llm.mode !== 'off' ? '只答案卷里的数据，每句带出处。' : '没接模型，只摘案卷里的原话。';
-  return `<div class="as-head"><div><h3>小企</h3><p class="small muted">${esc(line)}</p></div>
+  return `<div class="as-head"><div class="as-heading"><h3>小企 <span class="qi-role">报告助手</span></h3><p class="small muted">${esc(line)}</p></div>
     <button type="button" class="as-x" data-act="close-assist" aria-label="收起小企">×</button></div>
   <div class="as-body">
+    <div class="qi-welcome">${qiSpriteHtml()}</div>
     <p class="qi-lede">现在没有打开的案卷。小企只答案卷里有的东西，数据里没有就说没查到，不凭常识猜。</p>
     <p class="small muted">打开一份案卷后，可以这样问它：</p>
     <div class="chips">${QI_SUG.map(q => `<button type="button" class="chip" data-act="qi-nudge" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
@@ -525,7 +526,7 @@ function renderCase() {
     </div>
     <aside class="assist${assistOpen ? ' open' : ''}" id="assist" aria-label="小企（AI 栏）">${assistHtml()}</aside>
   </div>
-  <button type="button" class="fab" data-act="open-assist">小企${S.selected.size ? `<em>${S.selected.size}</em>` : ''}</button>`;
+  ${qiLauncherHtml()}`;
   loadOnepager(v);
   loadReviews();
   scrollChat();
@@ -1214,7 +1215,7 @@ function refreshSel() {
   const box = $('#asSel');
   if (box) box.innerHTML = selHtml();
   const fab = $('.fab');
-  if (fab) fab.innerHTML = `小企${S.selected.size ? `<em>${S.selected.size}</em>` : ''}`;
+  if (fab) fab.innerHTML = qiLauncherContent();
 }
 function tabFor(id) {
   if (/^[AM]\d+$/.test(id)) return 'claims';
@@ -1258,6 +1259,27 @@ function gotoItem(ref, version = null, anchorEl = null) {
 
 // ---------- 小企（AI 栏）----------
 
+function qiThinking() {
+  return S.busy && S.case?.id === S.busyCaseId && /^#\/case\//.test(location.hash);
+}
+function qiSpriteHtml() {
+  return `<span class="qi-sprite" data-qi-state="${qiThinking() ? 'thinking' : 'idle'}" aria-hidden="true"></span>`;
+}
+function qiAvatarHtml() {
+  return `<button type="button" class="qi-avatar" data-act="open-assist" aria-label="向小企提问" title="向小企提问">${qiSpriteHtml()}</button>`;
+}
+function qiLauncherContent() {
+  return `${qiSpriteHtml()}<span class="qi-fab-caption"><b>小企</b><span data-qi-caption>${qiThinking() ? '思考中…' : '问问报告'}</span></span>${S.selected.size ? `<em aria-label="已选 ${S.selected.size} 条">${S.selected.size}</em>` : ''}`;
+}
+function qiLauncherHtml() {
+  return `<button type="button" class="fab" data-act="open-assist" aria-label="打开小企，询问报告" aria-controls="assist">${qiLauncherContent()}</button>`;
+}
+function refreshQiState() {
+  const thinking = qiThinking();
+  $$('[data-qi-state]').forEach(el => { el.dataset.qiState = thinking ? 'thinking' : 'idle'; });
+  $$('[data-qi-caption]').forEach(el => { el.textContent = thinking ? '思考中…' : '问问报告'; });
+}
+
 function modeLine() {
   const llm = S.health && S.health.llm;
   if (!llm) return '';
@@ -1266,9 +1288,10 @@ function modeLine() {
   return '只用这份案卷里的数据回答，关键事实标出处；没查到就直说。';
 }
 function assistHtml() {
-  return `<div class="as-head"><div><h3>小企</h3><p class="small muted">${esc(modeLine())}</p></div>
+  return `<div class="as-head"><div class="as-heading"><h3>小企 <span class="qi-role">报告助手</span></h3><p class="small muted">${esc(modeLine())}</p></div>
     <button type="button" class="as-x" data-act="close-assist" aria-label="收起小企">×</button></div>
   <div class="as-body" id="asBody">${chatHtml()}</div>
+  <div class="qi-perch">${qiAvatarHtml()}</div>
   <div class="as-sel" id="asSel">${selHtml()}</div>
   <form class="as-input" id="asForm"><textarea class="box" name="q" rows="2" maxlength="2000" placeholder="问这份报告里的任何一条…（Enter 发送）" aria-label="提问"></textarea><button class="btn sm" type="submit">问</button></form>`;
 }
@@ -1281,7 +1304,7 @@ function chatHtml() {
   const sugg = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？', '它被处罚或点名过吗？'];
   const intro = `<div class="as-intro"><div class="chips">${sugg.map(q => `<button type="button" class="chip" data-act="ask" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
     <p class="small muted">小企不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断。</p></div>`;
-  return (chat.length ? '' : intro) + chat.map((m, i) => msgHtml(m, chat[i - 1])).join('') + (S.busy ? '<div class="typing" aria-label="正在回答"><i></i><i></i><i></i></div>' : '');
+  return (chat.length ? '' : intro) + chat.map((m, i) => msgHtml(m, chat[i - 1])).join('') + (qiThinking() ? '<div class="typing" role="status"><span>小企正在思考</span><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i></div>' : '');
 }
 function citeText(text, version) {
   return esc(text).replace(/\[([A-Za-z0-9_.:,，、\s]+)\]/g, (all, inner) => {
@@ -1314,6 +1337,7 @@ function msgHtml(m, prev) {
   </div>`;
 }
 function refreshChat() {
+  refreshQiState();
   const body = $('#asBody');
   if (body) { body.innerHTML = chatHtml(); scrollChat(); }
 }
@@ -1325,6 +1349,7 @@ async function ask(q) {
   const caseData = S.case, id = caseData.id, version = ver().no, selected = [...S.selected];
   const refs = selected.map(ref => chatRef(ref, version));
   S.busy = true;
+  S.busyCaseId = id;
   const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version, created_at: new Date().toISOString() };
   caseData.chat.push(message);
   // 切走再回来可能重新加载了同一案卷；同步当前对象，但不触碰别的案卷。
@@ -1351,7 +1376,7 @@ async function ask(q) {
       const ta = $('#asForm textarea'); if (ta) ta.value = q;
     }
     toast('小企没答上来：' + e.message, true);
-  } finally { S.busy = false; refreshChat(); }
+  } finally { S.busy = false; S.busyCaseId = null; refreshChat(); }
 }
 
 // ---------- 补充信息（二次分析） ----------
