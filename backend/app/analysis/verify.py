@@ -372,7 +372,9 @@ def payee_review(claim: RawClaim, company_name: str) -> Review:
         return checks, Verdict.unverifiable, "只给了账号没写户名，先问清楚钱打给谁。"
     if others or claim.words:
         who = f"\"{others[0]}\"" if others else "个人账户"
-        return checks, Verdict.mismatch, f"钱要打给{who}，不是{company_name}本身。钱进了别人的账户，出了事很难追回。"
+        return checks, Verdict.mismatch, (f"材料上写的收款户名是{who}，和{company_name}对不上。"
+                                          "要先核实收款人和公司是什么关系，这笔钱该不该打给他。"
+                                          "材料本身真不真也还没确认过，不能因为这一条就说这是诈骗。")
     return checks, Verdict.consistent, "收款户名就是这家公司。"
 
 

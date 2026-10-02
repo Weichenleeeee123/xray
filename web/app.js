@@ -1,6 +1,8 @@
-/* X-Ray 前端：原生 JS，不打包。契约以 backend/app/models.py 为准。
+/* 企er 前端：原生 JS，不打包。契约以 backend/app/models.py 为准。
  *
- * 路由：#/ 输入页；#/case/<id> 最新版报告；#/case/<id>/v/<n> 第 n 版。
+ * 壳子分三个分区，顶栏一排按钮：查企（#/check）、案卷（#/cases）、我的（#/me）。
+ * 报告不占分区，它属于案卷：#/case/<id> 最新版报告；#/case/<id>/v/<n> 第 n 版。
+ * 右侧一栏是小企（AI）。三个分区里都在，没开案卷时它只说明自己能答什么、不能答什么，不假装能答。
  * 报告页：一页结论在最上面；四个信号、宣称 vs 记录、该问对方的、原始数据放在下面的标签页里，按需展开。
  * 页面里所有可点的东西都用 data-act 声明，统一在 onClick 里分发。
  * 条目 id：A1 说法、M1 缺项、risk.bank_list 信号条目、Q1 问题、R1 原始数据。R 开头的打开原始数据，其余跳到所在标签页里那一条。
@@ -19,7 +21,10 @@ const STATUS = { bad: '有问题', warn: '要留意', miss: '该有的没有', n
 const FLAG = new Set(['bad', 'warn', 'miss']);   // 要看的；ok、none 默认折叠
 const CHANGE = { new_concern: '新疑点', worse: '更严重', clarified: '疑点减轻', unchanged: '没变', added: '新增', removed: '这版没有了' };
 const MODE = { model: '模型回答', replay: '离线回放', template: '模板回答', guard: '已拦截' };
-const TABS = { changes: '变化', signals: '四个信号', claims: '宣称 vs 记录', questions: '该问对方的', raw: '原始数据' };
+const TABS = { judgments: '判断', changes: '变化', signals: '四个信号', claims: '宣称 vs 记录', questions: '该问对方的', raw: '原始数据' };
+// 三个分区。顺序就是顶栏顺序，也是第一次用的人该走的顺序
+const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['me', '我的', '状态、名单、名词表、这几条底线']];
+const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
 const SUP_KIND = {
   material: { label: '新材料', help: '宣传单、合同、聊天记录的文字。可以上传图片、PDF、Word，读出来的文字会填进下面，你可以改。' },
   reply: { label: '对方的回复', help: '对方怎么回答你的问题。会记为"对方说的，未核实"，只用来对照，不当作事实。' },
@@ -130,7 +135,7 @@ function termPop(el, id) {
   const note = t.origin === 'model' ? 'AI 解释：词表里没有这个词，报告生成时由模型补充，没有经过人工核对。' : (basis ? `依据：${basis}` : '');
   popAt(el, `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}`);
 }
-const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问助手">${S.selected.has(id) ? '已选' : '问'}</button>`;
+const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问小企">${S.selected.has(id) ? '已选' : '问'}</button>`;
 const goLink = (id, version = null) => {
   const target = parseRef(id, version);
   const terms = target.version == null ? S.terms : (S.case?.versions.find(v => v.no === target.version)?.terms || S.terms);
@@ -163,11 +168,14 @@ const chgTag = (id, cm) => (cm[id] ? `<span class="chg-tag ${cm[id]}" title="和
 
 function renderTop() {
   const onCase = S.case && location.hash.startsWith('#/case/');
+  const sec = onCase ? 'cases' : (location.hash.match(/^#\/(check|cases|me)/) || [])[1] || 'check';
+  $('#shellNav').innerHTML = NAV.map(([k, label, hint]) =>
+    `<button type="button" class="snav-b" data-act="go" data-sec="${k}" aria-current="${k === sec}" title="${esc(hint)}">${label}</button>`).join('');
   $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : '';
   const llm = S.health && S.health.llm;
   let b = '';
   if (llm) {
-    if (!llm.configured || llm.mode === 'off') b += '<span class="tb off" title="没接模型：需求识别用关键词，助手用模板回答">未接模型</span>';
+    if (!llm.configured || llm.mode === 'off') b += '<span class="tb off" title="没接模型：需求识别用关键词，小企用模板回答">未接模型</span>';
     else if (llm.mode === 'replay') b += '<span class="tb replay" title="断网演示：只用录好的模型响应">离线回放</span>';
     else b += `<span class="tb live" title="${esc(llm.model || '')}">模型在线</span>`;
   }
@@ -175,31 +183,165 @@ function renderTop() {
   $('#topBadges').innerHTML = b;
 }
 
-// ---------- 首页 ----------
+// ---------- 壳子：三个分区 + 小企栏 ----------
 
-async function renderHome() {
+// 每个分区都长这样：左边是这一区的内容，右边一栏是小企。报告页用的也是这套结构（.case-layout），
+// 所以窄屏下小企栏会像报告页那样收成右下角一个球，不用另写一套。
+function shellHtml(main) {
+  return `<div class="case-layout">
+    <main class="report" id="report">${main}</main>
+    <aside class="assist" id="assist" aria-label="小企（AI 栏）">${qibarHtml()}</aside>
+  </div>
+  <button type="button" class="fab" data-act="open-assist">小企</button>`;
+}
+
+// 小企栏：开着案卷就是问答，没开案卷就说清楚它现在答不了、以及它能答什么
+function qibarHtml() {
+  if (S.case && /^#\/case\//.test(location.hash)) return assistHtml();
+  const llm = S.health && S.health.llm;
+  const line = llm && llm.configured && llm.mode !== 'off' ? '只答案卷里的数据，每句带出处。' : '没接模型，只摘案卷里的原话。';
+  return `<div class="as-head"><div><h3>小企</h3><p class="small muted">${esc(line)}</p></div>
+    <button type="button" class="as-x" data-act="close-assist" aria-label="收起小企">×</button></div>
+  <div class="as-body">
+    <p class="qi-lede">现在没有打开的案卷。小企只答案卷里有的东西，数据里没有就说没查到，不凭常识猜。</p>
+    <p class="small muted">打开一份案卷后，可以这样问它：</p>
+    <div class="chips">${QI_SUG.map(q => `<button type="button" class="chip" data-act="qi-nudge" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+    <ul class="qi-what">
+      <li>每句都带出处，能点开看原始记录和日期</li>
+      <li>数据里没有的，它说没查到</li>
+      <li>它不会改报告；新情况要点"加入案卷"才会重新判断</li>
+      <li>它不给公司定性，也不打安全分</li>
+    </ul>
+    <div class="qi-go"><a class="btn sm" href="#/check">去查一家公司</a><a class="linkish small" href="#/cases">看案卷</a></div>
+  </div>`;
+}
+
+// 官方名单那一行（查企页和我的页共用）
+function listLine(h) {
+  if (!h) return '名单没读到，先确认后端在跑。';
+  const SHORT = { nfra_insurance: '保险', csrc_futures: '期货', pbc_payment: '支付', amac_managers: '私募' };
+  const lists = [{ title: '银行业', count: h.licensed_count },
+    ...Object.entries(h.official_lists || {}).map(([k, l]) => ({ title: SHORT[k] || l.title, count: l.count }))];
+  return `每家公司都查 ${lists.length} 份官方名单：${lists.map(l => `${esc(l.title)} ${(l.count || 0).toLocaleString()} 家`).join('、')}。要过验证码的网站（企业登记、被执行、裁判文书）我们不绕过，查不到的写"没查"。`;
+}
+
+// ---------- 分区一：查企 ----------
+
+async function renderCheck() {
   S.case = null; useTerms(S.terms); renderTop();
   S.form = { userScenario: null, showScen: false, dirty: {}, intake: null };
-  const h = S.health;
-  const SHORT = { nfra_insurance: '保险', csrc_futures: '期货', pbc_payment: '支付', amac_managers: '私募' };
-  const lists = h ? [{ title: '银行业', count: h.licensed_count },
-    ...Object.entries(h.official_lists || {}).map(([k, l]) => ({ title: SHORT[k] || l.title, count: l.count }))] : [];
-  $('#view').innerHTML = `
+  $('#view').innerHTML = shellHtml(`
   <div class="home">
     <section class="home-hero">
-      <div class="kicker">X-RAY · 透视·真相</div>
+      <div class="kicker">查企</div>
       <h1>把钱交给一家公司之前，先看清它。</h1>
       <p>输入公司全称，说一句你要做什么。官方记录会汇到一起，对照它的说法，给你一份看得懂的报告。</p>
     </section>
     <div id="formWrap">${formHtml()}</div>
-    <section class="recent" id="recent"></section>
-    ${lists.length ? `<p class="lists-line">每家公司都查 ${lists.length} 份官方名单：${lists.map(l => `${esc(l.title)} ${(l.count || 0).toLocaleString()} 家`).join('、')}。要过验证码的网站（企业登记、被执行、裁判文书）我们不绕过，查不到的写"没查"。</p>` : ''}
-  </div>`;
+    <p class="check-more" id="checkMore"></p>
+    <p class="lists-line">${listLine(S.health)}</p>
+  </div>`);
   bindForm();
   try {
     S.cases = await api('/api/cases');
-    if (S.cases.length) $('#recent').innerHTML = `<h2>最近的案卷</h2>${S.cases.slice(0, 5).map(c => `<a href="#/case/${esc(c.id)}"><b>${esc(c.company_name)}</b><span>${esc(c.scenario_label)} · ${c.versions} 版 · ${esc(fmtTime(c.created_at).slice(5))}</span></a>`).join('')}`;
+    if (S.cases.length) $('#checkMore').innerHTML = `<a href="#/cases">你查过 ${S.cases.length} 家，都在「案卷」里 →</a>`;
   } catch (e) { /* 列表读不到不影响新建 */ }
+}
+
+// ---------- 分区二：案卷 ----------
+
+async function renderCases() {
+  S.case = null; useTerms(S.terms); renderTop();
+  $('#view').innerHTML = shellHtml(`
+  <div class="home">
+    <section class="home-hero">
+      <div class="kicker">案卷</div>
+      <h1>查过的公司</h1>
+      <p>每查一家就留一份案卷。补材料、贴对方的回复、改需求，都记在同一份里，按版排下去，改动逐条列出。点开就是那份报告。</p>
+    </section>
+    <div class="cases" id="caseList"><p class="muted">读取案卷…</p></div>
+    <p class="lists-line">这一页按新建时间排。要按"最后一次变化的时间"排，需要在列表接口里多一个字段，现在还没有，所以这里只写新建时间。</p>
+  </div>`);
+  try {
+    S.cases = (await api('/api/cases')) || [];
+    $('#caseList').innerHTML = S.cases.length
+      ? S.cases.map(caseRow).join('')
+      : '<div class="empty-case"><p>还没有案卷。查一家公司，这里就会留一份。</p><a class="btn sm" href="#/check">去查一家公司</a></div>';
+  } catch (e) {
+    $('#caseList').innerHTML = `<p class="err">读不到案卷列表：${esc(e.message)}</p>`;
+  }
+}
+
+function caseRow(c) {
+  return `<a class="case-row" href="#/case/${esc(c.id)}">
+    <div class="cr-h"><b>${esc(c.company_name)}</b><span class="cr-n">${c.versions} 版</span></div>
+    ${c.need ? `<div class="cr-need">“${esc(c.need)}”</div>` : ''}
+    <div class="cr-m"><span>${esc(c.scenario_label)}</span><span>${esc(fmtTime(c.created_at))} 新建</span><span class="cr-go">打开 →</span></div>
+  </a>`;
+}
+
+// ---------- 分区三：我的 ----------
+
+async function renderMe() {
+  S.case = null; useTerms(S.terms); renderTop();
+  try { S.cases = (await api('/api/cases')) || []; } catch (e) { /* 读不到就不显示份数 */ }
+  const h = S.health || {}, llm = h.llm || {}, com = h.commercial || {};
+  const model = !llm.configured || llm.mode === 'off'
+    ? '没接模型。需求识别用关键词，小企用模板回答，只摘报告里的原话。'
+    : llm.mode === 'replay'
+      ? `离线回放。只用录好的模型回答（已录 ${llm.cached_replies || 0} 条），界面上会标出录于什么时候。`
+      : `模型在线（${llm.model || ''}）。需求识别、报告短句、小企的回答都走它；数字和措辞由程序逐条核对。`;
+  const commercial = com.configured
+    ? `已接（${com.provider || ''}）。这次演示最多调用 ${com.max_calls || 0} 次，已用 ${com.calls || 0} 次。`
+    : '没接。企业登记、年报这类数据，现在只能靠证据包、人工采集或演示数据顶上。';
+  const terms = S.terms.slice(0, 8);
+  $('#view').innerHTML = shellHtml(`
+  <div class="home">
+    <section class="home-hero">
+      <div class="kicker">我的</div>
+      <h1>这一版查得到什么，查不到什么</h1>
+      <p>这里是这套东西的底账：接没接模型、有没有商业数据源、名词怎么解释、材料放在哪，还有几条我们自己守着的规矩。</p>
+    </section>
+
+    <section class="me-sec"><h2>现在是什么状态</h2>
+      <dl class="kv-me">
+        <dt>模型</dt><dd>${esc(model)}</dd>
+        <dt>商业数据源</dt><dd>${esc(commercial)}</dd>
+        <dt>案卷</dt><dd>${S.cases.length ? `${S.cases.length} 份，在「案卷」里` : '这台上还没有案卷'}</dd>
+        <dt>名单版本</dt><dd>银行名单截至 ${esc(h.licensed_as_of || '—')}；企业登记截至 ${esc(h.registry_as_of || '—')}</dd>
+      </dl>
+    </section>
+
+    <section class="me-sec"><h2>查什么，不查什么</h2>
+      <p class="me-p">${listLine(h)}</p>
+      <p class="me-p">${(h.evidence_packs || []).length ? `已备好的证据包：${h.evidence_packs.map(esc).join('、')}。` : ''}没接商业数据源的时候，企业登记和年报只能用证据包、人工采集或演示数据顶上；缺的部分写成"没查"，不会写成"没问题"。</p>
+    </section>
+
+    <section class="me-sec"><h2>名词解释</h2>
+      <p class="me-p">报告里带虚线的词点一下就有解释，解释来自固定词表。这里是其中几个：</p>
+      ${terms.length ? `<div class="chips">${terms.map(t => `<button type="button" class="chip" data-act="term" data-term="${esc(t.id)}">${esc(t.term)}</button>`).join('')}</div>` : '<p class="muted small">词表没读到。</p>'}
+    </section>
+
+    <section class="me-sec"><h2>材料和数据放在哪</h2>
+      <ul class="me-ul">
+        <li>案卷存在跑后端的那台机器上（backend/data/cases），不进代码仓库。</li>
+        <li>你贴的宣传单、合同、聊天记录只用在这一次判断里，会原样留在案卷的原始数据中，随时能点开核对。</li>
+        <li>要过验证码的网站（企业登记、被执行、裁判文书）不绕过，查不到就写"没查"。</li>
+        <li>模型密钥只在后端的 .env 里，按 gitignore 处理，不进仓库，也不进前端。</li>
+      </ul>
+    </section>
+
+    <section class="me-sec"><h2>几条我们自己守着的规矩</h2>
+      <ul class="me-ul">
+        <li>结论由固定规则推出来，模型不判对错，只负责读材料和说人话。</li>
+        <li>每条结论都能点进原始数据和它的日期。</li>
+        <li>不打安全分，也不给公司定性；"没查"不等于没问题。</li>
+        <li>小企不知道就说没查到，不凭常识补。</li>
+        <li>聊天不会悄悄改报告；新情况要明确点"加入案卷"才会重新判断。</li>
+        <li>虚构的演示案例全程挂着"演示数据 · 公司为虚构"。</li>
+      </ul>
+    </section>
+  </div>`);
 }
 
 function formHtml() {
@@ -379,14 +521,14 @@ function renderCase() {
       ${caseHead(c, v)}
       ${conclusionHtml(v)}
       ${chartsHtml(v)}
-      ${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc(v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}
+      ${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc(v.judgment_summary || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}
       ${tabsHtml(v)}
       <div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>
       <footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>
     </div>
-    <aside class="assist${assistOpen ? ' open' : ''}" id="assist" aria-label="AI 助手">${assistHtml()}</aside>
+    <aside class="assist${assistOpen ? ' open' : ''}" id="assist" aria-label="小企（AI 栏）">${assistHtml()}</aside>
   </div>
-  <button type="button" class="fab" data-act="open-assist">问助手${S.selected.size ? `<em>${S.selected.size}</em>` : ''}</button>`;
+  <button type="button" class="fab" data-act="open-assist">小企${S.selected.size ? `<em>${S.selected.size}</em>` : ''}</button>`;
   loadOnepager(v);
   scrollChat();
 }
@@ -399,7 +541,10 @@ function caseHead(c, v) {
   return `<header class="case-head">
     <div class="ch-top">
       ${c.versions.length > 1 ? `<div class="vers" role="group" aria-label="版本">${c.versions.map(x => `<button type="button" class="ver" data-act="ver" data-no="${x.no}" aria-current="${x.no === v.no}"><b>v${x.no}</b>${esc(x.trigger_label)}</button>`).join('')}</div>` : '<span></span>'}
-      <button type="button" class="btn sm ghost" data-act="supplement">＋ 补充信息</button>
+      <div class="head-acts">
+        <button type="button" class="btn sm cam" data-act="contract">📷 拍合同 · 二次审核</button>
+        <button type="button" class="btn sm ghost" data-act="supplement">＋ 补充信息</button>
+      </div>
     </div>
     <h1>${esc(c.case.company_name)}</h1>
     ${v.need ? `<p class="need">“${esc(v.need)}”</p>` : ''}
@@ -595,15 +740,21 @@ function opBody(op, v) {
 // 标签页：第二到第四层
 function tabsHtml(v) {
   const flagged = v.signals.reduce((n, s) => n + s.items.filter(i => FLAG.has(i.status)).length, 0);
-  const changed = v.changes.filter(x => x.kind !== 'unchanged').length;
-  const counts = { changes: [changed, changed > 0], signals: [flagged, flagged > 0], claims: [v.assertions.length + v.missing.length, (v.tally.red || 0) > 0],
+  // 变了多少条：材料那头和判断那头都要算。只数材料变化的话，补一份合同进来
+  // （判断挪了三条、材料变化一条没有）标签上会写「变化 0」，而开头那句正说着有三条要重新核实。
+  const mchg = v.changes.filter(x => x.kind !== 'unchanged').length;
+  const jchg = (v.judgment_changes || []).filter(c => c.kind !== 'same').length;
+  const changed = Math.max(mchg, jchg);
+  const jug = v.judgments || [];
+  const counts = { judgments: [jug.length, jug.some(j => j.state === 'needs_check')], changes: [changed, changed > 0], signals: [flagged, flagged > 0], claims: [v.assertions.length + v.missing.length, (v.tally.red || 0) > 0],
     questions: [v.questions.length, false], raw: [v.raw_ids.length, false] };
-  const tabs = Object.keys(TABS).filter(k => k !== 'changes' || v.no > 1);
+  const tabs = Object.keys(TABS).filter(k => (k !== 'changes' || v.no > 1) && (k !== 'judgments' || jug.length));
   return `<nav class="tabs" role="tablist" aria-label="报告的各层">${tabs.map(k => `<button type="button" class="tab" role="tab" data-act="tab" data-tab="${k}" aria-selected="${S.tab === k}">${TABS[k]}<span class="n${counts[k][1] ? ' hot' : ''}">${counts[k][0]}</span></button>`).join('')}</nav>`;
 }
 function panelHtml(v) {
   const cm = changeMap(v);
   switch (S.tab) {
+    case 'judgments': return judgmentsPanel(v);
     case 'changes': return changesPanel(v);
     case 'claims': return claimsPanel(v, cm);
     case 'questions': return questionsPanel(v);
@@ -625,7 +776,81 @@ function showTab(tab, scroll = true) {
   }
 }
 
+// ---------- 判断：报告是某一版的样子，判断才是被追踪的东西 ----------
+const LAYER_ORDER = [['said', '材料里写的', '照录。OCR 读对了只代表字读对了，不代表这份材料是真的。'],
+                     ['confirmed', '记录里查到的', '查到的是这样。没查到不等于没问题。'],
+                     ['inferred', '系统据此推断的', '推论，可以被依据推翻，也可以被人撤掉。']];
+const JSTATE = { holds: 'ok', needs_check: 'warn', unconfirmed: 'grey', revised: 'warn', clarified: 'good', withdrawn: 'gone' };
+// 五格：用户要看的是"哪些没变、哪些是新发现的、哪些要重新核实、哪些还不能确认、下一步问什么"
+const FIVE = { same: ['保持不变', '这条没被新材料推翻'], found: ['新增发现', '新材料带出来的新情况'],
+               recheck: ['需要重新核实', '这笔事要不要按原来那样办，得再确认'],
+               unconfirmed: ['尚不能确认', '还没有任何东西能证明它'],
+               next_question: ['下一步问题', '拿答案去核对，别自己猜'],
+               dropped: ['这版没有了', '换了需求或换了材料，这条不再适用'],
+               cleared: ['已经澄清', '有人核实过这件事，报告里那条提醒也跟着改了'] };
+
+function judgmentsPanel(v) {
+  const all = v.judgments || [];
+  if (!all.length) return '<p class="empty-line">这一版没有留下判断记录。</p>';
+  const groups = LAYER_ORDER.map(g => [g, all.filter(j => j.layer === g[0])]).filter(x => x[1].length);
+  return `<p class="panel-lede">每一条判断都带着依据、前提、还没证明的事，和"不能因此推出什么"。材料真不真、账户归谁，材料本身证明不了。人对一条下过结论，往后几版不会把它悄悄翻回来。</p>
+    ${groups.map(([[k, t, lede], list]) => `<section class="jgrp">
+      <header><h3>${t}</h3><span class="jg-n">${list.length} 条</span></header>
+      <p class="jgrp-lede">${lede}</p>
+      ${list.map(j => judgCard(j)).join('')}
+    </section>`).join('')}`;
+}
+
+function judgCard(j) {
+  const st = JSTATE[j.state] || '';
+  const ev = j.basis.filter(b => b.quote || b.locator);
+  const refs = [...new Set(j.basis.filter(b => b.ref).map(b => b.ref))];
+  return `<article class="judg ${st}" id="judg-${esc(j.id)}">
+    ${ev.length ? `<div class="jg-slot"><span class="jg-k">材料摘录</span>${ev.map(b => `<blockquote>${esc(b.quote || b.label || '')}</blockquote>
+      <span class="jg-loc">${[b.label, b.locator].filter(Boolean).map(esc).join(' · ')}</span>
+      ${b.grade === 'material' ? '<span class="jg-loc">这是材料上的字，不是已核实的事实</span>' : ''}`).join('')}</div>` : ''}
+    ${(j.dispute || []).length ? `<div class="jg-slot dis"><span class="jg-k">已知差异</span><ul>${j.dispute.map(d => `<li>${esc(d)}</li>`).join('')}</ul></div>` : ''}
+    <div class="jg-slot cur"><span class="jg-k">当前判断</span><p class="jg-text">${esc(j.text)}</p>${j.plain ? `<p class="jg-plain">${esc(j.plain)}</p>` : ''}</div>
+    ${(j.cannot || []).length ? `<div class="jg-slot no"><span class="jg-k">不能因此推出</span><ul>${j.cannot.map(c => `<li>${esc(c)}</li>`).join('')}</ul></div>` : ''}
+    <footer class="jg-foot">
+      <span class="jg-tag st-${st || 'ok'}">${esc(j.state_label)}</span>
+      <span class="jg-scope">${esc(j.scope)}</span>
+      ${j.since ? `<span class="jg-scope">第 ${j.since} 版起</span>` : ''}
+      ${j.target ? `<button type="button" class="linkish" data-act="goto" data-id="${esc(j.target)}">报告里这一条</button>` : ''}
+      ${refs.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(r)}</button>`).join('')}
+    </footer>
+    ${(j.premise || []).length ? `<details class="jg-more"><summary>什么前提下这条才成立</summary><ul>${j.premise.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
+    ${(j.unknown || []).length ? `<details class="jg-more"><summary>还没证明的事</summary><ul>${j.unknown.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
+    ${(j.history || []).length ? `<details class="jg-more"><summary>这条被改过 ${j.history.length} 次</summary><ul>${j.history.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}
+    ${j.state === 'needs_check' && !String(j.id).startsWith('ask.') ? `<div class="jg-act">
+      <span class="muted small">你核实过之后，可以在这里给它下结论：</span>
+      <button type="button" class="mini" data-act="resolve" data-id="${esc(j.id)}" data-do="clarified">核实过了，没问题</button>
+      <button type="button" class="mini" data-act="resolve" data-id="${esc(j.id)}" data-do="withdrawn">是误判，撤掉这条</button>
+    </div>` : ''}
+  </article>`;
+}
+
+const FIVE_ORDER = ['cleared', 'found', 'recheck', 'unconfirmed', 'next_question', 'dropped', 'same'];
+
+function fivePanel(v) {
+  const cs = v.judgment_changes || [];
+  const groups = FIVE_ORDER.map(k => [k, cs.filter(c => c.kind === k)]).filter(x => x[1].length);
+  return `<p class="panel-lede">第 ${v.no} 版（${esc(v.trigger_label)}）和第 ${v.no - 1} 版按判断逐条比的，由程序算。新材料不会自动盖掉旧材料，对不上的两边都留着。</p>
+    <div class="chg-why">${esc(v.judgment_summary || '')}</div>
+    ${groups.map(([k, list]) => `<section class="f5 g-${k}">
+      <header><span class="f5-k">${FIVE[k][0]}</span><span class="muted small">${FIVE[k][1]}</span><span class="jg-n">${list.length} 条</span></header>
+      ${k === 'same'
+        ? `<ul class="f5-same">${list.map(c => `<li><button type="button" class="linkish" data-act="goto" data-id="${esc(c.target)}">${esc(c.label)}</button></li>`).join('')}</ul>`
+        : list.map(c => `<div class="chg">
+            <div class="chg-h"><button type="button" class="linkish" data-act="goto" data-id="${esc(c.target)}">${esc(c.text || c.label)}</button></div>
+            ${c.before && c.after && c.before !== c.after ? `<div class="ba"><s>${esc(c.before)}</s> → <b>${esc(c.after)}</b></div>` : ''}
+            ${(c.because || []).length ? `<div class="chg-src">依据 ${c.because.map(r => `<button type="button" class="cite" data-act="raw" data-ref="${esc(r)}">${esc(r)}</button>`).join('')}</div>` : ''}
+          </div>`).join('')}
+    </section>`).join('')}`;
+}
+
 function changesPanel(v) {
+  if ((v.judgment_changes || []).length) return fivePanel(v);
   const changed = v.changes.filter(x => x.kind !== 'unchanged');
   const same = v.changes.filter(x => x.kind === 'unchanged');
   return `<p class="panel-lede">第 ${v.no} 版（${esc(v.trigger_label)}）和第 ${v.no - 1} 版逐条比对的结果，由程序算出。</p>
@@ -706,7 +931,7 @@ function claimsPanel(v, cm) {
     .filter(([k]) => t[k]).map(([k, l]) => `<span class="t ${k}"><b>${t[k]}</b>${l}</span>`);
   if (t.missing) parts.push(`<span class="t amber"><b>${t.missing}</b>处该写没写</span>`);
   if (!v.assertions.length && !v.missing.length) {
-    return `<div class="empty"><p>还没有这家公司的说法。上传宣传材料、合同或聊天记录，就能拿它的每句话去对照官方记录。</p><button type="button" class="btn sm" data-act="supplement" data-kind="material">补充材料</button></div>`;
+    return `<div class="empty"><p>还没有这家公司的说法。拍一份它的合同、宣传单或聊天记录，就能拿它的每句话去对照官方记录。</p><div class="head-acts"><button type="button" class="btn sm cam" data-act="contract">📷 拍合同 · 二次审核</button><button type="button" class="btn sm ghost" data-act="supplement" data-kind="material">上传图片 / PDF / Word</button></div></div>`;
   }
   return `<p class="panel-lede">对方的每条说法，都拿官方记录和法规对一遍。判定由固定规则给出，不由 AI 决定。</p>
     <div class="tally-line">${parts.join('')}</div>
@@ -839,7 +1064,7 @@ function toggleSel(id) {
   if (S.selected.has(id)) S.selected.delete(id);
   else { if (S.selected.size >= 10) { toast('最多同时选 10 条'); return; } S.selected.add(id); }
   refreshSel();
-  if (S.selected.has(id) && window.matchMedia('(max-width:1280px)').matches) toast(`已选中 ${id}，点右下角"问助手"提问`);
+  if (S.selected.has(id) && window.matchMedia('(max-width:1280px)').matches) toast(`已选中 ${id}，点右下角"小企"提问`);
 }
 function refreshSel() {
   $$('.ask').forEach(b => {
@@ -850,7 +1075,7 @@ function refreshSel() {
   const box = $('#asSel');
   if (box) box.innerHTML = selHtml();
   const fab = $('.fab');
-  if (fab) fab.innerHTML = `问助手${S.selected.size ? `<em>${S.selected.size}</em>` : ''}`;
+  if (fab) fab.innerHTML = `小企${S.selected.size ? `<em>${S.selected.size}</em>` : ''}`;
 }
 function tabFor(id) {
   if (/^[AM]\d+$/.test(id)) return 'claims';
@@ -892,7 +1117,7 @@ function gotoItem(ref, version = null, anchorEl = null) {
   el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
 }
 
-// ---------- AI 助手 ----------
+// ---------- 小企（AI 栏）----------
 
 function modeLine() {
   const llm = S.health && S.health.llm;
@@ -902,8 +1127,8 @@ function modeLine() {
   return '只用这份案卷里的数据回答，关键事实标出处；没查到就直说。';
 }
 function assistHtml() {
-  return `<div class="as-head"><div><h3>问助手</h3><p class="small muted">${esc(modeLine())}</p></div>
-    <button type="button" class="as-x" data-act="close-assist" aria-label="关闭助手">×</button></div>
+  return `<div class="as-head"><div><h3>小企</h3><p class="small muted">${esc(modeLine())}</p></div>
+    <button type="button" class="as-x" data-act="close-assist" aria-label="收起小企">×</button></div>
   <div class="as-body" id="asBody">${chatHtml()}</div>
   <div class="as-sel" id="asSel">${selHtml()}</div>
   <form class="as-input" id="asForm"><textarea class="box" name="q" rows="2" maxlength="2000" placeholder="问这份报告里的任何一条…（Enter 发送）" aria-label="提问"></textarea><button class="btn sm" type="submit">问</button></form>`;
@@ -916,7 +1141,7 @@ function chatHtml() {
   const chat = S.case.chat;
   const sugg = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？', '它被处罚或点名过吗？'];
   const intro = `<div class="as-intro"><div class="chips">${sugg.map(q => `<button type="button" class="chip" data-act="ask" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
-    <p class="small muted">助手不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断。</p></div>`;
+    <p class="small muted">小企不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断。</p></div>`;
   return (chat.length ? '' : intro) + chat.map((m, i) => msgHtml(m, chat[i - 1])).join('') + (S.busy ? '<div class="typing" aria-label="正在回答"><i></i><i></i><i></i></div>' : '');
 }
 function citeText(text, version) {
@@ -986,7 +1211,7 @@ async function ask(q) {
       selected.forEach(r => S.selected.add(r)); refreshSel();
       const ta = $('#asForm textarea'); if (ta) ta.value = q;
     }
-    toast('助手没答上来：' + e.message, true);
+    toast('小企没答上来：' + e.message, true);
   } finally { S.busy = false; refreshChat(); }
 }
 
@@ -995,16 +1220,70 @@ async function ask(q) {
 function demoForCase() {
   return S.case && S.demos.find(d => d.input && d.input.company_name === S.case.case.company_name);
 }
+// ---------- 给一条判断下结论：澄清 / 撤回 / 继续查 ----------
+const RES_KIND = { clarified: ['核实过了，没问题', '疑点解除。这条作为"材料摘录"仍然留在案卷里，材料本身真不真另说。'],
+                   withdrawn: ['是误判，撤掉这条', '看错了、误识别，或者根本不适用。撤掉要署名。'],
+                   recheck: ['还要继续查', '先放回"需要核实"，等有了新依据再说。'] };
+
+function openResolve(jid, action) {
+  const j = (ver().judgments || []).find(x => x.id === jid);
+  if (!j) { toast('这一版里没有这条判断'); return; }
+  const kind = action || 'clarified';
+  const dlg = $('#resDlg');
+  dlg.dataset.jid = jid; dlg.dataset.kind = kind;
+  dlg.innerHTML = `<form class="dlg-in" id="resForm">
+    <div class="dlg-head"><div><div class="kicker">核实一条判断 · 将生成第 ${S.case.versions.length + 1} 版</div><h3>给这条判断下结论</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
+    <div class="dlg-body">
+      <div class="jg-slot cur"><span class="jg-k">当前判断</span><p class="jg-text">${esc(j.text)}</p></div>
+      <div class="seg" role="radiogroup" aria-label="结论">${Object.entries(RES_KIND).map(([k, o]) => `<button type="button" data-act="res-kind" data-kind="${k}" aria-pressed="${k === kind}">${o[0]}</button>`).join('')}</div>
+      <p class="sup-help" id="resHelp">${esc(RES_KIND[kind][1])}</p>
+      <textarea class="big-inp sm" name="note" rows="4" required placeholder="写清楚你是怎么核实的：跟谁确认的、看到了什么、材料哪里写错了"></textarea>
+      <div class="err" id="resErr" role="alert"></div>
+    </div>
+    <div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">取消</button><button type="submit" class="btn sm" id="resGo">记下结论，出新版本</button></div>
+  </form>`;
+  if (!dlg.open) dlg.showModal();
+  $('#resForm textarea').focus();
+  $('#resForm').addEventListener('submit', submitResolve);
+}
+async function submitResolve(e) {
+  e.preventDefault();
+  const dlg = $('#resDlg'), f = e.target;
+  const note = f.note.value.trim();
+  if (!note) { $('#resErr').textContent = '写一句说明，别只点按钮'; return; }
+  const go = $('#resGo'); go.disabled = true; go.textContent = '正在出新版本…';
+  try {
+    const c = await api(`/api/cases/${encodeURIComponent(S.case.id)}/resolve`, { method: 'POST',
+      body: { judgment_id: dlg.dataset.jid, action: dlg.dataset.kind, note, by: '我' } });
+    S.case = c; S.opCache = {}; S.tab = 'judgments'; dlg.close();
+    const target = `#/case/${c.id}/v/${c.current}`;
+    if (location.hash === target) { S.viewNo = c.current; renderCase(); } else location.hash = target;
+    toast(`已记下，新增第 ${c.current} 版`);
+  } catch (err) {
+    $('#resErr').textContent = '没记上：' + err.message;
+    go.disabled = false; go.textContent = '记下结论，出新版本';
+  }
+}
+
+// 拍合同 = 二次审核的主入口：拍/选照片 → 读出文字 → 核对 → 出新版本，自动停在「变化」那一栏
+function openContract() {
+  if (!S.case) { toast('先开一个案卷，再拍合同'); return; }
+  openSupplement({ kind: 'material', photo: true, title: '合同照片' });
+}
+
 function openSupplement(opt = {}) {
   const kind = opt.kind || 'material';
+  const photo = !!opt.photo;                 // 拍合同进来：只收照片，手机直接开相机
   const dlg = $('#supDlg');
   const demo = demoForCase();
+  const camOn = kind === 'material';
   dlg.innerHTML = `<form class="dlg-in" id="supForm" method="dialog">
-    <div class="dlg-head"><div><div class="kicker">二次分析 · 将生成第 ${S.case.versions.length + 1} 版</div><h3 id="supTitle">补充信息</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
+    <div class="dlg-head"><div><div class="kicker">二次分析 · 将生成第 ${S.case.versions.length + 1} 版</div><h3 id="supTitle">${photo ? '拍合同 · 二次审核' : '补充信息'}</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
     <div class="dlg-body">
       <div class="seg sup-kinds" role="radiogroup" aria-label="补充什么">${Object.entries(SUP_KIND).map(([k, o]) => `<button type="button" data-act="sup-kind" data-kind="${k}" aria-pressed="${k === kind}">${o.label}</button>`).join('')}</div>
-      <p class="sup-help" id="supHelp">${esc(SUP_KIND[kind].help)}</p>
-      <div id="supMat"${kind === 'material' ? '' : ' hidden'}><div class="mat-tools"><span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="supFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="muted small" id="supRead"></span></div></div>
+      <p class="sup-help" id="supHelp">${esc(photo ? '拍合同、补充协议、聊天里发的合同照片。合同有好几页就一次拍完，系统按张读成文字，读完你核对。' : SUP_KIND[kind].help)}</p>
+      ${photo ? `<p class="sup-note">照片只证明你手上确实有这份纸。写了什么要看读出来的文字；签没签、对方认不认、照片有没有被改过，都不算验证过。所以这一版里，合同上的说法会记成「材料里写的」，和查询结果分开列。</p>` : ''}
+      <div id="supMat"${kind === 'material' ? '' : ' hidden'}><div class="mat-tools">${camOn ? `<span class="btn sm cam file-btn">📷 拍照 / 选照片（可多张）<input type="file" id="supCam" accept="image/*" capture="environment" multiple></span>` : ''}<span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="supFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="muted small" id="supRead"></span></div></div>
       <div id="supScen"${kind === 'need' ? '' : ' hidden'}><div class="small muted">场景（不选就从新需求里识别）</div><div class="chips" style="margin:4px 0 10px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="sup-scen" data-id="${esc(s.id)}" aria-pressed="false">${esc(s.label)}</button>`).join('')}</div></div>
       <input class="big-inp sm" name="title" id="supTitleIn" placeholder="${kind === 'reply' ? '例如：业务员的微信回复' : '材料名称，例如：认购协议'}" value="${esc(opt.title || '')}"${kind === 'need' ? ' hidden' : ''}>
       <textarea class="big-inp sm" name="text" rows="8" required placeholder="${kind === 'need' ? '例如：我收到这家公司的 offer，让我去做理财顾问' : '把文字贴在这里'}">${esc(opt.text || '')}</textarea>
@@ -1016,21 +1295,36 @@ function openSupplement(opt = {}) {
   dlg.dataset.kind = kind; dlg.dataset.scen = '';
   if (!dlg.open) dlg.showModal();
   $('#supForm textarea').focus();
-  $('#supFile').addEventListener('change', async e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const note = $('#supRead');
-    note.textContent = `正在读 ${file.name}…`;
-    try {
-      const r = await readFile(file);
-      if (r.method === 'failed') { note.innerHTML = `<span class="err">读不出来：${esc(r.note || '')}请手动贴文字。</span>`; return; }
-      $('#supForm').text.value = r.text;
-      if (!$('#supForm').title.value) $('#supForm').title.value = file.name;
-      note.textContent = `已读出 ${r.text.length} 字，请核对。`;
-    } catch (err) { note.innerHTML = `<span class="err">${esc(err.message)}</span>`; }
-    finally { e.target.value = ''; }
-  });
+  const readIn = files => readMaterials([...files], { note: $('#supRead'), form: $('#supForm'),
+    titleEl: $('#supTitleIn'), keepName: photo });
+  const cam = $('#supCam'), file = $('#supFile');
+  if (cam) cam.addEventListener('change', e => { readIn(e.target.files); e.target.value = ''; });
+  file.addEventListener('change', e => { readIn(e.target.files); e.target.value = ''; });
   $('#supForm').addEventListener('submit', submitSupplement);
+}
+
+// 拍合同：照片按张读成文字，读完拼到文本框里让你核对。不覆盖你改过的文字，接着往后加。
+async function readMaterials(files, opt) {
+  if (!files.length) return;
+  const note = opt.note, ta = opt.form.text, multi = files.length > 1;
+  const done = [], bad = [];
+  for (const f of files) {
+    note.textContent = `正在读 ${f.name}…（${done.length + bad.length + 1}/${files.length}）`;
+    try {
+      const r = await readFile(f);
+      if (r.method === 'failed') { bad.push(`${f.name}：${r.note || '读不出来'}`); continue; }
+      done.push(multi ? `【${f.name}】\n${r.text}` : r.text);
+      if (opt.titleEl && !opt.titleEl.value) opt.titleEl.value = opt.keepName ? '合同照片' : f.name;
+    } catch (err) { bad.push(`${f.name}：${err.message}`); }
+  }
+  if (done.length) {
+    const head = ta.value.trim();
+    ta.value = (head ? head + '\n\n' : '') + done.join('\n\n');
+  }
+  const chars = done.join('').replace(/\s/g, '').length;
+  note.innerHTML = done.length
+    ? `已读出 ${chars} 字（${done.length} 张），请核对。${bad.length ? `<span class="err">这 ${bad.length} 张没读出来：${esc(bad.join('；'))}</span>` : ''}`
+    : `<span class="err">都没读出来：${esc(bad.join('；'))}可以把文字手动贴进来。</span>`;
 }
 function setSupKind(kind) {
   const dlg = $('#supDlg');
@@ -1082,6 +1376,8 @@ document.addEventListener('click', e => {
   }
   const d = el.dataset;
   switch (d.act) {
+    case 'go': location.hash = `#/${d.sec}`; break;
+    case 'qi-nudge': toast('先打开一份案卷，小企才有数据可答'); break;
     case 'raw': if (selectRefVersion(d.version == null ? null : Number(d.version))) openRaw(d.ref, d.hl ? JSON.parse(d.hl) : []); break;
     case 'goto': gotoItem(d.id, d.version == null ? null : Number(d.version), el); break;
     case 'sel': toggleSel(d.id); break;
@@ -1100,11 +1396,16 @@ document.addEventListener('click', e => {
     case 'ask': ask(d.q); break;
     case 'open-assist': $('#assist').classList.add('open'); setTimeout(() => { const t = $('#asForm textarea'); if (t) t.focus(); }, 50); break;
     case 'close-assist': $('#assist').classList.remove('open'); break;
+    case 'contract': openContract(); break;
     case 'supplement': openSupplement({ kind: d.kind, text: d.text, title: d.title }); break;
     case 'sup-kind': setSupKind(d.kind); break;
     case 'sup-scen': { const dlg = $('#supDlg'); const on = dlg.dataset.scen !== d.id; dlg.dataset.scen = on ? d.id : '';
       $$('[data-act="sup-scen"]', dlg).forEach(b => b.setAttribute('aria-pressed', on && b.dataset.id === d.id)); } break;
     case 'sup-fill': { const s = demoForCase().supplements[+d.i]; setSupKind(s.kind); const f = $('#supForm'); f.text.value = s.text; f.title.value = s.title || ''; } break;
+    case 'resolve': openResolve(d.id, d.do); break;
+    case 'res-kind': { const dl = $('#resDlg'); dl.dataset.kind = d.kind;
+      $$('[data-act="res-kind"]', dl).forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === d.kind));
+      $('#resHelp').textContent = RES_KIND[d.kind][1]; } break;
     case 'close-dlg': el.closest('dialog').close(); break;
     case 'demo-fill': fillDemo(d.id); break;
     case 'scen-toggle': S.form.showScen = !S.form.showScen; $('#intake').innerHTML = intakeHtml(); break;
@@ -1133,10 +1434,14 @@ async function route() {
     const sameCase = S.case && S.case.id === m[1];
     await openCase(m[1], m[2] ? +m[2] : null);
     if (!sameCase) window.scrollTo(0, 0);
-  } else {
-    await renderHome();
-    window.scrollTo(0, 0);
+    return;
   }
+  // 三个分区。#/check、#/cases、#/me，其余（含空 hash）都当查企
+  const sec = (location.hash.match(/^#\/(check|cases|me)/) || [])[1] || 'check';
+  if (sec === 'cases') await renderCases();
+  else if (sec === 'me') await renderMe();
+  else await renderCheck();
+  window.scrollTo(0, 0);
 }
 
 async function boot() {

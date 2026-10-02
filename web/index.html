@@ -3,21 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>X-Ray 透视·真相</title>
+<title>企er · 透视·真相</title>
 <meta name="description" content="把钱或信任交给一家公司之前，输入它的名字，说一句你要做什么：官方记录汇到一起，对照它的说法，交出一份看得懂的报告。">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='3' fill='%230a1520'/%3E%3Cpath d='M16 5.5v21M10.5 10c2.8 1.5 8.2 1.5 11 0M9 14.6c3.3 1.7 10.7 1.7 14 0M10 19.2c3 1.5 9 1.5 12 0' stroke='%23c4f0ff' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="topbar" id="topbar">
-  <a class="brand" href="#/" aria-label="X-Ray 首页">
+  <a class="brand" href="#/" aria-label="企er 首页">
     <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
       <rect x="1" y="1" width="30" height="30" rx="3" fill="#0a1520"/>
       <path d="M16 5.5v21M10.5 10c2.8 1.5 8.2 1.5 11 0M9 14.6c3.3 1.7 10.7 1.7 14 0M10 19.2c3 1.5 9 1.5 12 0" stroke="#c4f0ff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
       <path d="M3 24h26" stroke="#ff7d6e" stroke-width="1.2" opacity=".9"/>
     </svg>
-    <span class="brand-text"><b>X-Ray</b><span>透视·真相</span></span>
+    <span class="brand-text"><b>企er</b><span>透视·真相</span></span>
   </a>
+  <nav class="shell-nav" id="shellNav" aria-label="分区"></nav>
   <div class="case-strip" id="caseStrip" aria-label="当前案卷"></div>
   <div class="top-badges" id="topBadges"></div>
 </header>
@@ -26,6 +27,7 @@
 
 <dialog id="rawDlg" class="dlg" aria-labelledby="rawTitle"></dialog>
 <dialog id="supDlg" class="dlg" aria-labelledby="supTitle"></dialog>
+<dialog id="resDlg" class="dlg" aria-labelledby="resTitle"></dialog>
 <div class="pop" id="pop" role="dialog" hidden></div>
 <div class="toast" id="toast" role="status"></div>
 

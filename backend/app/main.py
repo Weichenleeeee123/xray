@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import config
-from app.analysis.pipeline import load_services, new_case, supplement
+from app.analysis.pipeline import load_services, new_case, resolve, supplement
 from app.analysis.report import onepager
 from app.assistant import answer
 from app.glossary import load_glossary
@@ -20,7 +20,7 @@ from app.intake import run_intake
 from app.llm import LLM
 from app.plain import finish_version
 from app.models import (Case, CaseIn, CaseSummary, ChatIn, ChatMessage, Intake, IntakeIn, LicenseHit, OnePager,
-                        ReadResult, Scenario, Source, SupplementIn, Term)
+                        ReadResult, ResolveIn, Scenario, Source, SupplementIn, Term)
 from app.readers import read_upload
 from app.scenarios import get_scenario, load_scenarios
 from app.sources.collect import collect
@@ -116,6 +116,16 @@ def add_supplement(case_id: str, body: SupplementIn) -> Case:
     case = _case(case_id)
     info = run_intake(body.text, llm, scenario=body.scenario, company=case.case.company_name) if body.kind == "need" else None
     return store.save(finish_version(supplement(case, body, info, svc), llm))
+
+
+@app.post("/api/cases/{case_id}/resolve")
+def resolve_judgment(case_id: str, body: ResolveIn) -> Case:
+    """人对某条判断下结论（已澄清 / 已撤回 / 继续查）。出一版新案卷，旧版留着。"""
+    case = _case(case_id)
+    try:
+        return store.save(resolve(case, body))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"案卷里没有这条判断：{body.judgment_id}") from None
 
 
 @app.post("/api/cases/{case_id}/chat")

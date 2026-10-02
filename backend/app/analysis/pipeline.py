@@ -12,11 +12,12 @@ from app.analysis.charts import build_charts
 from app.analysis.diff import diff
 from app.analysis.extract import ClaimExtractor, RuleExtractor
 from app.analysis.followup import build_questions
+from app.analysis.judgments import attach_disputes, build as build_judgments, update as update_judgments
 from app.analysis.report import onepager
 from app.analysis.signals import build_signals, official_pack_items
 from app.analysis.verify import verify
-from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, MissingItem, RawRecord, Signal, Source,
-                        SupplementIn, Version)
+from app.models import (TRIGGER_LABELS, Assertion, Case, CaseIn, Intake, JudgmentChange, MissingItem, RawRecord,
+                        ResolveIn, Signal, Source, SupplementIn, Version)
 from app.scenarios import claim_rank, get_scenario
 from app import config
 from app.sources.amac_detail import AmacDetailClient
@@ -148,14 +149,19 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
 
     for_whom = inp.for_whom or intake.for_whom
     questions = build_questions(assertions, missing, signals, scenario, intake.focus)
+    judges = build_judgments(inp.company_name, scenario, no, assertions, missing, signals, questions, texts, company)
+    attach_disputes(judges, inp.company_name, assertions, texts, company)
     page = onepager(company_name=inp.company_name, for_whom=for_whom, amount=amount, scenario=scenario,
                     assertions=assertions, missing=missing, signals=signals, questions=questions,
                     sources=collected.sources)
-    return Version(no=no, created_at=now(), trigger=trigger, trigger_label=TRIGGER_LABELS[trigger], need=inp.need,
-                   for_whom=for_whom, amount=amount, scenario=scenario.id, scenario_label=scenario.label,
-                   focus=intake.focus, raw_ids=collected_ids + [t.id for t in texts], company=company, license=lic,
-                   amac=amac, assertions=assertions, missing=missing, signals=signals, tally=tally, notes=notes,
-                   questions=questions, onepager=page, charts=charts)
+    ver = Version(no=no, created_at=now(), trigger=trigger, trigger_label=TRIGGER_LABELS[trigger], need=inp.need,
+                  for_whom=for_whom, amount=amount, scenario=scenario.id, scenario_label=scenario.label,
+                  focus=intake.focus, raw_ids=collected_ids + [t.id for t in texts], company=company, license=lic,
+                  amac=amac, assertions=assertions, missing=missing, signals=signals, tally=tally, notes=notes,
+                  questions=questions, onepager=page, charts=charts, judgments=judges)
+    if no == 1:
+        ver.judgments, ver.judgment_changes, ver.judgment_summary = update_judgments([], judges, {}, 1)
+    return ver
 
 
 def _collect_into(raw: list[RawRecord], name: str, svc: Services) -> tuple[Collected, list[str]]:
@@ -196,7 +202,68 @@ def supplement(case: Case, body: SupplementIn, intake: Intake | None, svc: Servi
     if body.kind == "reply" and DODGE.search(body.text) and not CHECKABLE.search(body.text):
         cur.notes.append("对方的回复没有给出任何可以核对的信息（编号、合同、户名），只是让你放心。这不算回答。")
     cur.changes, cur.change_summary = diff(prev, cur, new_texts)
+    cur.judgments, cur.judgment_changes, cur.judgment_summary = update_judgments(
+        prev.judgments, cur.judgments, new_texts, cur.no)
     case.versions.append(cur)
     case.case, case.scenario, case.focus, case.current = inp, cur.scenario, cur.focus, cur.no
     case.sources = collected.sources
+    return case
+
+
+VERB = {"clarified": "已澄清", "withdrawn": "已撤回", "recheck": "需要重新核实"}
+
+
+def resolve(case: Case, body: ResolveIn) -> Case:
+    """人对某条判断下结论：疑点说清楚了、是误识别、还是要继续查。
+
+    系统自己不会把一条警告悄悄撤掉；要撤回，必须有人署名讲清楚为什么。出的是一版新案卷，
+    旧版留着，历史写在判断的 history 上。
+    """
+    prev = case.versions[-1]
+    cur = prev.model_copy(deep=True)
+    cur.no, cur.created_at, cur.trigger = prev.no + 1, now(), "resolve"
+    cur.trigger_label, cur.need = TRIGGER_LABELS["resolve"], prev.need
+    hit = None
+    for j in cur.judgments:
+        if j.id != body.judgment_id:
+            continue
+        before_label = j.state_label or "待核"
+        j.history.append(f"第 {prev.no} 版起：{before_label}；第 {cur.no} 版：{VERB[body.action]}"
+                         f"（{body.by}：{body.note or '没写说明'}）")
+        j.state, j.state_label, j.changed_at = body.action, VERB[body.action], cur.no
+        j.plain = f"{VERB[body.action]}（{body.by}：{body.note or '没写说明'}）。上一次状态：{before_label}。"
+        if j.unknown and body.action in ("clarified", "withdrawn"):
+            # 人去核实过了，就不能卡片上一边写"已澄清"一边还挂着"还没证明的事"。
+            # 这些事不是被证据证明了，是被这个人担下来了 —— 所以写进 history，不留在待核清单里。
+            j.history.append(f"第 {cur.no} 版起不再挂着这些待核的事：{'；'.join(j.unknown)}（由 {body.by} 核实）")
+            j.unknown = []
+        hit = j
+    if hit is None:
+        raise KeyError(body.judgment_id)
+
+    # 报告那一头也要跟着改。否则判断上写着"已澄清"，报告里还在催人去核实，
+    # 用户看到的就是"它只会加警告，不会撤警告"。
+    for a in cur.assertions:
+        if a.id != hit.target:
+            continue
+        a.plain = (f"第 {cur.no} 版：这条{VERB[body.action]}"
+                   f"（{body.by}：{body.note or '没写说明'}）。原来的核验结论是：{a.plain}")
+
+    cur.judgment_changes = []
+    for j in cur.judgments:
+        if j.id == body.judgment_id:
+            cur.judgment_changes.append(JudgmentChange(
+                target=j.id, label=hit.text[:40], kind="cleared", text=hit.text, before=hit.text, after=hit.text,
+                plain=f"{VERB[body.action]}：{body.by}说「{body.note or '没写说明'}」。这条不再和上一版一样看待。"))
+        else:
+            cur.judgment_changes.append(JudgmentChange(
+                target=j.id, label=j.text[:40], kind="same", text=j.text, before=j.text, after=j.text,
+                plain=f"{j.text[:50]}：没变。"))
+    n = len([1 for j in cur.judgments if j.state == "withdrawn"])
+    cur.judgment_summary = (f"这一版只做了一件事：有一条判断改成「{VERB[body.action]}」，"
+                            f"报告里那条提醒也跟着改了。其余 {max(len(cur.judgments) - 1, 0)} 条保持不变。"
+                            + (f"现在案卷里有 {n} 条被撤回，不再算在要留意的事里。" if n else ""))
+    cur.changes, cur.change_summary = [], f"没有新材料进来，只是把一条判断的结论改了：{VERB[body.action]}。"
+    case.versions.append(cur)
+    case.current = cur.no
     return case

@@ -48,6 +48,9 @@ class Verdict(StrEnum):
 # official 官方记录（程序直接取）；collected 人工采集的官方记录；commercial 商业数据（企查查等，第三方加工）
 SourceKind = Literal["official", "collected", "commercial", "regulation", "demo", "user_material", "web", "parameter"]
 
+# 判断依据的级别：material 是用户给的材料（只代表文字读对了），其余是可核来源
+BasisGrade = Literal["official", "collected", "commercial", "web", "material", "regulation", "parameter", "demo"]
+
 
 class Source(BaseModel):
     id: str
@@ -346,13 +349,67 @@ class Scenario(BaseModel):
     onepager_title: str
 
 
-TRIGGER_LABELS = {"initial": "首次分析", "material": "补充材料", "reply": "对方回复", "need": "修改需求"}
+TRIGGER_LABELS = {"initial": "首次分析", "material": "补充材料", "reply": "对方回复", "need": "修改需求",
+                  "resolve": "核实结论"}
+
+
+# ---------- 可追踪的判断 ----------
+#
+# 报告只是"某一次发布时，这些判断长什么样"。真正被保存、被更新、被追踪的是判断本身。
+# 三层必须分开，不能混着说：
+#   said      材料里写了什么（只代表文字读对了，不代表材料真实、账户归属已认证）
+#   confirmed 现实中确认了什么（登记、名单、年报这类可核来源）
+#   inferred  系统据此推断出什么（规则推的，一定带 premise 和 unknown，并写明不能推出什么）
+
+
+class Basis(BaseModel):
+    """一条判断的依据：引用哪份材料的哪个位置，以及这份依据是哪一级。"""
+    ref: str | None = None               # RawRecord id，点开看到原文
+    label: str = ""                      # 人话：合同草案、登记记录、付款截图
+    quote: str | None = None             # 逐字原文
+    locator: str | None = None           # 位置：第 6 条、收款户名那一行、2025 年报
+    grade: BasisGrade = "official"
+    as_of: str | None = None             # 这份依据的日期
+
+
+class Judgment(BaseModel):
+    id: str                              # 稳定 id（said.A7 / record.risk.bank_list / ask.Q1），跨版本跟着走
+    layer: Literal["said", "confirmed", "inferred"]
+    layer_label: str
+    text: str                            # 判断内容：到底在说什么
+    scope: str                           # 适用范围：哪家公司、哪次交易、哪份合同版本
+    basis: list[Basis] = Field(default_factory=list)      # 依据
+    premise: list[str] = Field(default_factory=list)      # 前提：成立时才适用
+    unknown: list[str] = Field(default_factory=list)      # 未知项：还没得到证明的
+    cannot: list[str] = Field(default_factory=list)       # 不能直接推出什么
+    state: Literal["holds", "needs_check", "unconfirmed", "revised", "clarified", "withdrawn"] = "holds"
+    state_label: str = ""
+    since: int = 1                       # 第几版形成
+    changed_at: int | None = None        # 第几版被修订、澄清或撤回
+    plain: str = ""                      # 人话
+    dispute: list[str] = Field(default_factory=list)      # 冲突：两边证据并列保留，不让后交的材料赢
+    history: list[str] = Field(default_factory=list)      # 版本与状态：什么时候形成、后来怎么被修订
+    target: str | None = None            # 对应报告条目 id，点了跳过去
+
+
+class JudgmentChange(BaseModel):
+    """判断级的变化。五格：保持不变 / 新增发现 / 需要重新核实 / 尚不能确认 / 下一步问题（另加"不再出现"）。
+    多出来的 cleared 是"这一条被人核实过、警告撤了"，单独一档，免得和"没变"混在一起。"""
+    target: str                          # 判断 id
+    label: str
+    kind: Literal["same", "found", "recheck", "unconfirmed", "next_question", "dropped", "cleared"]
+    text: str
+    before: str | None = None
+    after: str | None = None
+    because: list[str] = Field(default_factory=list)      # 触发这次变化的新材料 RawRecord id
+    basis: list[Basis] = Field(default_factory=list)
+    plain: str = ""
 
 
 class Version(BaseModel):
     no: int
     created_at: str
-    trigger: Literal["initial", "material", "reply", "need"]
+    trigger: Literal["initial", "material", "reply", "need", "resolve"]
     trigger_label: str
     need: str
     for_whom: str | None = None
@@ -372,6 +429,9 @@ class Version(BaseModel):
     questions: list[Question] = Field(default_factory=list)
     changes: list[Change] = Field(default_factory=list)
     change_summary: str | None = None
+    judgments: list[Judgment] = Field(default_factory=list)              # 这一版里，一条条可追踪的判断
+    judgment_changes: list[JudgmentChange] = Field(default_factory=list)  # 判断级的变化，五格
+    judgment_summary: str | None = None
     onepager: OnePager | None = None
     glance: Glance | None = None          # 报告首屏的短句（app/plain.py）
     charts: list[Chart] = Field(default_factory=list)  # 报告里的图，全部来自记录和规则
@@ -427,6 +487,17 @@ class SupplementIn(BaseModel):
     text: str = Field(min_length=1)       # 材料文字、对方回复，或新的需求
     title: str | None = None
     scenario: str | None = None           # 改需求时，用户手动指定场景
+
+
+class ResolveIn(BaseModel):
+    """人对某条判断下结论：疑点核实清楚了、是误识别、还是要继续查。
+
+    系统自己不会把一条警告悄悄撤掉。要撤回，必须有人署名说清楚为什么。
+    """
+    judgment_id: str
+    action: Literal["clarified", "withdrawn", "recheck"] = "clarified"
+    note: str = ""
+    by: str = "用户"
 
 
 class ChatIn(BaseModel):
