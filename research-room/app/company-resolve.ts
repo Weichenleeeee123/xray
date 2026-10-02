@@ -17,19 +17,44 @@ export type CompanyResolution = {
   note: string | null;
 };
 
-/** 连不上返回 null：找名字这一步不挡路，调用方按原样查。 */
+const optionalText = (value: unknown) => value == null || typeof value === 'string';
+
+/** 失败或取消返回 null；调用方应让用户重试或明确确认全称，不能自动按简称开查。 */
 export async function resolveCompany(
   query: string,
   fetchImpl: typeof fetch = fetch,
+  { signal, timeoutMs = 8000 }: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<CompanyResolution | null> {
+  if (signal?.aborted) return null;
+  const controller = new AbortController();
+  let cancel!: () => void;
+  // Also settle if a transport or response body does not honor AbortSignal.
+  const cancelled = new Promise<null>(resolve => {
+    cancel = () => { controller.abort(); resolve(null); };
+  });
+  const timer = setTimeout(cancel, timeoutMs);
+  signal?.addEventListener('abort', cancel, { once: true });
   try {
-    const response = await fetchImpl(`/api/companies/resolve?q=${encodeURIComponent(query.trim())}`);
-    if (!response.ok) return null;
-    const data = (await response.json()) as CompanyResolution;
-    if (typeof data?.exact !== 'boolean' || !Array.isArray(data.candidates)) return null;
-    return data;
+    const lookup = (async () => {
+      const response = await fetchImpl(`/api/companies/resolve?q=${encodeURIComponent(query.trim())}`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) return null;
+      const data = (await response.json()) as CompanyResolution;
+      if (typeof data?.exact !== 'boolean' || !Array.isArray(data.candidates) ||
+          (data.exact && (typeof data.name !== 'string' || !data.name.trim())) ||
+          !optionalText(data.note) || !data.candidates.every(candidate =>
+            candidate !== null && typeof candidate === 'object' && !Array.isArray(candidate) &&
+            typeof candidate.name === 'string' && candidate.name.trim().length > 0 &&
+            [candidate.code, candidate.founded, candidate.status].every(optionalText))) return null;
+      return data;
+    })();
+    return await Promise.race([lookup, cancelled]);
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
   }
 }
 

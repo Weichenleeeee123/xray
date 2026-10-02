@@ -1,6 +1,6 @@
 'use client';
 import type { CSSProperties, SyntheticEvent } from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   Building2,
@@ -74,7 +74,20 @@ export default function Home() {
     [testResult, setTestResult] = useState(false),
     [opening, setOpening] = useState<{ id: string; href: string } | null>(null),
     [candidates, setCandidates] = useState<CompanyResolution | null>(null),
+    [resolutionIssue, setResolutionIssue] = useState<'not-found' | 'unavailable' | null>(null),
     [resolving, setResolving] = useState(false);
+  const resolutionRequest = useRef<AbortController | null>(null);
+  const cancelResolution = useCallback(() => {
+    resolutionRequest.current?.abort();
+    resolutionRequest.current = null;
+    setResolving(false);
+    setCandidates(null);
+    setResolutionIssue(null);
+  }, []);
+  useEffect(() => () => {
+    resolutionRequest.current?.abort();
+    resolutionRequest.current = null;
+  }, []);
   const {
     state,
     scene,
@@ -152,25 +165,35 @@ export default function Home() {
   }, [opening, state.result?.id, state.connection, testMode]);
   const submit = async (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (query.trim().length < 2 || resolving) return;
-    if (selectedDemo) {
-      void begin(query, need, selectedDemo.input);   // 示例填的就是全称
+    if (query.trim().length < 2 || resolutionRequest.current) return;
+    cancelResolution();
+    if (selectedDemo || testMode) {
+      void begin(query, need, selectedDemo?.input);   // 示例已带全称；测试事件无需真实解析
       return;
     }
     // 简称也行：先定成全称；有几家同名就列出来让用户选
+    const controller = new AbortController();
+    resolutionRequest.current = controller;
     setResolving(true);
-    const found = await resolveCompany(query);
+    const found = await resolveCompany(query, undefined, { signal: controller.signal });
+    // Input changes, another request or unmount make every old result inert.
+    if (resolutionRequest.current !== controller || controller.signal.aborted) return;
+    resolutionRequest.current = null;
     setResolving(false);
-    if (!found || found.exact) {
-      setCandidates(null);
-      void begin(found?.name ?? query, need);
+    if (!found) {
+      setResolutionIssue('unavailable');
       return;
     }
-    setCandidates(found);
+    if (found.exact && found.name) {
+      void begin(found.name, need);
+      return;
+    }
+    if (found.candidates.length) setCandidates(found);
+    else setResolutionIssue('not-found');
   };
   const pick = (name: string) => {
+    cancelResolution();
     setQuery(name);
-    setCandidates(null);
     void begin(name, need);
   };
   useEffect(() => {
@@ -206,6 +229,7 @@ export default function Home() {
               input.company.trim().length < 2
             )
               throw new Error('请输入公司名称');
+            cancelResolution();
             setQuery(input.company);
             void begin(input.company);
             return { status: 'connecting', company: input.company };
@@ -215,7 +239,7 @@ export default function Home() {
       );
     } catch {}
     return () => controller.abort();
-  }, [begin]);
+  }, [begin, cancelResolution]);
   return (
     <main className="office-page">
       <section
@@ -426,9 +450,9 @@ export default function Home() {
                   id="company-query"
                   value={query}
                   onChange={(e) => {
+                    cancelResolution();
                     setQuery(e.target.value);
                     setSelectedDemo(null);
-                    setCandidates(null);
                   }}
                   placeholder="输入公司名称，简称也行"
                   autoComplete="organization"
@@ -453,21 +477,33 @@ export default function Home() {
                   ))}
                 </div>
               )}
+              {resolutionIssue && (
+                <div className="name-cands" role="group" aria-label="确认公司全称">
+                  <p role="status">{resolutionIssue === 'not-found'
+                    ? '没有找到匹配的公司。请检查名称；如果已输入公司全称，可以确认后继续查询。'
+                    : '暂时无法确认公司名称。请重试，或确认已输入公司全称后继续查询。'}</p>
+                  <button type="submit" className="name-cand"><b>重试名称匹配</b></button>
+                  <button type="button" className="name-cand" onClick={() => pick(query.trim())}>
+                    <b>我已确认是公司全称，继续查询</b><small>{query.trim()}</small>
+                  </button>
+                </div>
+              )}
               <label className="need-field" htmlFor="research-need">
                 研究需求（选填）
                 <Input
                   id="research-need"
                   value={need}
-                  onChange={(e) => setNeed(e.target.value)}
+                  onChange={(e) => { cancelResolution(); setNeed(e.target.value); }}
                   placeholder="例如：了解这家公司的登记、资质与公开资料"
                   maxLength={500}
                 />
               </label>
               <DemoExamples selected={selectedDemo} onSelect={(demo) => {
+                cancelResolution();
                 setQuery(demo.input.company_name);
                 setNeed(demo.input.need);
                 setSelectedDemo(demo);
-              }} onRemove={() => setSelectedDemo(null)} />
+              }} onRemove={() => { cancelResolution(); setSelectedDemo(null); }} />
               <p>资料覆盖情况不代表安全评级。材料与案卷仅此浏览器可见；主动提交的评价才会公开。</p>
             </form>
           </div>
@@ -502,6 +538,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
+                    cancelResolution();
                     setOpening(null);
                     reset();
                   }}
