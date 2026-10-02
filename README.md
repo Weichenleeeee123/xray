@@ -29,7 +29,7 @@ copy .env.example .env      # 填模型网关和企查查的 Key；不填也能�
 打开 http://localhost:8000 ，点"演示案例"一键填入。
 
 - 不配 Key 也能用：规则照常出结论，需求识别退回关键词，小企退回模板回答，工商登记显示"没查"。
-- 测试：`backend` 里跑 `.venv\Scripts\python -m pytest`（303 个，不连网、不扣费）；仓库根目录跑 `node --test web/tests/*.test.cjs`（14 个）。
+- 测试：`backend` 里跑 `.venv\Scripts\python -m pytest`（304 个，不连网、不扣费）；仓库根目录跑 `node --test web/tests/*.test.cjs`（27 个）。独立动画原型另有 `node --test research-room/tests/*.test.mjs`（9 个）。
 - 断网演示：`.env` 里设 `XRAY_LLM_MODE=replay`，只用录好的模型响应，界面标"离线回放"。
 
 配置项、接口和数据来源的完整说明见 [backend/README.md](backend/README.md)。
@@ -66,7 +66,7 @@ backend/        FastAPI 后端：规则、数据汇集、报告、小企
   tools/        更新名单、探测网关、浏览器验收的脚本
 web/            前端：原生 JS，不打包，由后端同端口挂载
 demo/           早期的静态演示页，断网时的最后备用（/demo/）
-research-room/  "小企研究室"等待动画原型（独立的 React 应用，还没接进 web/）
+research-room/  "小企研究室"独立 React 动画原型；主站已复用旧版素材接真实进度，新版完整动画仍待适配
 docs/           文档，先看 docs/README.md
 ```
 
