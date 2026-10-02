@@ -121,7 +121,8 @@ def test_assistant_verdict_words_then_gateway_down_falls_back_to_template(tmp_pa
 def test_assistant_may_relay_characterization_written_in_official_records(tmp_path):
     c, _ = client(tmp_path)
     case = new_case(CaseIn(company_name=NAME, need="我妈想存钱理财"), keyword_intake("我妈想存钱理财"), services(c))
-    fake = FakeLLM(['{"answer": "浙江省政府的风险提示点名它涉嫌非法集资 [risk.regulator_warning]"}'], tmp_path / "llm")
+    # Server-rendered report facts avoid inventing attribution in legal claims.
+    fake = FakeLLM(['{"segments":[{"fact_id":"risk.regulator_warning"}]}'], tmp_path / "llm")
     msg = answer(case, ChatIn(text="政府说过它什么"), fake)
     assert msg.mode == "model" and msg.rewrites == 0 and not msg.blocked
 

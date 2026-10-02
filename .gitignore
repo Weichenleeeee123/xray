@@ -12,6 +12,7 @@ __pycache__/
 backend/data/cases/
 backend/data/runs/
 backend/data/cache/
+backend/data/private/
 
 # 秘密配置
 .env

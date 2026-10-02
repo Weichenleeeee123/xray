@@ -464,6 +464,7 @@ class Quote(BaseModel):
 
 
 class ChatMessage(BaseModel):
+    request_id: str | None = None
     role: Literal["user", "assistant"]
     text: str
     refs: list[str] = Field(default_factory=list)       # 用户选中的报告条目
@@ -481,6 +482,7 @@ class ChatMessage(BaseModel):
 
 
 class Case(BaseModel):
+    owner_id: str | None = None          # 服务端分配；旧案卷无归属，不开放公共访问
     revision: int = 0
     id: str
     created_at: str
@@ -501,6 +503,18 @@ class CaseSummary(BaseModel):
     need: str
     scenario_label: str
     versions: int
+
+
+class PublicChatMessage(ChatMessage):
+    """Public response DTO; full audit fields remain in server-side ChatMessage."""
+    dropped: int = Field(0, exclude=True)
+    rewrites: int = Field(0, exclude=True)
+    blocked: list[str] = Field(default_factory=list, exclude=True)
+
+
+class PublicCase(Case):
+    owner_id: str | None = Field(None, exclude=True)
+    chat: list[PublicChatMessage] = Field(default_factory=list)
 
 
 class SupplementIn(BaseModel):

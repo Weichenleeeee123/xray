@@ -49,6 +49,18 @@ def read_input(directory: Path, run_id: str) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
 
 
+def set_owner(directory: Path, run_id: str, owner_id: str) -> None:
+    atomic_json(path_for(directory, run_id).with_suffix(".owner.json"), {"owner_id": owner_id})
+
+
+def owned_by(directory: Path, run_id: str, owner_id: str) -> bool:
+    try:
+        path = path_for(directory, run_id).with_suffix(".owner.json")
+        return json.loads(path.read_text(encoding="utf-8")).get("owner_id") == owner_id
+    except (ValueError, OSError, TypeError):
+        return False
+
+
 def events(directory: Path, run_id: str) -> list[dict] | None:
     path = path_for(directory, run_id)
     if not path.is_file():

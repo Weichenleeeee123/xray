@@ -50,18 +50,39 @@ const S = {
 // ---------- 接口 ----------
 
 async function api(path, opts = {}) {
-  const init = { method: opts.method || 'GET', headers: {} };
+  const init = { method: opts.method || 'GET', headers: {...(opts.headers || {})}, credentials: 'same-origin' };
   if (opts.body instanceof FormData) init.body = opts.body;
   else if (opts.body !== undefined) { init.body = JSON.stringify(opts.body); init.headers['Content-Type'] = 'application/json'; }
-  let r;
-  try { r = await fetch(path, init); } catch { throw new Error('连不上后端服务，请确认它在运行'); }
-  let data = null;
-  try { data = await r.json(); } catch { /* 非 JSON */ }
-  if (!r.ok) {
-    const d = data && data.detail;
-    throw new Error(typeof d === 'string' ? d : Array.isArray(d) ? d.map(x => x.msg).join('；') : `请求失败（${r.status}）`);
+  const controller = opts.timeoutMs ? new AbortController() : null;
+  const relay = () => controller?.abort(opts.signal?.reason || 'cancelled');
+  if (opts.signal?.aborted) relay();
+  else opts.signal?.addEventListener('abort', relay, {once:true});
+  init.signal = controller?.signal || opts.signal;
+  const timer = controller ? setTimeout(() => controller.abort('timeout'), opts.timeoutMs) : null;
+  try {
+    let r;
+    try { r = await fetch(path, init); } catch (e) {
+      if (init.signal?.aborted) throw e;
+      throw new Error('连不上后端服务，请确认它在运行');
+    }
+    let data = null;
+    try { data = await r.json(); } catch (e) { if (init.signal?.aborted) throw e; }
+    if (!r.ok) {
+      const d = data && data.detail;
+      const error = new Error(typeof d === 'string' ? d : Array.isArray(d) ? d.map(x => x.msg).join('；') : `请求失败（${r.status}）`);
+      error.status = r.status; throw error;
+    }
+    if (data == null) throw new Error('后端返回的内容格式不正确，请稍后恢复结果');
+    return data;
+  } catch (e) {
+    if (init.signal?.aborted) throw new Error(init.signal.reason === 'timeout'
+      ? '等待时间较长，已停止等待。后台可能仍在处理，可以恢复回答，无需重复提交。'
+      : '已停止等待。后台可能仍在处理，可以稍后恢复回答。');
+    throw e;
+  } finally {
+    if (timer != null) clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', relay);
   }
-  return data;
 }
 
 // ---------- 小工具 ----------
@@ -86,7 +107,7 @@ function parseAmount(s) {
 }
 const ver = () => S.case && (S.case.versions.find(v => v.no === S.viewNo) || S.case.versions[S.case.versions.length - 1]);
 const rawById = id => S.case && S.case.raw.find(r => r.id === id);
-const srcOf = id => (S.case && S.case.sources[id]) || S.sources.find(s => s.id === id);
+const srcOf = id => (ver()?.sources || S.case?.sources || {})[id] || S.sources.find(s => s.id === id);
 // 没查到的记录（not_covered）会带上演示数据源的类型；只有真查到了演示数据，才算演示案例
 const rawKind = r => (r.coverage === 'not_covered' && r.kind === 'demo' ? 'none' : r.kind);
 const isDemoCase = () => S.case && S.case.raw.some(r => r.kind === 'demo' && r.coverage === 'found');
@@ -147,11 +168,11 @@ const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="
 // Keep raw record IDs for navigation, but use readable labels in the review UI.
 const hideRecordIds = () => typeof isDesignReview === 'function' && isDesignReview();
 const recordRefText = ref => hideRecordIds() && /^R\d+$/.test(ref) ? '查看出处' : ref;
-const goLink = (id, version = null) => {
+const goLink = (id, version = null, label = null) => {
   const target = parseRef(id, version);
   const terms = target.version == null ? S.terms : (S.case?.versions.find(v => v.no === target.version)?.terms || S.terms);
   const t = target.id.startsWith('term.') && terms.find(t => t.id === target.id.slice(5));
-  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}"${target.version == null ? '' : ` data-version="${target.version}"`}>${esc(t ? `名词·${t.term}` : recordRefText(target.id))}</button>`;
+  return `<button type="button" class="cite${t ? ' term-cite' : ''}" data-act="goto" data-id="${esc(id)}"${target.version == null ? '' : ` data-version="${target.version}"`}>${esc(label || (t ? `名词·${t.term}` : recordRefText(target.id)))}</button>`;
 };
 const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf" data-act="goto" data-id="${esc(r)}">${esc(recordRefText(r))}</button>`).join('');
 const selCls = id => (S.selected.has(id) ? ' is-sel' : '');
@@ -210,16 +231,16 @@ function shellHtml(main) {
 function qibarHtml() {
   if (S.case && /^#\/case\//.test(location.hash)) return assistHtml();
   const llm = S.health && S.health.llm;
-  const line = llm && llm.configured && llm.mode !== 'off' ? '只答案卷里的数据，每句带出处。' : '没接模型，只摘案卷里的原话。';
+  const line = llm && llm.configured && llm.mode !== 'off' ? '理解你的顾虑，结合案卷核对事实。' : '模型暂不可用，提供基础核对建议。';
   return `<div class="as-head"><div class="as-heading"><h3>小企 <span class="qi-role">报告助手</span></h3><p class="small muted">${esc(line)}</p></div>
     <button type="button" class="as-x" data-act="close-assist" aria-label="收起小企">×</button></div>
   <div class="as-body">
     <div class="qi-welcome">${qiSpriteHtml()}</div>
-    <p class="qi-lede">现在没有打开的案卷。小企只答案卷里有的东西，数据里没有就说没查到，不凭常识猜。</p>
+    <p class="qi-lede">先打开一份案卷。小企可以帮你理解资料、梳理顾虑和下一步；未核实的公司情况不会当作事实。</p>
     <p class="small muted">打开一份案卷后，可以这样问它：</p>
     <div class="chips">${QI_SUG.map(q => `<button type="button" class="chip" data-act="qi-nudge" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
     <ul class="qi-what">
-      <li>每句都带出处，能点开看原始记录和日期</li>
+      <li>关键企业事实有出处，能点开看原始记录和日期</li>
       <li>数据里没有的，它说没查到</li>
       <li>它不会改报告；新情况要点"加入案卷"才会重新判断</li>
       <li>它不给公司定性，也不打安全分</li>
@@ -299,7 +320,7 @@ async function renderMe() {
   try { S.cases = (await api('/api/cases')) || []; } catch (e) { /* 读不到就不显示份数 */ }
   const h = S.health || {}, llm = h.llm || {}, com = h.commercial || {};
   const model = !llm.configured || llm.mode === 'off'
-    ? '没接模型。需求识别用关键词，小企用模板回答，只摘报告里的原话。'
+    ? '模型未连接：需求用关键词识别，小企提供基础解释和核对步骤。'
     : llm.mode === 'replay'
       ? `离线回放。只用录好的模型回答（已录 ${llm.cached_replies || 0} 条），界面上会标出录于什么时候。`
       : `模型在线（${llm.model || ''}）。需求识别、报告短句、小企的回答都走它；数字和措辞由程序逐条核对。`;
@@ -1145,28 +1166,36 @@ function backRefs(rid) {
   return out;
 }
 function markText(text, quotes) {
-  let html = esc(text);
-  for (const q of quotes || []) {
-    const e = esc(q).trim();
-    if (e.length >= 2) html = html.split(e).join(`<mark>${e}</mark>`);
+  const source = String(text ?? '');
+  const parts = [...new Set((quotes || []).filter(q => typeof q === 'string' && q.trim().length >= 2))]
+    .sort((a, b) => b.length - a.length).map(q => q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!parts.length) return esc(source);
+  let out = '', end = 0;
+  for (const m of source.matchAll(new RegExp(parts.join('|'), 'g'))) {
+    out += esc(source.slice(end, m.index)) + `<mark>${esc(m[0])}</mark>`;
+    end = m.index + m[0].length;
   }
-  return html;
+  return out + esc(source.slice(end));
 }
-function valHtml(val) {
+function valHtml(val, quotes = []) {
   if (val == null || val === '') return '<span class="muted">—</span>';
   if (typeof val === 'boolean') return val ? '是' : '否';
-  if (typeof val === 'object') return `<pre class="json">${esc(JSON.stringify(val, null, 2))}</pre>`;
-  return esc(val);
+  if (typeof val === 'object') return `<pre class="json">${markText(JSON.stringify(val, null, 2), quotes)}</pre>`;
+  return markText(val, quotes);
 }
 function contentHtml(content, quotes) {
   if (content == null) return '<p class="muted">这条记录没有内容（没查或查询失败）。</p>';
   if (typeof content === 'string') return `<pre>${markText(content, quotes)}</pre>`;
-  const table = obj => `<table>${Object.entries(obj).map(([k, val]) => `<tr><th>${esc(k)}</th><td>${valHtml(val)}</td></tr>`).join('')}</table>`;
+  const table = obj => `<table>${Object.entries(obj).map(([k, val]) => `<tr><th>${esc(k)}</th><td>${valHtml(val, quotes)}</td></tr>`).join('')}</table>`;
   if (Array.isArray(content)) {
     if (!content.length) return '<p class="muted">空列表。</p>';
-    return content.map(it => `<div class="item">${it && typeof it === 'object' && !Array.isArray(it) ? table(it) : valHtml(it)}</div>`).join('');
+    return content.map(it => `<div class="item">${it && typeof it === 'object' && !Array.isArray(it) ? table(it) : valHtml(it, quotes)}</div>`).join('');
   }
   return table(content);
+}
+function sourceUrl(url) {
+  try { const parsed = new URL(url); return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : null; }
+  catch { return null; }
 }
 function openRaw(rid, quotes) {
   const r = rawById(rid);
@@ -1181,7 +1210,7 @@ function openRaw(rid, quotes) {
         <dt>来源</dt><dd>${esc(s ? s.name : r.source_id)}${s && s.note ? `<div class="small muted">${esc(s.note)}</div>` : ''}</dd>
         ${r.as_of ? `<dt>数据截至</dt><dd class="mono">${esc(r.as_of)}</dd>` : ''}
         <dt>采集时间</dt><dd class="mono">${esc(fmtTime(r.retrieved_at))}</dd>
-        ${r.url ? `<dt>原文链接</dt><dd><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.url)}</a></dd>` : ''}
+        ${sourceUrl(r.url) ? `<dt>原文链接</dt><dd><a href="${esc(sourceUrl(r.url))}" target="_blank" rel="noopener noreferrer">打开原文网站 ↗</a></dd>` : ''}
         ${r.screenshot ? `<dt>截图</dt><dd>${esc(r.screenshot)}</dd>` : ''}
       </dl>
       ${kind === 'demo' ? '<div class="raw-note">演示数据：这家公司和这条记录都是编的，只用来演示。</div>' : ''}
@@ -1317,14 +1346,16 @@ function refreshQiState() {
   const thinking = qiThinking();
   $$('[data-qi-state]').forEach(el => { el.dataset.qiState = thinking ? 'thinking' : 'idle'; });
   $$('[data-qi-caption]').forEach(el => { el.textContent = thinking ? '思考中…' : '问问报告'; });
+  const submit = $('#asForm button[type="submit"]');
+  if (submit) { submit.disabled = thinking; submit.textContent = thinking ? '等待中' : '问'; }
 }
 
 function modeLine() {
   const llm = S.health && S.health.llm;
   if (!llm) return '';
-  if (!llm.configured || llm.mode === 'off') return '没接模型：用模板回答，只摘报告里的原话。';
+  if (!llm.configured || llm.mode === 'off') return '模型未连接：暂时提供基础解释和核对步骤，企业事实仍以案卷为依据。';
   if (llm.mode === 'replay') return '离线回放：只用录好的模型回答。';
-  return '只用这份案卷里的数据回答，关键事实标出处；没查到就直说。';
+  return '帮你看懂资料，也一起梳理顾虑和下一步。企业事实有出处，未核实的会说明。';
 }
 function assistHtml() {
   return `<div class="as-head"><div class="as-heading"><h3>小企 <span class="qi-role">报告助手</span></h3><p class="small muted">${esc(modeLine())}</p></div>
@@ -1332,7 +1363,7 @@ function assistHtml() {
   <div class="as-body" id="asBody">${chatHtml()}</div>
   <div class="qi-perch">${qiAvatarHtml()}</div>
   <div class="as-sel" id="asSel">${selHtml()}</div>
-  <form class="as-input" id="asForm"><textarea class="box" name="q" rows="2" maxlength="2000" placeholder="问这份报告里的任何一条…（Enter 发送）" aria-label="提问"></textarea><button class="btn sm" type="submit">问</button></form>`;
+  <form class="as-input" id="asForm"><textarea class="box" name="q" rows="2" maxlength="2000" placeholder="想了解报告，或对下一步有顾虑？（Enter 发送）" aria-label="提问"></textarea><button class="btn sm" type="submit">问</button></form>`;
 }
 function selHtml() {
   if (!S.selected.size) return '<span class="muted">想问某一条？点报告里那一条右边的"问"。</span>';
@@ -1342,8 +1373,11 @@ function chatHtml() {
   const chat = S.case.chat;
   const sugg = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？', '它被处罚或点名过吗？'];
   const intro = `<div class="as-intro"><div class="chips">${sugg.map(q => `<button type="button" class="chip" data-act="ask" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
-    <p class="small muted">小企不会改报告。你在对话里说的新情况，要点"加入案卷"，系统才会重新判断。</p></div>`;
-  return (chat.length ? '' : intro) + chat.map((m, i) => msgHtml(m, chat[i - 1])).join('') + (qiThinking() ? '<div class="typing" role="status"><span>小企正在思考</span><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i></div>' : '');
+    <p class="small muted">聊天和上传材料仅此浏览器可见。小企不会改报告；新情况要点“加入案卷”才会重新判断。</p></div>`;
+  const pending = pendingChat(S.case.id);
+  return (chat.length ? '' : intro) + chat.map((m, i) => msgHtml(m, chat[i - 1], i)).join('') + (qiThinking()
+    ? '<div class="typing" role="status"><span>小企正在整理回答</span><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><button type="button" class="linkish" data-act="cancel-chat">停止等待</button></div>'
+    : pending ? '<div class="chat-recovery"><p>上次提问的结果尚待确认，不必重复提交。</p><button type="button" class="linkish" data-act="recover-chat">恢复回答</button></div>' : '');
 }
 function citeText(text, version) {
   return esc(text).replace(/\[([A-Za-z0-9_.:,，、\s]+)\]/g, (all, inner) => {
@@ -1351,28 +1385,72 @@ function citeText(text, version) {
     return ids.length && ids.every(isId) ? ids.map(id => goLink(id, version)).join('') : all;
   });
 }
-function msgHtml(m, prev) {
+function answerText(text) {
+  return esc(String(text || '').replace(/\[([A-Za-z0-9_.:,，、\s]+)\]/g, (all, inner) => {
+    const ids = inner.split(/[,，、\s]+/).filter(Boolean);
+    return ids.length && ids.every(isId) ? '' : all;
+  }).replace(/[ \t]+\n/g, '\n').trim());
+}
+function answerCitations(m) {
+  const inline = [...String(m.text || '').matchAll(/\[([A-Za-z0-9_.:,，、\s]+)\]/g)]
+    .flatMap(match => match[1].split(/[,，、\s]+/));
+  return [...new Set([...(m.citations || []), ...(m.quotes || []).map(q => q.ref), ...inline])]
+    .filter(id => isId(id) && (parseRef(id, m.version).version === m.version));
+}
+function chatSourcesHtml(m) {
+  const v = S.case?.versions.find(v => v.no === m.version);
+  if (!v) return '<p>这条回答对应的报告版本暂不可用。</p>';
+  const rawIds = new Set(), extras = [];
+  for (const ref of answerCitations(m)) {
+    const id = parseRef(ref, m.version).id;
+    if (/^R\d+$/.test(id)) { rawIds.add(id); continue; }
+    if (id.startsWith('term.')) {
+      const term = (v.terms?.length ? v.terms : S.terms).find(t => t.id === id.slice(5));
+      if (term) extras.push(`<section class="chat-source"><h4>名词解释 · ${esc(term.term)}</h4><p>${esc(term.plain)}</p><p class="small muted">${term.origin === 'model' ? 'AI 解释，未经人工核对；不是企业事实证据。' : esc(term.law || '案卷名词表；不是企业事实证据。')}</p></section>`);
+      continue;
+    }
+    const entry = [...(v.assertions || []), ...(v.missing || []), ...(v.questions || [])].find(x => x.id === id)
+      || (v.signals || []).flatMap(s => s.items.map(i => ({...i, id: `${s.key}.${i.key}`}))).find(x => x.id === id);
+    const refs = entry ? [...(entry.refs || []), entry.ref, ...(entry.checks || []).map(c => c.ref)].filter(Boolean) : [];
+    refs.filter(r => /^R\d+$/.test(r)).forEach(r => rawIds.add(r));
+    if (!refs.some(r => /^R\d+$/.test(r))) {
+      const label = entry?.label || entry?.kind_label || entry?.ask || entry?.text;
+      extras.push(`<section class="chat-source"><p>报告条目（可能包含规则判断或待核实问题，不等于外部原文）</p>${goLink(id, m.version, label ? `查看报告条目：${label}` : '查看对应报告条目')}</section>`);
+    }
+  }
+  const records = [...rawIds].filter(id => (v.raw_ids || []).includes(id)).map(rawById).filter(Boolean);
+  return records.map(r => {
+    const source = (v.sources || S.case.sources || {})[r.source_id];
+    const quotes = (m.quotes || []).filter(q => q.ref === r.id).map(q => q.text);
+    return `<section class="chat-source"><h4>${esc(r.title)}</h4><p class="small muted">${esc(source?.name || r.source_id)} · ${esc(KIND[rawKind(r)] || r.kind)} · 第 ${v.no} 版</p>
+      <p class="small muted">采集：${esc(fmtTime(r.retrieved_at))}${r.as_of ? ` · 数据截至：${esc(r.as_of)}` : ''}</p>
+      ${quotes.map(q => `<blockquote>${markText(q, [q])}</blockquote>`).join('')}
+      <button type="button" class="linkish" data-act="raw" data-ref="${esc(r.id)}" data-version="${v.no}" data-hl="${esc(JSON.stringify(quotes))}">查看完整记录</button>
+      ${sourceUrl(r.url) ? `<a class="linkish" href="${esc(sourceUrl(r.url))}" target="_blank" rel="noopener noreferrer">原文网站 ↗</a>` : ''}</section>`;
+  }).join('') + extras.join('');
+}
+function openChatSources(index) {
+  const m = S.case?.chat[index];
+  if (!m || m.role !== 'assistant') return;
+  const dlg = $('#rawDlg');
+  dlg.innerHTML = `<div class="dlg-in"><div class="dlg-head"><h3 id="rawTitle">原文出处 · 第 ${m.version} 版</h3><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div><div class="dlg-body">${chatSourcesHtml(m) || '<p>暂无可打开的原始记录。</p>'}</div></div>`;
+  if (!dlg.open) dlg.showModal();
+}
+function msgHtml(m, prev, index = 0) {
   if (m.role === 'user') {
     return `<div class="msg me"><div class="bubble">${esc(m.text)}</div>
       ${m.refs && m.refs.length ? `<div class="msg-refs">针对 ${m.refs.map(id => goLink(id, m.version)).join('')}</div>` : ''}</div>`;
   }
-  const add = m.suggest.filter(s => s.includes('加入案卷'));
-  const other = m.suggest.filter(s => !s.includes('加入案卷'));
+  const add = (m.suggest || []).filter(s => s.includes('加入案卷'));
+  const other = (m.suggest || []).filter(s => !s.includes('加入案卷'));
   const vNote = S.case && m.version !== ver().no ? `<span>基于第 ${m.version} 版</span>` : '';
-  const mode = m.mode ? `<span class="mode ${m.mode}">${MODE[m.mode]}${m.mode === 'replay' && m.recorded_at ? `（录于 ${esc(fmtTime(m.recorded_at))}）` : ''}</span>` : '';
-  const blocked = (m.blocked || []).map(b => `“${esc(b)}”`).join('、');
-  const rewrite = m.rewrites ? `<details class="rw"><summary>${m.mode === 'template'
-    ? `模型的回答越界，重写 ${m.rewrites} 次没成功，改用模板回答` : `程序拦下了越界说法，让模型重写了 ${m.rewrites} 次`}</summary>
-    被拦下的：${blocked}。这些是推测或定性，记录和规则里没有这样写。</details>` : '';
+  const mode = m.mode === 'replay' ? `<span>离线回放${m.recorded_at ? ` · ${esc(fmtTime(m.recorded_at))}` : ''}</span>` : m.mode === 'template' ? '<span>当前为基础答复</span>' : '';
   return `<div class="msg ai${m.not_found ? ' nf' : ''}${m.mode === 'guard' ? ' guard' : ''}">
-    <div class="ans">${citeText(m.text, m.version)}</div>
-    ${(m.citations || []).length ? `<div class="msg-refs">出处 ${m.citations.map(id => goLink(id, m.version)).join('')}</div>` : ''}
-    ${m.quotes.length ? `<div class="quotes"><div class="ql">原文（程序逐字核对过）</div>${m.quotes.map(q => `<blockquote>${esc(q.text)} ${/^R\d+$/.test(q.ref)
-      ? `<button type="button" class="cite" data-act="raw" data-ref="${esc(q.ref)}" data-version="${m.version}" data-hl="${esc(JSON.stringify([q.text]))}">${esc(recordRefText(q.ref))}</button>` : goLink(q.ref, m.version)}</blockquote>`).join('')}</div>` : ''}
-    ${other.length ? `<div class="sugg"><span>可以补充：</span>${other.map(s => `<button type="button" class="chip" data-act="supplement" data-kind="material" data-title="${esc(s)}">${esc(s)}</button>`).join('')}</div>` : ''}
+    <div class="ans">${answerText(m.text)}</div>
+    ${other.length ? `<ul class="chat-next">${other.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
-    <div class="msg-meta">${mode}${m.not_found ? '<span>数据里没有</span>' : ''}${m.dropped ? `<span>丢掉了 ${m.dropped} 条对不上的出处或引文</span>` : ''}${vNote}</div>
-    ${rewrite}
+    <div class="msg-meta">${mode}${m.not_found ? '<span>部分信息仍待核实</span>' : ''}${vNote}</div>
+    ${answerCitations(m).length ? `<div class="msg-refs chat-source-footer"><button type="button" class="linkish" data-act="chat-sources" data-index="${index}" aria-label="查看这条回答的原文出处">原文出处 ↗</button></div>` : ''}
   </div>`;
 }
 function refreshChat() {
@@ -1382,11 +1460,55 @@ function refreshChat() {
 }
 function scrollChat() { const b = $('#asBody'); if (b) b.scrollTop = b.scrollHeight; }
 
+const pendingChats = new Map();
+function pendingChat(caseId) {
+  if (pendingChats.has(caseId)) return pendingChats.get(caseId);
+  try {
+    const value = JSON.parse(sessionStorage.getItem(`qier-chat:${caseId}`) || 'null');
+    if (value && typeof value.key === 'string' && value.body?.text && Number.isInteger(value.body.version)) return value;
+  } catch { /* Storage can be disabled; the current page still keeps its request key. */ }
+  return null;
+}
+function savePendingChat(caseId, value) {
+  if (value) pendingChats.set(caseId, value); else pendingChats.delete(caseId);
+  try {
+    if (value) sessionStorage.setItem(`qier-chat:${caseId}`, JSON.stringify(value));
+    else sessionStorage.removeItem(`qier-chat:${caseId}`);
+  } catch { /* Guest ownership is in an HttpOnly cookie, never in this UI state. */ }
+}
+async function recoverChat() {
+  if (!S.case || S.busy) return;
+  const id = S.case.id, pending = pendingChat(id);
+  if (!pending) return;
+  try {
+    const state = await api(`/api/cases/${encodeURIComponent(id)}/chat/requests/${encodeURIComponent(pending.key)}`, {timeoutMs:15000});
+    if (state.status === 'complete') {
+      const saved = await api(`/api/cases/${encodeURIComponent(id)}`, {timeoutMs:15000});
+      savePendingChat(id, null);
+      if (S.case?.id === id) { S.case = saved; refreshChat(); }
+      toast('回答已恢复');
+    } else if (state.status === 'failed') {
+      savePendingChat(id, null); refreshChat();
+      toast('上次提问未完成，可以修改问题后重新发送。', true);
+    } else toast(state.status === 'interrupted' ? '暂时无法确认上次结果，请稍后恢复或查看案卷。' : '后台仍在处理，请稍后恢复回答。');
+  } catch (e) {
+    if (e.status === 404) { savePendingChat(id, null); refreshChat(); }
+    toast('未能恢复：' + e.message, true);
+  }
+}
+
 async function ask(q) {
   q = (q || '').trim();
   if (!q || S.busy || !S.case) return;
   const caseData = S.case, id = caseData.id, version = ver().no, selected = [...S.selected];
   const refs = selected.map(ref => chatRef(ref, version));
+  const body = {text:q, refs, version};
+  const previous = pendingChat(id);
+  const key = previous && JSON.stringify(previous.body) === JSON.stringify(body) ? previous.key
+    : (globalThis.crypto?.randomUUID?.() || `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  savePendingChat(id, {key, body});
+  const controller = new AbortController();
+  S.chatAbort = controller;
   S.busy = true;
   S.busyCaseId = id;
   const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version, created_at: new Date().toISOString() };
@@ -1395,9 +1517,11 @@ async function ask(q) {
   const targets = () => S.case && S.case.id === id && S.case !== caseData ? [caseData, S.case] : [caseData];
   const sameMessage = (a, b) => a === b || (a.role === b.role && a.version === b.version && a.text === b.text && a.created_at === b.created_at);
   S.selected.clear(); refreshSel(); refreshChat();
-  $('#assist').classList.add('open');
+  $('#assist')?.classList.add('open');
   try {
-    const reply = await api(`/api/cases/${encodeURIComponent(id)}/chat`, { method: 'POST', body: { text: q, refs, version } });
+    const reply = await api(`/api/cases/${encodeURIComponent(id)}/chat`, { method: 'POST', body,
+      headers:{'Idempotency-Key':key}, signal:controller.signal, timeoutMs:90000 });
+    savePendingChat(id, null);
     const savedUser = { ...message, created_at: reply.created_at || message.created_at };
     for (const target of targets()) {
       const index = target.chat.findIndex(m => sameMessage(m, message) || sameMessage(m, savedUser));
@@ -1406,6 +1530,7 @@ async function ask(q) {
       if (!target.chat.some(m => sameMessage(m, reply))) target.chat.push(reply);
     }
   } catch (e) {
+    if ([400, 401, 403, 404, 422].includes(e.status)) savePendingChat(id, null);
     for (const target of targets()) {
       const index = target.chat.findIndex(m => sameMessage(m, message));
       if (index !== -1) target.chat.splice(index, 1);
@@ -1415,7 +1540,7 @@ async function ask(q) {
       const ta = $('#asForm textarea'); if (ta) ta.value = q;
     }
     toast('小企没答上来：' + e.message, true);
-  } finally { S.busy = false; S.busyCaseId = null; refreshChat(); }
+  } finally { S.busy = false; S.busyCaseId = null; if (S.chatAbort === controller) S.chatAbort = null; refreshChat(); }
 }
 
 // ---------- 补充信息（二次分析） ----------
@@ -1485,6 +1610,7 @@ function openSupplement(opt = {}) {
     <div class="dlg-body">
       <div class="seg sup-kinds" role="radiogroup" aria-label="补充什么">${Object.entries(SUP_KIND).map(([k, o]) => `<button type="button" data-act="sup-kind" data-kind="${k}" aria-pressed="${k === kind}">${o.label}</button>`).join('')}</div>
       <p class="sup-help" id="supHelp">${esc(photo ? '拍合同、补充协议、聊天里发的合同照片。合同有好几页就一次拍完，系统按张读成文字，读完你核对。' : SUP_KIND[kind].help)}</p>
+      <p class="small muted">材料仅用于你的私人案卷，不会自动发布为评价。仅此浏览器可访问，清除浏览器数据后不能自动恢复。</p>
       ${photo ? `<p class="sup-note">照片只证明你手上确实有这份纸。写了什么要看读出来的文字；签没签、对方认不认、照片有没有被改过，都不算验证过。所以这一版里，合同上的说法会记成「材料里写的」，和查询结果分开列。</p>` : ''}
       <div id="supMat"${kind === 'material' ? '' : ' hidden'}><div class="mat-tools">${camOn ? `<span class="btn sm cam file-btn">📷 拍照 / 选照片（可多张）<input type="file" id="supCam" accept="image/*" capture="environment" multiple></span>` : ''}<span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="supFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="muted small" id="supRead"></span></div></div>
       <div id="supScen"${kind === 'need' ? '' : ' hidden'}><div class="small muted">场景（不选就从新需求里识别）</div><div class="chips" style="margin:4px 0 10px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="sup-scen" data-id="${esc(s.id)}" aria-pressed="false">${esc(s.label)}</button>`).join('')}</div></div>
@@ -1595,6 +1721,9 @@ document.addEventListener('click', e => {
   switch (d.act) {
     case 'go': location.hash = `#/${d.sec}`; break;
     case 'qi-nudge': toast('先打开一份案卷，小企才有数据可答'); break;
+    case 'chat-sources': openChatSources(Number(d.index)); break;
+    case 'cancel-chat': S.chatAbort?.abort('cancelled'); break;
+    case 'recover-chat': void recoverChat(); break;
     case 'raw': if (selectRefVersion(d.version == null ? null : Number(d.version))) openRaw(d.ref, d.hl ? JSON.parse(d.hl) : []); break;
     case 'goto': gotoItem(d.id, d.version == null ? null : Number(d.version), el); break;
     case 'sel': toggleSel(d.id); break;

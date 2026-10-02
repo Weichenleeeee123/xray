@@ -9,6 +9,8 @@ import json
 import math
 import os
 import tempfile
+import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +25,15 @@ from app.analysis.extract import Extraction, RawClaim, RuleExtractor
 from app.models import ClaimKind
 
 T = TypeVar("T", bound=BaseModel)
+REQUEST_DEADLINE: ContextVar[float | None] = ContextVar("llm_request_deadline", default=None)
+
+
+def remaining_timeout(default: float) -> float:
+    deadline = REQUEST_DEADLINE.get()
+    remaining = deadline - time.monotonic() if deadline is not None else default
+    if remaining <= 0:
+        raise LLMError("本次回答的等待预算已用完", code="deadline", retryable=True)
+    return min(default, remaining)
 
 
 class LLMError(Exception):
@@ -88,7 +99,12 @@ class LLM:
             cached = len(list(self.cache_dir.glob("*.json"))) if self.cache_dir else 0
         except (ValueError, OSError):
             host, cached = None, 0
+        try:
+            thinking = self.enable_thinking
+        except LLMError:
+            thinking = None
         return {"configured": self.configured, "mode": self.mode, "model": self.model or None,
+                "vision_model": self.vision_model or None, "enable_thinking": thinking,
                 "host": host, "cached_replies": cached}
 
     def _key(self, model: str, messages: list, json_out: bool, *, schema: type[BaseModel] | None = None,
@@ -141,7 +157,7 @@ class LLM:
             payload["enable_thinking"] = self.enable_thinking
         if json_out and self.json_mode:
             payload["response_format"] = {"type": "json_object"}
-        kwargs = dict(json=payload, timeout=self.timeout, follow_redirects=False,
+        kwargs = dict(json=payload, timeout=remaining_timeout(self.timeout), follow_redirects=False,
                       headers={"Authorization": f"Bearer {self.api_key}"})
         url = f"{self.base_url}/chat/completions"
         if self.client is not None:
@@ -195,6 +211,7 @@ class LLM:
             request_messages = [{"role": "system", "content": "只输出符合以下 JSON Schema 的对象：" +
                                  json.dumps(schema.model_json_schema(), ensure_ascii=False)}] + request_messages
         for attempt in range(2 if schema else 1):
+            remaining_timeout(self.timeout)  # Schema repairs share the same caller budget.
             try:
                 text = self._call(model, request_messages, json_out, temperature)
             except httpx.HTTPStatusError as err:
