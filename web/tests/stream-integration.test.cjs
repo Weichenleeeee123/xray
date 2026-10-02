@@ -8,22 +8,23 @@ function harness() {
   const nodes = new Map();
   function node(selector) {
     if (!nodes.has(selector)) nodes.set(selector, { innerHTML: '', textContent: '', isConnected: true,
-      dataset: {}, hidden: true, open: true, value: '', close() { this.open = false; }, append() {}, remove() {},
+      dataset: {}, hidden: true, open: true, value: '', close() { this.open = false; }, append() {}, remove() {}, addEventListener() {},
       classList: { add() {}, remove() {}, contains() { return false; } }, querySelector: () => null });
     return nodes.get(selector);
   }
   const sent = [], stops = [];
   let resolveRequest, rejectRequest;
-  const ctx = vm.createContext({ console, FormData, CSS: { escape: s => s },
+  const ctx = vm.createContext({ console, FormData, URLSearchParams, CSS: { escape: s => s },
     location: { hash: '#/check', search: '' }, history: { replaceState() {} },
     setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
     window: { addEventListener() {}, matchMedia: () => ({ matches: false }) },
-    document: { querySelector: node, querySelectorAll: () => [], addEventListener() {}, createElement: () => node('progress') },
+    document: { body: node('body'), querySelector: node, querySelectorAll: () => [], addEventListener() {}, createElement: () => node('progress') },
     ResearchProgress: {
       mount: () => ({ onEvent() {}, stop() { stops.push(true); } }),
       readCaseStream: (url, body) => { sent.push({ url, body }); return new Promise((resolve, reject) => { resolveRequest = resolve; rejectRequest = reject; }); },
     },
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../case-design.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8').replace(/boot\(\);\s*$/, ''), ctx);
   const run = code => vm.runInContext(code, ctx);
   run(`toast=()=>{}; bindForm=()=>{}; renderCase=()=>{}; intakeHtml=()=>'';
