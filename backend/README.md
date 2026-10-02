@@ -1,6 +1,6 @@
-# X-Ray 后端
+# 企er（X-Ray）后端
 
-施工依据：[黑客松版 PRD](../docs/2026-10-02-xray-hackathon-prd.md)。主线：输入企业名和一句需求 → 汇集数据 → 四层报告 → AI 助手 → 补充信息后二次分析。
+施工依据：[黑客松版 PRD](../docs/2026-10-02-xray-hackathon-prd.md)。主线：输入企业名和一句需求 → 汇集数据 → 分层报告 → 小企（AI 助手）→ 补充信息后二次分析。
 
 ## 运行
 
@@ -12,16 +12,30 @@ cd backend
 - 前端：http://localhost:8000 （`web/`，原生 JS，不打包，改完刷新即可）
 - 接口文档：http://localhost:8000/docs
 - 断网备用的静态演示：http://localhost:8000/demo/
-- 测试：`.venv\Scripts\python -m pytest`（不连网、不需要 Key）
-- 新机器：`python -m venv .venv`，再 `.venv\Scripts\python -m pip install -r requirements-b.txt`（包含共享依赖和图片验证所需的 Pillow）
+- 测试：`.venv\Scripts\python -m pytest`，共 303 个，不连网、不需要 Key、不扣企查查积分；前端版本协议测试在仓库根目录跑 `node --test web/tests/*.test.cjs`，共 14 个
+- 新机器：`python -m venv .venv`，再 `.venv\Scripts\python -m pip install -r requirements-b.txt`（包含共享依赖和图片验证所需的 Pillow）。不要复制别人的 `.venv`，解释器路径不能跨机器用
 
-### 接模型
+### 配置（`backend/.env`）
 
-复制 `.env.example` 为 `.env`，填比赛 Tokendance 的地址、Key、模型名，Key 只保存在被 Git 忽略的本机 `.env`。当前地址为 `https://tokendance.space/gateway/v1`，文本与视觉均使用 `qwen3.8-max`，已在线验证 `TOKENDANCE_JSON_MODE=1`。`TOKENDANCE_ENABLE_THINKING=0` 默认关闭长思考，避免完整案卷问答因长思考超时；`1` 开启，显式留空则不传该参数，修改后重启服务。不填凭据也能跑：助手退回模板回答，需求识别退回关键词，图片材料提示手动粘贴。
+复制 `.env.example` 为 `.env` 再填。`.env` 被 git 忽略，Key 只放这里，不写进文档和提交。改完重启后端。什么都不填也能跑：小企退回模板回答，需求识别退回关键词，图片材料提示手动粘贴，真实公司的工商登记显示"没查"。
 
-`XRAY_LLM_MODE`：`live` 调网关并把成功结果录进 `data/cache/`，网络故障时尝试明确标注的回放；`replay` 只回放（断网演示，界面会标"离线回放"）；`off` 不调模型。401/403 直接报告鉴权问题，不重试。
+| 配置 | 默认 | 作用 |
+|---|---|---|
+| `TOKENDANCE_BASE_URL`、`TOKENDANCE_API_KEY` | — | 比赛模型网关，写到 `/v1` 这一级。地址 `https://tokendance.space/gateway/v1` |
+| `TOKENDANCE_MODEL`、`TOKENDANCE_VISION_MODEL` | — / 同文本模型 | 文本和看图的模型，现在都用 `qwen3.8-max` |
+| `TOKENDANCE_JSON_MODE` | `0` | `1` 让网关按 JSON 输出，已在线验证，`.env.example` 里是 `1`；服务端照样做 Schema 校验 |
+| `TOKENDANCE_ENABLE_THINKING` | `0` | 长思考。开了以后完整案卷问答会超过 45 秒超时，所以默认关 |
+| `TOKENDANCE_TIMEOUT` | `45` | 单次请求超时，秒 |
+| `XRAY_LLM_MODE` | `live` | `live` 调网关，成功结果录进 `data/cache/`，网络故障时回放并标明；`replay` 只回放（断网演示，界面标"离线回放"）；`off` 不调模型，也不联网搜索。401/403 直接报鉴权问题，不重试 |
+| `XRAY_COMMERCIAL` | 空 | 商业工商数据：`qcc_agent`（企查查智能体数据平台，推荐）、`qcc`、`tianyancha`；空就不查 |
+| `QCC_AGENT_KEY` | — | 企查查智能体平台的 Key，不带 `Bearer`。可以填多个，用逗号隔开，见下文"企查查" |
+| `XRAY_QCC_MAX_POINTS` | `300` | 单次运行最多实际花多少积分，缓存命中不算 |
+| `QCC_APP_KEY`、`QCC_SECRET_KEY`、`TIANYANCHA_TOKEN`、`XRAY_COMMERCIAL_MAX_CALLS` | — / `30` | 老的企查查、天眼查开放平台，要企业实名，现在没用 |
+| `XRAY_AMAC_DETAIL` | `1` | 名单里查到的私募管理人，再取一次中基协详情页；测试里设 `0` |
+| `XRAY_REF_DEPOSIT_RATE` | `0.011` | 承诺收益拿来比的一年期定存参考利率（演示参数） |
+| `XRAY_CASES_DIR`、`XRAY_REVIEWS_DIR`、`XRAY_CACHE_DIR` | `data/cases` 等 | 案卷、用户评价、缓存放哪；测试指到临时目录 |
 
-2026-10-02 06:18（中国时间）已用更新的本机凭据跑通合成材料的真实网关验收：需求识别、中文图片读取、完整案卷问答、v2 后查询旧版和同输入回放。06:28 合并报告短句功能后再次通过，两次问答实测约 7.74 / 5.19 秒，均为模型回答且通过引用校验；不是延迟承诺或真实公司判断验收。这两轮历史测试使用进程内 HTTP 路由，不是浏览器验收。详见 [Tokendance 能力记录](../docs/tokendance.md)；B 的版本引用、缓存与待接入服务见 [B 接入说明](../docs/backend-b-integration.md)。没有进行公网部署。
+网关的实测结果和长思考超时的来龙去脉见 [Tokendance 能力记录](../docs/tokendance.md)；版本化引用、缓存与回放、还没接进主流程的模型增强见 [后端 B 接入说明](../docs/backend-b-integration.md)。没有做公网部署；要部署得先加访问口令，防止 Key 的额度被刷。
 
 ### 浏览器演示验证
 
@@ -40,7 +54,8 @@ cd backend
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
-| GET | `/api/health` | 名单条数和日期、已有证据包、模型状态（不含 Key） |
+| GET | `/api/health` | 名单条数和日期、已有证据包、模型状态、企查查状态（Key 个数、正在用第几个、本次花了多少积分；不含 Key） |
+| GET | `/api/sources` | 数据来源目录（`Source`）：每个来源的名称、类型、日期、链接；报告里的 `source` 指向这里 |
 | GET | `/api/scenarios` | 6 个场景模板 |
 | GET | `/api/glossary` | 名词解释词表（`app/glossary.json`），前端标注和助手共用 |
 | POST | `/api/intake` | `{need}` → 场景、关注点、替谁看、金额（输入页预览用，用户可改） |
@@ -49,6 +64,7 @@ cd backend
 | GET | `/api/cases`、`/api/cases/{id}` | 案卷列表；单个案卷（全部版本、原始数据、对话） |
 | POST | `/api/cases/{id}/supplements` | 二次分析。`kind`：`material` 新材料 / `reply` 对方回复 / `need` 改需求；`text` 必填 |
 | POST | `/api/cases/stream`、`/api/cases/{id}/supplements/stream` | 同上两个，但边查边发进度（NDJSON，一行一个事件），最后一行是整个案卷。给等待动画用，格式见 `docs/progress-events.md` |
+| POST | `/api/cases/{id}/resolve` | 对一条判断下结论（`judgment_id`、`action`：clarified / withdrawn / recheck、`note`），出一版新报告。界面上判断页先藏着（地址带 `?judg=1` 才显示），见[判断更新契约](../docs/2026-10-02-judgment-update-contract.md) |
 | POST | `/api/cases/{id}/reviews` | 把这家公司最新的用户评价放进案卷，出一版新报告（"更新用户评价"）；评价没变返回 409 |
 | GET | `/api/reviews?company=&author=` | 某家公司的用户评价：条数、1–5 星分布（不算平均分）、评价列表（新的在前；`mine` 标出这个浏览器写的） |
 | POST | `/api/reviews` | 写评价：`company`、`stars` 1–5、`relation`（customer / employee / applicant / other）、`text` 10–500 字、可选 `nickname`、`author`（浏览器匿名编号）。同一编号对同一家公司只能写一条，重复 409 |
@@ -58,15 +74,19 @@ cd backend
 | GET | `/api/licenses/check?name=` | 查机构是否在银行业金融机构名单里 |
 | GET | `/api/companies/profile?name=` | 某家公司汇集到的全部记录 |
 
-完整的返回格式见 [`docs/sample-case.json`](../docs/sample-case.json)：演示案例 C 补了一次对方回复、问了一次助手之后的案卷。
+返回格式以 `app/models.py` 为准。[`docs/sample-case.json`](../docs/sample-case.json) 是早期样例（演示案例 C 补了一次对方回复、问了一次助手之后的案卷），后来加的 `glance`、`terms`、`charts`、`judgments` 等字段不在里面。
 
 ## 前端（`web/`）
 
+界面名叫"企er"，AI 助手叫"小企"。顶部三个分区，右边一栏始终是小企。细节见 [前端交接](../docs/frontend.md)。
+
 | 页面 | 地址 | 内容 |
 |---|---|---|
-| 输入页 | `#/` | 公司全称 + 一句需求；需求停顿 0.8 秒自动识别场景（可改）；可选材料（粘贴或上传）；演示案例一键填入；最近的案卷 |
-| 报告页 | `#/case/<id>`、`#/case/<id>/v/<n>` | 首屏是一页结论（家人版 / 网点版，可打印成一页 A4）；下面是标签页：变化（第 2 版起）、四个信号（只列要看的，其余折叠）、宣称 vs 记录、该问对方的、原始数据（每个来源单独标查到了 / 查了没有 / 没查 / 查询失败） |
-| 助手 | 报告页右栏（窄屏是"问助手"按钮） | 报告里每条右边有"问"（悬停出现）；回答里的出处和逐字引文点得开；提到新情况时给"加入案卷"按钮，走二次分析，聊天本身不改报告 |
+| 查企 | `#/check`（空地址也到这里） | 公司全称 + 一句需求；需求停顿 0.8 秒自动识别场景（可改）；可选材料（粘贴或上传）；演示案例一键填入 |
+| 案卷 | `#/cases` | 查过的公司和它们的每一版 |
+| 我的 | `#/me` | 模型和数据源状态、每家都查的名单、名词表、这几条底线 |
+| 报告页 | `#/case/<id>`、`#/case/<id>/v/<n>` | 首屏"一眼看懂"：第一问的结论、它说的对记录里的、四个信号小卡、下一步该问什么；"文字版"里是一页结论（家人版 / 网点版，可打印成一页 A4）。下面是图和标签页：变化（第 2 版起）、四个信号、宣称 vs 记录、该问对方的、原始数据、评价 |
+| 小企 | 右栏（窄于 1280px 收成右下角的"小企"按钮） | 报告里每条右边有"问"（悬停出现）；回答里的出处和逐字引文点得开；提到新情况时给"加入案卷"按钮，走二次分析，聊天本身不改报告 |
 
 - 来源 = 来源类型 + 数据日期 + 原始数据编号，一行灰字，点开就是原始记录；原始记录里列出报告用到它的地方，引文高亮。
 - 虚构公司全程挂"演示数据 · 公司为虚构"，打印出来的一页结论上也有。只有真查到了演示数据才挂，真实公司"没查"的记录显示"没有数据"。
@@ -120,8 +140,10 @@ cd backend
 企查查智能体数据平台（`app/sources/qcc_agent.py`）一家公司依次调：工商信息 → 风险扫描（35 项各有几条）→ 有记录的项再取明细 → 股东、分支机构、上市信息。平台是 MCP 协议，实际就是 `POST https://agent.qcc.com/mcp/<server>/stream` 的 JSON-RPC 请求。规矩：
 - 0 条的项不调明细，算"查了，没有"；明细只给前几条时按风险扫描的总数算（`CompanyProfile.counts`）。
 - 平台摘要里"排查安全，允许进入下一步"这类定性话，存档前删掉。
-- 法定代表人、负责人、联系方式不存；自然人股东写成"自然人股东A"，申请人等是个人的写"自然人"。
-- 积分：一家公司约 40 积分（股东 20、风险扫描 5、分支机构 5、工商信息 3……），平台对同一家公司每月最多扣 100；`XRAY_QCC_MAX_POINTS` 限制单次运行的总花费。结果按"公司 + 工具"缓存，不重复扣。
+- 法定代表人、负责人、联系方式不存；自然人股东写成"自然人股东A"，申请人等是个人的写"自然人"；处罚决定原文里只留讲这家公司的分条，被处罚的个人写成"相关个人"。
+- 积分：一家公司约 40 积分（股东 20、风险扫描 5、分支机构 5、工商信息 3……），平台对同一家公司每月最多扣 100；`XRAY_QCC_MAX_POINTS` 限制单次运行的总花费。结果按"公司 + 工具"缓存在 `data/cache/qcc_agent/`，不重复扣。新开 worktree 或换机器时把这个缓存目录一起拷过去，否则会重新扣积分。
+- 多个 Key：`QCC_AGENT_KEY=key1,key2,key3`。一直用当前这个，它失效、积分用完或被限流才换下一个；"查不到这家公司"这类和 Key 无关的错误不换。都不能用时，报告里记"查询失败"，并写明每个 Key 的原因。`/api/health` 只显示 Key 的个数和正在用第几个。
+- 出质、抵押按角色算：出质只算标的企业是它的，抵押只算抵押人是它的；它当债权人的条数写在说明里，不算它的风险。风险扫描里打官司的条数不分原告被告，只标"要留意"；终本案件、税务非正常户这类才标"有问题"。
 - 证据包里没有 `registry` 段（只摘了文书）时，登记信息照样从企查查取。
 - 宣称上市的，对照上市信息里的交易所、股票代码。
 
