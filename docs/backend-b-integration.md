@@ -16,7 +16,7 @@ B 开发基线为 Git 提交 `34a3406`，本地实现提交为 `59fdf2d`，交�
 
 其他机器先创建自己的虚拟环境。不要复制本机 `.venv`，其解释器路径不可跨机器复用。`requirements-b.txt` 包含共享 `requirements.txt` 和图片验证所需的 Pillow，新机器应使用上述 B 依赖入口。将 `.env.example` 的配置写入本机 `backend/.env`，不要提交 Key。当前文本与视觉模型均为 `qwen3.8-max`，`TOKENDANCE_JSON_MODE=1`、`TOKENDANCE_ENABLE_THINKING=0`。思考开关未设置也默认关闭；`1` 开启，显式留空遵循提供方默认值，修改后需重启。探针命令和真实测试状态见 [Tokendance 能力验证](tokendance.md)。
 
-代码在 [PR #1](https://github.com/Weichenleeeee123/xray/pull/1) 交接，未直接合入 main，也未进行公网部署。更新本机凭据后，2026-10-02 06:18（中国时间）已跑通当前模型的真实接口验收。完整案卷默认长思考曾触发 45 秒超时，现通过请求顶层 `enable_thinking=false` 修复；保留原超时、完整上下文及全部服务端校验，没有切换模型。05:34 的鉴权失败是历史结果，不再是当前阻塞。
+基础代码已通过 [PR #1](https://github.com/Weichenleeeee123/xray/pull/1) 由维护者于 15:20 合入 main；本轮版本引用、证据包和浏览器验收增量在 [PR #7](https://github.com/Weichenleeeee123/xray/pull/7) 交接，尚未合并，也未进行公网部署。更新本机凭据后，2026-10-02 06:18（中国时间）已跑通当前模型的真实接口验收。完整案卷默认长思考曾触发 45 秒超时，现通过请求顶层 `enable_thinking=false` 修复；保留原超时、完整上下文及全部服务端校验，没有切换模型。05:34 的鉴权失败是历史结果，不再是当前阻塞。
 
 ## 已接入的接口
 
