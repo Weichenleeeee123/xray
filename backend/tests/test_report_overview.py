@@ -358,7 +358,7 @@ def test_api_projects_legacy_versions_after_ownership_check_without_rewriting_di
         current_summary = case["versions"][0]["overview"]
         assert current_summary["headline"] == f"{current_summary['trust_label']}，{current_summary['trust_note']}"
         path = main.store._path(case["id"])
-        legacy = json.loads(path.read_text())
+        legacy = json.loads(path.read_text(encoding="utf-8"))
         if legacy_shape == "no_overview":
             legacy["versions"][0].pop("overview")
         else:
@@ -366,7 +366,7 @@ def test_api_projects_legacy_versions_after_ownership_check_without_rewriting_di
                 legacy["versions"][0]["overview"].pop(field)
             legacy["versions"][0]["overview"]["headline"] = "旧版概况用语"
         original_signals = legacy["versions"][0]["signals"]
-        path.write_text(json.dumps(legacy, ensure_ascii=False))
+        path.write_text(json.dumps(legacy, ensure_ascii=False), encoding="utf-8")
         validated = Case.model_validate(legacy).versions[0].overview
         assert validated is None if legacy_shape == "no_overview" else validated.trust_level == "unknown"
         loaded = client.get(f"/api/cases/{case['id']}").json()
@@ -374,11 +374,11 @@ def test_api_projects_legacy_versions_after_ownership_check_without_rewriting_di
         assert response["version"]["overview"] == loaded["versions"][0]["overview"]
         assert response["version"]["overview"] == current_summary
         assert response["version"]["signals"] == original_signals
-        assert json.loads(path.read_text()) == legacy
+        assert json.loads(path.read_text(encoding="utf-8")) == legacy
         supplemented = client.post(f"/api/cases/{case['id']}/supplements",
                                    json={"kind": "material", "text": "服务合同：款项退还条件需另行书面确认。"})
         assert supplemented.status_code == 200
-        saved = json.loads(path.read_text())["versions"]
+        saved = json.loads(path.read_text(encoding="utf-8"))["versions"]
         assert all(v["overview"]["schema_version"] == 1 for v in saved)
         assert all(v["overview"]["headline"] == f"{v['overview']['trust_label']}，{v['overview']['trust_note']}" for v in saved)
         with TestClient(main.app) as outsider:
