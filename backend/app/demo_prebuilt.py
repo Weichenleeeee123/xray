@@ -1,6 +1,6 @@
 """预制示例：演示用的几个案例，第一版报告和按顺序补充后的每一版都提前生成好。
 
-现场点示例时直接交出预制好的案卷，按生成时的节奏回放研究过程（最长约 20 秒），不联网也能完整演示，
+现场点示例时直接交出预制好的案卷，按均衡节奏整理已保存的研究步骤（最长约 20 秒），不联网也能完整演示，
 每次演示的报告也一字不差。输入改过任何一处（公司、需求、材料、场景），就走正常查询。
 
 预制包由 tools/build_demo_bundles.py 生成，放在 data/demo_prebuilt/<示例 id>.json：
@@ -20,7 +20,7 @@ from app.models import Case, CaseIn, PrebuiltProvenance, SupplementIn
 from app.sources.licenses import normalize
 
 DIR = Path(os.getenv("XRAY_DEMO_PREBUILT_DIR", config.DATA_DIR / "demo_prebuilt"))
-REPLAY_CAP = 20.0   # 回放研究过程最长多少秒；生成时更久就按比例压缩
+REPLAY_CAP = 20.0   # 预制整理的总时长上限，不复现历史网络等待或缓存命中耗时
 MATERIAL_PIPELINE = 2  # Saved company snapshots plus expanded contract checks.
 
 
@@ -87,19 +87,38 @@ def for_supplement(case: Case, body: SupplementIn) -> tuple[dict, int] | None:
     return None
 
 
+def replay_schedule(events: list[dict], cap: float = REPLAY_CAP) -> list[tuple[float, dict]]:
+    """只调整已录制事件的展示时间；保留事件顺序、覆盖状态与并行关系。"""
+    schedule, started, elapsed = [], {}, 0.0
+    for event in events:
+        if event.get("type") != "step":
+            continue
+        key = event.get("id")
+        if event.get("phase") == "start":
+            started[key] = elapsed
+        elif event.get("phase") == "done" and key in started:
+            # 留出到站、查阅的时间；未安排的查询无需走一遍动画。
+            duration = 3.6 if key in {"lists", "amac", "registry", "finance", "pack", "web"} else 0.5
+            if key == "opinion":
+                duration = 1.2
+            if event.get("coverage") == "not_covered":
+                duration = 0.0
+            elapsed = max(elapsed, started.pop(key) + duration)
+        schedule.append((elapsed, {k: v for k, v in event.items() if k != "t"}))
+    scale = min(1.0, max(0.0, cap) / elapsed) if elapsed else 1.0
+    return [(when * scale, event) for when, event in schedule]
+
+
 def replay(events: list[dict], cap: float = REPLAY_CAP) -> None:
-    """把生成时记下的步骤事件按原来的节奏再发一遍。没有人在等进度（普通接口）就不等。"""
+    """均衡回放预制步骤；普通接口和真实查询不增加等待。"""
     if not progress.active():
         return
-    steps = [e for e in events if e.get("type") == "step"]
-    total = max((float(e.get("t") or 0) for e in steps), default=0.0)
-    scale = min(1.0, cap / total) if total else 1.0
     start = time.monotonic()
-    for event in steps:
-        wait = float(event.get("t") or 0) * scale - (time.monotonic() - start)
+    for when, event in replay_schedule(events, cap):
+        wait = when - (time.monotonic() - start)
         if wait > 0:
             time.sleep(wait)
-        progress.emit({k: v for k, v in event.items() if k != "t"})
+        progress.emit(event)
 
 
 def _provenance(bundle: dict, stage: dict) -> PrebuiltProvenance:

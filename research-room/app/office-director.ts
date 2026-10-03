@@ -149,7 +149,13 @@ export class OfficeDirector {
     this.clock += delta;
     this.local += delta;
     const a = this.action;
-    const boundary = this.local >= a.end;
+    const pendingLookup = state.steps.some((s) => s.lookup && s.phase === 'start' &&
+      !this.visited.has(s.id) && s.id !== 'reviews' && s.id !== 'opinion');
+    const lookupEnded = a.id === 'research' &&
+      !a.tasks?.some((id) => state.steps.some((s) => s.id === id && s.phase === 'start'));
+    // Wake a stationary actor immediately. A walk still finishes continuously.
+    const boundary = this.local >= a.end || lookupEnded ||
+      ((a.id === 'idle' || a.id === 'wait') && pendingLookup);
     if (!boundary) return;
     if (a.finish === 'left') this.paperStage = 1;
     if (a.finish === 'right') this.paperStage = 2;
