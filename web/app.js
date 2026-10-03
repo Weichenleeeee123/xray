@@ -630,6 +630,7 @@ function renderCase() {
       ${isDesignReview() ? researchReport(c, v) : caseHead(c, v) + conclusionHtml(v) + chartsHtml(v)}
       ${!isDesignReview() ? `${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc((SHOW_JUDGMENTS && v.judgment_summary) || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}${tabsHtml(v)}<div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>` : ''}
       ${isDesignReview() ? researchDisclaimer() : '<footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>'}
+      ${prebuiltNoticeHtml(v)}
     </div>
     <aside class="assist${assistOpen ? ' open' : ''}" id="assist" aria-label="小企（AI 栏）">${assistHtml()}</aside>
   </div>
@@ -654,7 +655,6 @@ function caseHead(c, v) {
       </div>
     </div>
     <h1>${esc(c.case.company_name)}</h1>
-    ${prebuiltNoticeHtml(v)}
     ${v.need ? `<p class="need">“${esc(v.need)}”</p>` : ''}
     <div class="meta-line">
       <span>${esc(v.scenario_label)}</span>
@@ -663,7 +663,7 @@ function caseHead(c, v) {
       <button type="button" class="linkish" data-act="tab" data-tab="raw">汇集了 ${raws.length} 条记录：${cov}</button>
     </div>
     ${v.no === c.current ? '' : `<div class="old-banner">你在看第 ${v.no} 版（${esc(v.trigger_label)}），最新是第 ${c.current} 版。<button type="button" class="linkish" data-act="ver" data-no="${c.current}">回到最新</button></div>`}
-    ${v.notes && v.notes.length ? `<ul class="notes">${v.notes.map(t => `<li${/演示|虚构/.test(t) ? ' class="demo"' : ''}>${esc(t)}</li>`).join('')}</ul>` : ''}
+    ${reportReadingNotes(v).length ? `<ul class="notes">${reportReadingNotes(v).map(t => `<li${/演示|虚构/.test(t) ? ' class="demo"' : ''}>${esc(t)}</li>`).join('')}</ul>` : ''}
   </header>`;
 }
 
@@ -813,7 +813,7 @@ function glanceHtml(v, includeSignals = true) {
     ${q ? `<div class="gl-next"><span class="kicker">下一步，先问对方</span><p>${termText(q.ask, seen)}</p>
       <span class="small muted">${termText(q.check_where, seen)}</span>
       ${v.questions.length > 1 ? ` <button type="button" class="linkish small" data-act="tab" data-tab="questions">全部 ${v.questions.length} 个问题 →</button>` : ''}</div>` : ''}
-    ${ai ? `<p class="gl-ai">${prebuiltInfo(v) ? '快照生成时，' : ''}短句由 AI 按规则结论缩写，程序核对过数字和措辞；点任一行看完整原句和出处。</p>` : ''}`;
+    ${ai ? '<p class="gl-ai">短句由 AI 按规则结论缩写，程序核对过数字和措辞；点任一行看完整原句和出处。</p>' : ''}`;
 }
 const currentOp = v => (S.audience === 'family' && v.onepager) || S.opCache[`${v.no}:${S.audience}`] || null;
 async function loadOnepager(v) {
@@ -838,7 +838,7 @@ function opBody(op, v) {
   const noClaims = !v.assertions.length;
   const body = `<div class="op-head"><div><h3>${esc(op.title)}</h3><p>${esc(op.subject)}</p></div>
       <div class="stamp">案卷 ${esc(S.case.id)} · 第 ${v.no} 版<br>${esc(fmtTime(v.created_at))}${isDemoCase() ? '<br><b class="demo-mark">演示数据 · 公司为虚构</b>' : ''}</div></div>
-    ${prebuiltNoticeHtml(v)}<p class="headline">${esc(op.headline)}</p>
+    <p class="headline">${esc(op.headline)}</p>
     <div class="op-cols">
       ${col('哪里对不上', op.mismatch, 'mismatch', noClaims ? '还没有它的说法可以对照。' : '它的说法和记录没有对不上的地方。')}
       ${col('查到了什么', op.found, 'found', '还没查到具体记录。')}
@@ -848,7 +848,7 @@ function opBody(op, v) {
   const used = [...seen].map(termOf).filter(Boolean).slice(0, 6);
   return `${body}
     ${used.length ? `<div class="op-terms"><h4>这页里的几个词</h4><dl>${used.map(t => `<div><dt>${esc(t.term)}</dt><dd>${esc(t.plain)}${t.origin === 'model' ? '（AI 解释）' : ''}</dd></div>`).join('')}</dl></div>` : ''}
-    <p class="op-foot">${esc(op.footer)}</p>`;
+    <p class="op-foot">${esc(op.footer)}</p>${prebuiltNoticeHtml(v)}`;
 }
 
 // 标签页：第二到第四层

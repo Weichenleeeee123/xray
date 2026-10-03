@@ -29,7 +29,7 @@ export function DemoExamples({ selected, onSelect, onRemove }: {
     return () => controller.abort();
   }, [attempt]);
   return <div className="demo-examples">
-    <div className="demo-links" aria-label="预制示例">
+    <div className="demo-links" aria-label="查询示例">
       <span>试试示例</span>
       {demos.map(demo => <button key={demo.id} type="button"
         aria-pressed={selected?.id === demo.id}

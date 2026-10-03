@@ -13,7 +13,10 @@ function prebuiltInfo(v) {
 function prebuiltNoticeHtml(v) {
   const source=prebuiltInfo(v);
   if (!source) return '';
-  return `<aside class="report-provenance" aria-label="本版资料来源"><strong>预制示例快照</strong><p>本次未重新联网查询，报告沿用预先生成的资料与结论。${source.built_at ? `预制包生成时间：${esc(source.built_at)}。` : ''}各条资料的日期与覆盖范围见出处。</p></aside>`;
+  return '<p class="report-provenance" aria-label="本版资料来源">预置示例，本次未重新联网查询。</p>';
+}
+function reportReadingNotes(v) {
+  return (v.notes || []).filter(n => !(prebuiltInfo(v) && typeof n === 'string' && n.startsWith('预制示例')));
 }
 function researchVersionPicker(c,v) {
   if (c.versions.length < 2) return `<span>第 ${v.no} 版</span>`;
@@ -25,7 +28,7 @@ function researchHero(c,v) {
   return `<header class="research-hero report-brief-hero">
     <div class="research-topline"><a href="/" class="back-study">← 回到小企研究室</a><div class="research-actions"><button class="research-button ghost" data-act="print-open" aria-haspopup="dialog" aria-controls="printDlg">${researchIcon('print')}打印一页结论</button><button class="research-button ghost" data-act="supplement">＋ 补充信息</button><button class="research-button" data-act="section" data-section="photo">${researchIcon('camera')}拍照复核</button></div></div>
     <div class="hero-title"><span class="research-eyebrow"><i></i> 企业研究档案 <span class="hero-scenario">${esc(v.scenario_label || '企业核验')}</span></span><h1>${esc(c.case.company_name)}</h1><div class="hero-meta"><span>案卷 ${esc(c.id.slice(0,8).toUpperCase())}</span><span>${esc(v.created_at.slice(0,10))} 更新</span>${researchVersionPicker(c,v)}${demo?'<span class="report-demo-note">演示数据 · 公司为虚构</span>':''}<button data-act="tab" data-tab="raw">${v.raw_ids.length} 条来源记录 ${researchIcon()}</button>${v.no>1?`<button data-act="tab" data-tab="changes">查看本版变化 ${researchIcon()}</button>`:''}</div></div>
-    ${prebuiltNoticeHtml(v)}<div class="report-purpose"><span>本次关注</span><p>${esc(v.need || v.scenario_label || '了解这家公司的公开资料')}</p></div>
+    <div class="report-purpose"><span>本次关注</span><p>${esc(v.need || v.scenario_label || '了解这家公司的公开资料')}</p></div>
     <nav class="report-jumpnav" aria-label="报告章节导航">${steps.map(([id,label],i)=>`<button type="button" data-act="section" data-section="${id}"><span>0${i+1}</span>${label}${researchIcon()}</button>`).join('')}</nav>
   </header>`;
 }
@@ -212,7 +215,7 @@ function researchTabPanel(group,key,content) {
   return `<div class="research-tab-panel" id="research-${group}-panel-${key}" role="tabpanel" aria-labelledby="research-${group}-tab-${key}" tabindex="0"${researchActiveTab[group]===key?'':' hidden'}>${content}</div>`;
 }
 function researchNotes(c,v) {
-  return `<details class="research-notes"><summary>版本与阅读说明</summary><div class="research-versions">${c.versions.map(x=>`<button class="research-button ghost" data-act="ver" data-no="${x.no}" aria-current="${x.no===v.no}">第 ${x.no} 版 · ${esc(x.trigger_label)}</button>`).join('')}</div><ul>${(v.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></details>`;
+  return `<details class="research-notes"><summary>版本与阅读说明</summary><div class="research-versions">${c.versions.map(x=>`<button class="research-button ghost" data-act="ver" data-no="${x.no}" aria-current="${x.no===v.no}">第 ${x.no} 版 · ${esc(x.trigger_label)}</button>`).join('')}</div><ul>${reportReadingNotes(v).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></details>`;
 }
 function researchReviews(v) {
   return `<div class="research-reviews" id="research-reviews-body">${reviewsPanel(v)}</div>`;

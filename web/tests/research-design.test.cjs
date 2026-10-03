@@ -16,12 +16,13 @@ function harness(){
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../case-design.js'),'utf8'),ctx);
  return {ctx,run:code=>vm.runInContext(code,ctx)};
 }
-test('snapshot notice uses version provenance, escapes source metadata and supports old bundles',()=>{
+test('snapshot footnote uses version provenance without exposing metadata and supports old bundles',()=>{
  const h=harness();
  h.ctx.v={prebuilt:{demo_id:'B',built_at:'2026-10-02 <script>x</script>'},notes:[]};
  const html=h.run('prebuiltNoticeHtml(v)');
- assert.match(html,/预制示例快照/);assert.match(html,/本次未重新联网查询/);assert.match(html,/预制包生成时间/);assert.doesNotMatch(html,/<script>/);
- h.ctx.v={notes:['预制示例：之前生成，不重新联网查询。']};assert.match(h.run('prebuiltNoticeHtml(v)'),/预制示例快照/);assert.doesNotMatch(h.run('prebuiltNoticeHtml(v)'),/预制包生成时间|生成时间未记录/);
+ assert.match(html,/预置示例，本次未重新联网查询。/);assert.doesNotMatch(html,/<aside|<strong|预制包生成时间|<script>/);
+ h.ctx.v={notes:['预制示例：之前生成，不重新联网查询。','其他阅读说明']};assert.match(h.run('prebuiltNoticeHtml(v)'),/预置示例/);assert.doesNotMatch(h.run('prebuiltNoticeHtml(v)'),/预制包生成时间|生成时间未记录/);
+ assert.equal(h.run('JSON.stringify(reportReadingNotes(v))'),JSON.stringify(['其他阅读说明']));assert.equal(h.ctx.v.notes.length,2);
  h.ctx.v={notes:['基于预制快照的人工复核：沿用第 1 版资料。']};assert.equal(h.run('prebuiltNoticeHtml(v)'),'');
  h.ctx.v={notes:[]};assert.equal(h.run('prebuiltNoticeHtml(v)'),'');
 });

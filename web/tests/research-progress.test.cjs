@@ -4,17 +4,16 @@ const { readCaseStream, progressState, updateProgress, progressHtml, stationFor 
 
 const result = { id: 'case-123', current: 1, versions: [{ no: 1 }], raw: [] };
 const begin = { type: 'begin', company: '测试公司', steps: [{ id: 'registry', label: '工商登记', lookup: true }] };
-test('prebuilt source is displayed during both streaming and step replay', async () => {
+test('prebuilt source is retained while progress uses neutral presentation', async () => {
   const event={type:'prebuilt',demo_id:'B',built_at:'2026-10-02 12:00'};
   const state=progressState(), received=[];
   await readCaseStream('/test',{}, {onEvent:e=>{received.push(e);updateProgress(state,e);},fetchImpl:async()=>response([event,begin,{type:'case',case:result}])});
   assert.deepEqual(received,[event,begin]);
   updateProgress(state,{type:'step',id:'registry',phase:'start'});
   const html=progressHtml(state);
-  assert.match(html,/预制示例快照/);
-  assert.match(html,/本次未重新联网查询/);
-  assert.match(html,/预制包生成时间/);
-  assert.match(html,/回放中/);
+  assert.deepEqual(state.prebuilt,{demo_id:event.demo_id,built_at:event.built_at});
+  assert.doesNotMatch(html,/预制|预置|快照|联网|回放|report-provenance/);
+  assert.match(html,/整理中/);
   assert.doesNotMatch(progressHtml(progressState()),/预制示例快照/);
 });
 function response(events, { bytewise = false, newline = true } = {}) {

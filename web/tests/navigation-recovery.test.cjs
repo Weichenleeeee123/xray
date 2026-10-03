@@ -272,7 +272,7 @@ test('a completed review refresh cannot replace a version revisited through refe
   const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
   h.run(source.slice(source.indexOf('function renderCase()'),source.indexOf('function caseHead(')));
   h.run(`isDesignReview=()=>false;caseHead=()=>'';conclusionHtml=()=>'';chartsHtml=()=>'';
-    tabsHtml=()=>'';panelHtml=()=>'';assistHtml=()=>'';qiLauncherHtml=()=>'';
+    tabsHtml=()=>'';panelHtml=()=>'';assistHtml=()=>'';qiLauncherHtml=()=>'';prebuiltNoticeHtml=()=>'';
     initResearchDesign=()=>{};loadReviews=()=>{};loadOnepager=()=>{};scrollChat=()=>{}`);
   const view=h.nodes.get('#view');let markup=view.innerHTML;
   // Replacing the view removes the original action button from the live DOM.

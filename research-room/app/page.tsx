@@ -477,10 +477,6 @@ export default function Home() {
               </div>
             </div>
             <SceneStatus state={state} />
-            {researchProvenance(state) && <aside className="prebuilt-notice" aria-label="本次资料来源">
-              <strong>预制示例快照</strong><span>沿用预先生成的资料，本次未重新联网查询</span>
-              {researchProvenance(state)?.built_at && <small>预制包生成时间：{researchProvenance(state)?.built_at}</small>}
-            </aside>}
             {!report.visible && (report.canOpen || report.canRetry) && (
               <div className="scene-report-actions">
                 {report.canOpen ? <button className="report-ready-link" onClick={openReport} disabled={!!opening}>
@@ -503,7 +499,7 @@ export default function Home() {
                 </li>)}
               </ol>
               <span>
-                {researchProvenance(state) ? '快照中的资料' : collectionDone ? '资料收集结束' : '资料收集中'} ·{' '}
+                {researchProvenance(state) ? '报告资料' : collectionDone ? '资料收集结束' : '资料收集中'} ·{' '}
                 {knownRecords} 条已找到记录
               </span>
               {paused && <small>动画已暂停，后台继续处理</small>}

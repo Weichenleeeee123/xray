@@ -179,10 +179,10 @@ export function stationState(state: ResearchState, id: Station) {
   const skipped = complete && outcomes.length === 1 && outcomes[0] === 'not_covered';
   const progress = active ? 'active' : running && interrupted ? 'unknown'
     : complete ? failed ? 'failed' : skipped ? 'skipped' : 'done' : 'waiting';
-  const label = active ? prebuilt ? '回放中' : '查询中' : running && interrupted ? '状态待确认'
-    : complete ? failed ? '已结束 · 部分失败' : skipped ? '已跳过' : prebuilt ? '当时已完成' : '已完成'
+  const label = active ? prebuilt ? '整理中' : '查询中' : running && interrupted ? '状态待确认'
+    : complete ? failed ? '已结束 · 部分失败' : skipped ? '已跳过' : '已完成'
     : !tasks.length ? state.steps.length ? '未安排' : '等待任务'
-    : done.length ? `等待后续查询（${done.length}/${tasks.length}）` : '等待查询';
+    : done.length ? `等待后续${prebuilt ? '处理' : '查询'}（${done.length}/${tasks.length}）` : prebuilt ? '等待处理' : '等待查询';
   const resultLabel = outcomes.map(c =>
     (counts[c] ?? 0) > 0 ? `${coverageLabels[c]} ${counts[c]} 项` : coverageLabels[c],
   ).join(' · ');
@@ -199,7 +199,7 @@ export function stationState(state: ResearchState, id: Station) {
     details: tasks
       .map(
         (s) =>
-          `${s.label}：${s.phase === 'waiting' ? '等待查询' : s.phase === 'start' ? label : (coverageLabels[s.coverage!] ?? '已结束')}${s.text ? '；' + s.text : ''}`,
+          `${s.label}：${s.phase === 'waiting' ? prebuilt ? '等待处理' : '等待查询' : s.phase === 'start' ? label : (coverageLabels[s.coverage!] ?? '已结束')}${s.text ? '；' + s.text : ''}`,
       )
       .join('\n'),
   };
@@ -209,7 +209,7 @@ export function researchProgress(state: ResearchState) {
   const interrupted = ['disconnected', 'error'].includes(state.connection);
   const groups = [
     { id: 'intake', title: '理解需求', tasks: state.steps.filter(s => s.id === 'intake') },
-    { id: 'collect', title: '查询资料', tasks: state.steps.filter(s => s.lookup) },
+    { id: 'collect', title: prebuilt ? '整理资料' : '查询资料', tasks: state.steps.filter(s => s.lookup) },
     { id: 'rules', title: '整理分析', tasks: state.steps.filter(s => s.id === 'rules') },
     { id: 'plain', title: '生成报告', tasks: state.steps.filter(s => s.id === 'plain') },
   ];
@@ -219,7 +219,7 @@ export function researchProgress(state: ResearchState) {
     const status = done === group.tasks.length && done > 0 ? 'done'
       : active ? interrupted ? 'unknown' : 'active' : 'waiting';
     return { id: group.id, title: group.title, status,
-      label: !group.tasks.length && state.steps.length ? '未安排' : status === 'done' ? prebuilt ? '当时已完成' : '已完成' : status === 'active' ? prebuilt ? '回放中' : '进行中' : status === 'unknown' ? '待确认' : '等待',
+      label: !group.tasks.length && state.steps.length ? '未安排' : status === 'done' ? '已完成' : status === 'active' ? prebuilt ? '整理中' : '进行中' : status === 'unknown' ? '待确认' : '等待',
       detail: group.id === 'collect' ? `${done}/${group.tasks.length}` : '',
     };
   });
@@ -228,10 +228,10 @@ export function researchProgress(state: ResearchState) {
   stages.push({id:'save',title:'保存报告',status:state.connection === 'saved' ? 'done' : uncertainSave ? 'unknown' : saving ? 'active' : 'waiting',
     label:state.connection === 'saved' ? '已完成' : uncertainSave ? '待确认' : saving ? '进行中' : '等待',detail:''});
   const running = state.steps.filter(s => s.phase === 'start');
-  const current = state.connection === 'saved' ? prebuilt ? '快照已保存，可以查看报告' : '研究已完成，可以查看报告'
+  const current = state.connection === 'saved' ? prebuilt ? '报告已保存，可以查看报告' : '研究已完成，可以查看报告'
     : interrupted || state.saveStatus ? lifecycleLabel(state)
     : state.verifying ? '正在确认报告已保存'
-    : running.length ? `正在${prebuilt ? '回放' : running.every(s => s.lookup) ? '查询' : '处理'}：${running.map(s => s.label).join('、')}`
+    : running.length ? prebuilt ? '正在整理报告' : `正在${running.every(s => s.lookup) ? '查询' : '处理'}：${running.map(s => s.label).join('、')}`
     : lifecycleLabel(state);
   return { stages, current, ...completedProcessing(state) };
 }
@@ -241,9 +241,9 @@ export function lifecycleLabel(state: ResearchState) {
     return '报告保存未确认';
   if (state.connection === 'disconnected') return '连接中断 · 进度待确认';
   if (state.connection === 'error') return '研究中断';
-  if (state.connection === 'saved') return researchProvenance(state) ? '快照已保存' : '报告已保存';
+  if (state.connection === 'saved') return '报告已保存';
   if (state.verifying) return '报告已返回 · 确认保存中';
-  if (researchProvenance(state)) return '预制示例 · 回放中';
+  if (researchProvenance(state)) return '报告整理中';
   if (state.steps.some((s) => s.id === 'plain' && s.phase === 'done'))
     return '报告已生成 · 等待保存确认';
   if (state.steps.some((s) => s.id === 'plain' && s.phase === 'start'))
@@ -294,7 +294,7 @@ export function reportPresentation(state: ResearchState, scenePhase?: string) {
     status = 'analyzing';
     label = '正在整理分析';
   }
-  if (researchProvenance(state) && ['collecting', 'analyzing', 'generating'].includes(status)) label = '正在回放预制示例';
+  if (researchProvenance(state) && ['collecting', 'analyzing', 'generating'].includes(status)) label = '正在整理报告';
   return {
     canOpen,
     canRetry,
