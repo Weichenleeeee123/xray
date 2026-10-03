@@ -56,8 +56,15 @@ def owner(account: dict) -> str:
     return f"acct-{account['id']}"
 
 
+def is_admin(account: dict | None) -> bool:
+    """Only server-stored roles grant the research quota exemption."""
+    return bool(account and account.get("role") == "admin")
+
+
 def public(account: dict | None) -> dict | None:
-    return {"email": account["email"]} if account else None
+    if not account:
+        return None
+    return {"email": account["email"], **({"role": "admin"} if is_admin(account) else {})}
 
 
 # ---------- 输入 ----------
@@ -142,6 +149,19 @@ def register(email: str, password: str) -> dict:
         _save(account)
         atomic_text(index, account["id"])
     return account
+
+
+def grant_admin(email: str) -> dict:
+    """Server maintenance only; never exposed through the registration API."""
+    account = _by_email(normalize_email(email))
+    if account is None:
+        raise AccountError(404, "账号不存在，请先创建账号")
+    with locked(_path(account["id"])):
+        current = load(account["id"])
+        if current is None:
+            raise AccountError(404, "账号不存在")
+        current["role"] = "admin"
+        return _save(current)
 
 
 def login(email: str, password: str, ip: str) -> dict:

@@ -597,11 +597,11 @@ async function renderGuide(request = routeRequest, showAccount = false) {
 
 // ---------- 账号（可选）：登录了换设备也能找回案卷和知识库 ----------
 
-const quotaLine = q => !q ? '' : q.limit ? `今天已新建 ${q.used} / ${q.limit} 次研究` : `今天已新建 ${q.used} 次研究`;
+const quotaLine = q => !q ? '' : q.limit ? `今天已新建 ${q.used} / ${q.limit} 次研究` : '研究次数不限额';
 function acctHtml() {
   const ses = S.session, a = ses?.account;
   if (!ses) return '<h2>账号</h2><p class="me-p muted">账号状态暂未读到，请刷新页面再试。</p>';
-  if (a) return `<h2>账号</h2>
+  if (a) return `<h2>${a.role === 'admin' ? '管理员账号' : '账号'}</h2>
     <dl class="kv-me"><dt>邮箱</dt><dd>${esc(a.email)}</dd><dt>额度</dt><dd>${quotaLine(ses.quota)}（示例不计次）</dd></dl>
     ${ses.guest_cases ? `<div class="acct-merge"><p>这个浏览器上还有 ${ses.guest_cases} 份未登录时查的案卷。是你自己查的，就并进账号；在别人的电脑上，就别并。</p>
       <button type="button" class="btn sm" data-act="acct-merge">并进账号</button></div>` : ''}

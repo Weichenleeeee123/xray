@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from app import privacy
-from app.accounts import AccountError
+from app.accounts import AccountError, is_admin
 from app.persistence import atomic_json, locked
 
 BEIJING = timezone(timedelta(hours=8))
@@ -34,7 +34,8 @@ def _read(path) -> dict:
 def _keys(owner: str, account: dict | None, ip: str) -> list[tuple[str, int, str]]:
     cap = limits()
     if account:
-        return [(f"a:{account['id']}", cap["account"], f"今天的 {cap['account']} 次研究已经用完，明天再来")]
+        account_cap = 0 if is_admin(account) else cap["account"]
+        return [(f"a:{account['id']}", account_cap, f"今天的 {account_cap} 次研究已经用完，明天再来")]
     keys = [(f"g:{owner}", cap["guest"], f"未登录每天可以新建 {cap['guest']} 次研究，今天已经用完；登录后每天 {cap['account']} 次")]
     if ip:
         keys.append((f"ip:{ip}", cap["ip"], "这个网络今天的研究次数已经用完；登录后可以继续"))

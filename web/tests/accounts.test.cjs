@@ -19,6 +19,14 @@ function harness() {
 }
 const entry = (id, savedAt, seen = []) => ({ id, term: id, plain: '', savedAt, seen });
 
+test('admin panel clearly shows its role and unlimited research allowance', () => {
+  const h = harness();
+  h.run(`S.session={account:{email:'admin@example.com',role:'admin'},quota:{used:0,limit:null}}`);
+  const html = h.run('acctHtml()');
+  assert.match(html, /管理员/);
+  assert.match(html, /研究次数不限额/);
+});
+
 test('guest-collected terms are merged into the account on first login, newest first', async () => {
   const h = harness();
   h.store['xray.library'] = JSON.stringify([entry('a', '2026-10-03T02:00:00Z', [{ caseId: 'c1' }]), entry('b', '2026-10-01T00:00:00Z')]);
