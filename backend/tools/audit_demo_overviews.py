@@ -40,7 +40,7 @@ def audit_case(case: Case) -> dict:
     for saved, version in zip(case.versions, projected.versions):
         overview = version.overview
         findings, notices = [], []
-        expected = build_overview(version)
+        expected = build_overview(version, projected.raw)
         if overview != expected:
             findings.append("derived_overview_mismatch")
         if saved.overview is not None and saved.overview != expected:

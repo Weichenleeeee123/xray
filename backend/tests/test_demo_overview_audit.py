@@ -125,3 +125,13 @@ def test_invalid_saved_data_does_not_print_private_payload(tmp_path):
 
 def test_missing_directory_is_not_reported_as_success(tmp_path):
     assert audit_paths([tmp_path / "absent"])["integrity"] == "fail"
+
+def test_audit_recomputes_with_the_same_bound_event_dates(saved_case):
+    from tests.test_summary_context import labor_case
+    from app.analysis.overview import refresh_overviews
+    v, raw = labor_case(['2016-10-12', '2019-01-21'])
+    saved_case.versions = [v]
+    saved_case.raw = [raw]
+    refresh_overviews(saved_case)
+    result = audit_case(saved_case)
+    assert not any('overview_mismatch' in e or 'overview_needs_refresh' in e for e in result['errors'])
