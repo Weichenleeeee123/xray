@@ -135,7 +135,8 @@ def qualification_review(ext: Extraction, company: CompanyProfile | None, lic: L
     amac_check = _amac_check(amac)
     if license_check.status is Status.ok and amac_check.status is Status.bad:
         # 持牌机构本来就不靠私募登记卖产品，没登记不算问题
-        amac_check = amac_check.model_copy(update={"status": Status.ok, "result": "未登记（它是持牌机构，不需要私募登记）"})
+        amac_check = amac_check.model_copy(update={
+            "status": Status.ok, "result": "未登记（它是持牌机构，不需要私募登记）", "gap": "not_applicable"})
     if amac.registered and license_check.status is Status.bad:
         license_check = license_check.model_copy(update={"status": Status.warn})  # 私募本来就没有这几类牌照
     checks = [license_check, amac_check]

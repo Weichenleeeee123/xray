@@ -469,6 +469,38 @@ class CompanyKeyword(BaseModel):
     basis: str
 
 
+class OverviewCounts(BaseModel):
+    normal: int = 0
+    attention: int = 0
+    abnormal: int = 0
+    unknown: int = 0
+
+
+class OverviewItem(BaseModel):
+    id: str                             # 原始信号条目 id；从概况可直达依据
+    label: str
+    text: str
+    status: Status                      # 原始状态，不把一般提醒升级为异常
+    category: Literal["normal", "attention", "abnormal", "unknown"]
+    gap: Gap | None = None
+    source: str
+    ref: str | None = None
+    axis: Literal["qualify", "basics", "funds", "stability", "news"]
+
+
+class ReportOverview(BaseModel):
+    """企业概况、计数与轮廓共用的公司记录范围；材料和用户评价另行展示。"""
+    schema_version: Literal[1] = 1
+    status: Literal["ok", "warn", "bad", "none"]
+    trust_level: Literal["high", "pending", "low", "unknown"] = "unknown"
+    trust_label: str = "资料较少"
+    trust_note: str = "需谨慎判断"
+    headline: str
+    detail: str
+    counts: OverviewCounts
+    items: list[OverviewItem] = Field(default_factory=list)
+
+
 class Version(BaseModel):
     no: int
     created_at: str
@@ -485,6 +517,7 @@ class Version(BaseModel):
     sources: dict[str, Source] = Field(default_factory=dict)
     company: CompanyProfile | None
     company_keywords: list[CompanyKeyword] = Field(default_factory=list)
+    overview: ReportOverview | None = None  # 旧案卷读取时由保存的公司记录重算
     license: LicenseHit
     amac: AmacHit
     assertions: list[Assertion]

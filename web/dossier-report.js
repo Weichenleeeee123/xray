@@ -4,17 +4,18 @@ const dossierIcon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></s
 const dossierGoose = () => '<span class="qi-sprite" role="img" aria-label="小企"></span>';
 const dossierHeading = (n, title, note = '') => `<div class="section-heading"><div><span>${n}</span><h2>${title}</h2></div><span class="section-note">${note}</span></div>`;
 
-function dossierFindings(v) {
-  const items = glanceItems(v);
-  const scenario = S.scenarios.find(s => s.id === v.scenario);
-  const selected = v.glance?.first?.length ? v.glance.first : scenario?.first_items || [];
-  const ids = selected.length ? selected : Object.keys(items);
-  return [...new Set(ids)].filter(id => items[id] && id !== 'reputation.user_reviews')
-    .map(id => ({id, ...items[id]})).filter(item => item.status !== 'none' || isOpen(item));
+// The server owns the classification; every overview surface reads this same snapshot.
+// An older server must not silently recreate a different verdict in the browser.
+function dossierEvidence(v) {
+  return v.overview?.schema_version === 1 ? v.overview : {
+    status:'none', headline:'概况待更新，请刷新报告', detail:'完整记录仍可在下方四个信号中查看。',
+    items:[], counts:{normal:0,attention:0,abnormal:0,unknown:0}
+  };
 }
+function dossierFindings(v) { return dossierEvidence(v).items; }
 function dossierGroups(v) {
   const items = dossierFindings(v);
-  return {problem: items.filter(i => FLAG.has(i.status)), clear: items.filter(i => i.status === 'ok'), open: items.filter(isOpen)};
+  return Object.fromEntries(['normal','attention','abnormal','unknown'].map(key => [key,items.filter(i => i.category === key)]));
 }
 function dossierHero(c, v) {
   const demo = (c.raw || []).some(r => v.raw_ids.includes(r.id) && r.kind === 'demo' && r.coverage === 'found');
@@ -25,32 +26,36 @@ function dossierCompanyKeywords(v) {
   return `<div class="company-keywords" aria-label="公司关键词"><span class="company-keywords-label">公司关键词：</span><div class="company-keyword-list">${keywords.length ? keywords.map(item => `<button type="button" class="company-keyword" data-act="raw" data-ref="${esc(item.ref)}" title="${esc(item.basis)} · 点击查看出处">${esc(item.label)}<span aria-hidden="true">↗</span></button>`).join('') : '<span class="company-keywords-empty">资料不足，暂无可提取的关键词</span>'}</div></div>`;
 }
 function dossierTrustAnswer(v) {
-  // A company-wide question must include recorded issues outside the scenario's short list.
-  const items = Object.entries(glanceItems(v)).filter(([id]) => id !== 'reputation.user_reviews').map(([,item]) => item);
-  const [status] = answerOf(items);
-  if (status === 'bad' || status === 'warn') return [status, '有异常，需注意风险'];
-  if (status === 'ok') return ['ok', '可信度较高'];
-  return [status, '资料较少，需警惕'];
+  const summary = dossierEvidence(v);
+  return [summary.status, summary.headline];
 }
 function dossierOverview(v) {
-  const findings = dossierFindings(v), groups = dossierGroups(v);
+  const evidence = dossierEvidence(v), findings = evidence.items, groups = dossierGroups(v);
   const [status, word] = dossierTrustAnswer(v);
-  const initial = groups.problem.length ? 'problem' : groups.open.length ? 'open' : 'clear';
+  const trustLevel = ['high','pending','low','unknown'].includes(evidence.trust_level) ? evidence.trust_level : 'unrated';
+  const title = evidence.trust_label && evidence.trust_note
+    ? `<span class="trust-label">${esc(evidence.trust_label)}</span><span class="trust-note">${esc(evidence.trust_note)}</span>`
+    : `<span class="verdict-phrase">${esc(word)}</span>`;
+  const mark = {high:'✓',pending:'?',low:'!',unknown:'?',unrated:MARK[status]}[trustLevel];
+  const initial = groups.abnormal.length ? 'abnormal' : (trustLevel === 'unknown' || status === 'none') && groups.unknown.length ? 'unknown' : groups.attention.length ? 'attention' : 'normal';
   const co = v.company;
-  return `<section id="research-overview" class="research-section report-section">${dossierHeading('01','企业概况','围绕这次需求，先看判断与依据')}<div class="decision-grid"><article class="decision-card decision-dossier" data-inspection="${initial}"><span class="summary-folder-tab">企er / 核验摘要</span><div class="decision-sheet"><div class="decision-eyebrow"><span>这家公司是否值得你的信任</span><span class="decision-state">初步判断</span></div><div class="decision-hero"><div class="decision-verdict-copy"><div class="verdict-answer s-${status}"><span class="verdict-mark" aria-hidden="true">${MARK[status]}</span><div><h2 id="verdict-title">${word.split(/(?<=，)/).map(phrase => `<span class="verdict-phrase">${esc(phrase)}</span>`).join('')}</h2></div></div>${dossierCompanyKeywords(v)}</div><div class="summary-art" aria-hidden="true">${dossierSummaryArt}</div></div><div class="inspection-heading"><span>${findings.length} 项关键核查</span><small>点击纸签，展开依据</small></div><div class="verdict-summary" role="group" aria-label="关键核查分类">${[['problem','问题 / 留意'],['clear','已查无异常'],['open','待补 / 未覆盖']].map(([key,label]) => `<button class="verdict-count ${key}" data-act="dossier-group" data-group="${key}" data-count="${groups[key].length}" aria-pressed="${key === initial}" aria-controls="dossier-inspection"><span>${label}</span><strong>${groups[key].length}<small> 项</small></strong>${dossierIcon('arrow')}</button>`).join('')}</div><div class="overview-inspection" id="dossier-inspection">${dossierInspection(v, initial)}</div><div class="decision-next"><span class="summary-camera-mark">${dossierIcon('camera')}</span><div><small>建议下一步</small><button data-act="contract">补充材料，继续核实 ${dossierIcon('arrow')}</button></div><button class="summary-ask" data-act="open-assist">问小企 ${dossierIcon('chat')}</button></div></div></article><aside class="radar-card">${researchRadar(v)}<button class="radar-help" data-act="open-assist">${dossierGoose()}<span><strong>让小企解释这份报告</strong><small>依据、疑点、下一步</small></span>${dossierIcon('arrow')}</button></aside></div><details class="company-basics"><summary><span>${dossierIcon('building')}<strong>公司基础信息</strong><small>${co ? esc([co.status,co.founded && `${co.founded} 成立`].filter(Boolean).join(' · ')) : '登记资料未覆盖'}</small></span><span class="expand-label">展开登记资料 ＋</span></summary><div class="company-panel">${co ? `<dl class="company-facts">${[['公司全称',co.name],['统一社会信用代码',co.code || '未覆盖'],['登记状态',co.status],['成立日期',co.founded],['注册资本',co.checked == null || co.checked.includes('reg_capital') ? fmtMoney(co.reg_capital) : '未覆盖'],['经营范围',co.scope]].map(([label,value]) => `<div><dt>${label}</dt><dd>${termText(value || '未覆盖')}</dd></div>`).join('')}</dl>` : '<p>本版没有可展示的登记资料，未覆盖不代表不存在。</p>'}<button class="text-button" data-act="tab" data-tab="raw">查看登记资料与来源 ↗</button></div></details></section>`;
+  return `<section id="research-overview" class="research-section report-section">${dossierHeading('01','企业概况','围绕这次需求，先看判断与依据')}<div class="decision-grid"><article class="decision-card decision-dossier" data-inspection="${initial}"><span class="summary-folder-tab">企er / 核验摘要</span><div class="decision-sheet"><div class="decision-eyebrow"><span>这家公司是否值得你的信任</span><span class="decision-state">本版判断</span></div><div class="decision-hero"><div class="decision-verdict-copy"><div class="verdict-answer s-${status} trust-${trustLevel}" data-trust-level="${trustLevel}"><span class="verdict-mark" aria-hidden="true">${mark}</span><div><h2 id="verdict-title" class="trust-title">${title}</h2><button class="verdict-explain" data-act="dossier-group" data-group="${initial}" aria-controls="dossier-inspection">查看判断依据 ${dossierIcon('arrow')}</button></div></div><p class="overview-detail">${esc(evidence.detail)}</p>${dossierCompanyKeywords(v)}</div><div class="summary-art" aria-hidden="true">${dossierSummaryArt}</div></div><div class="inspection-heading"><span>${findings.length} 项公司记录</span><small>点击纸签，展开依据</small></div><div class="verdict-summary" role="group" aria-label="公司记录分类">${[['normal','核验正常'],['attention','一般关注'],['abnormal','异常记录'],['unknown','待核实']].map(([key,label]) => `<button class="verdict-count ${key}" data-act="dossier-group" data-group="${key}" data-count="${groups[key].length}" aria-pressed="${key === initial}" aria-controls="dossier-inspection"><span>${label}</span><strong>${groups[key].length}<small> 项</small></strong>${dossierIcon('arrow')}</button>`).join('')}</div><div class="overview-inspection" id="dossier-inspection">${dossierInspection(v, initial)}</div><div class="decision-next"><span class="summary-camera-mark">${dossierIcon('camera')}</span><div><small>建议下一步</small><button data-act="contract">补充材料，继续核实 ${dossierIcon('arrow')}</button></div><button class="summary-ask" data-act="open-assist">问小企 ${dossierIcon('chat')}</button></div></div></article><aside class="radar-card">${researchRadar(v)}<button class="radar-help" data-act="open-assist">${dossierGoose()}<span><strong>让小企解释这份报告</strong><small>依据、疑点、下一步</small></span>${dossierIcon('arrow')}</button></aside></div><details class="company-basics"><summary><span>${dossierIcon('building')}<strong>公司基础信息</strong><small>${co ? esc([co.status,co.founded && `${co.founded} 成立`].filter(Boolean).join(' · ')) : '登记资料未覆盖'}</small></span><span class="expand-label">展开登记资料 ＋</span></summary><div class="company-panel">${co ? `<dl class="company-facts">${[['公司全称',co.name],['统一社会信用代码',co.code || '未覆盖'],['登记状态',co.status],['成立日期',co.founded],['注册资本',co.checked == null || co.checked.includes('reg_capital') ? fmtMoney(co.reg_capital) : '未覆盖'],['经营范围',co.scope]].map(([label,value]) => `<div><dt>${label}</dt><dd>${termText(value || '未覆盖')}</dd></div>`).join('')}</dl>` : '<p>本版没有可展示的登记资料，未覆盖不代表不存在。</p>'}<button class="text-button" data-act="tab" data-tab="raw">查看登记资料与来源 ↗</button></div></details></section>`;
 }
 function dossierInspection(v, group, open = false) {
   const rows = dossierGroups(v)[group] || [];
-  const label = {problem:'需要留意与核实的事项',clear:'已查项暂未见异常',open:'仍需补齐或核实的资料'}[group];
-  return `<details class="inspection-disclosure"${open ? ' open' : ''}><summary><span>${label} · ${rows.length} 项</span><span class="inspection-toggle">展开 / 收起依据 ${dossierIcon('chevron')}</span></summary><div class="inspection-contents">${rows.map(row => `<div class="inspection-row dossier-evidence-row"><span class="inspection-bullet">${MARK[row.status]}</span><div>${termText(shortOf(v,row.id,row.text))}<small>${esc(stLabel(row))}</small></div><button class="text-button" data-act="goto" data-id="${esc(row.id)}">查看依据 ↗</button></div>`).join('') || '<p class="inspection-empty">这一分类没有记录；请结合其他分类与资料覆盖范围阅读。</p>'}<p class="inspection-boundary">判断仅限本版已查记录；未覆盖的部分仍需核实。</p></div></details>`;
+  const label = {normal:'已核验正常的记录',attention:'需要进一步了解的事项',abnormal:'需要重点核实的异常记录',unknown:'尚待核实的资料'}[group] || '核查记录';
+  const note = {normal:'核验结果仅说明这些已查项目。',attention:'关注记录需要结合时间、主体与具体事项了解，不直接等同于公司异常。',abnormal:'请结合原始记录、处理结果和本次需求核实影响。',unknown:'资料未覆盖或查询未完成，不等于发现异常。'}[group] || '';
+  return `<details class="inspection-disclosure"${open ? ' open' : ''}><summary><span>${label} · ${rows.length} 项</span><span class="inspection-toggle">展开 / 收起依据 ${dossierIcon('chevron')}</span></summary><div class="inspection-contents">${rows.map(row => `<div class="inspection-row dossier-evidence-row"><span class="inspection-bullet">${MARK[row.status]}</span><div>${termText([row.label,row.text].filter(Boolean).join('：'))}<small>${esc(row.category === 'attention' ? '一般关注' : row.category === 'unknown' ? (row.gap === 'failed' ? '本次未查成' : '待进一步核实') : row.category === 'normal' ? '已核验正常' : '异常记录')}</small></div><button class="text-button" data-act="goto" data-id="${esc(row.id)}">查看依据 ↗</button></div>`).join('') || '<p class="inspection-empty">这一分类没有记录；请结合其他分类与资料覆盖范围阅读。</p>'}<p class="inspection-boundary">${note} 材料与合同的核对结果保留在“问询与复核”。</p></div></details>`;
 }
 function dossierSignal(sig, index, v) {
-  const flagged = sig.items.filter(i => FLAG.has(i.status)).sort((a,b) => SEV[b.status] - SEV[a.status]);
-  const open = sig.items.filter(isOpen), ok = sig.items.filter(i => i.status === 'ok');
-  const phrase = flagged.length ? shortOf(v,`${sig.key}.${flagged[0].key}`,`${flagged[0].label}：${flagged[0].value}`)
-    : !ok.length ? (open.length && open.every(i => gapOf(i) === 'failed') ? '没查成，稍后重查' : '尚无可确认的记录')
-    : open.length ? `已查项暂未见异常；${pendingNote(open)}` : '已查项暂未见异常';
-  const label = flagged.length ? `${flagged.length} 项需要留意` : open.length ? `${open.length} 项待核实` : `${ok.length} 项已查`;
+  const abnormal = sig.items.filter(i => i.status === 'bad'), attention = sig.items.filter(i => i.status === 'warn');
+  const open = sig.items.filter(i => i.status === 'miss' || isOpen(i)), ok = sig.items.filter(i => i.status === 'ok' && !QUIET_GAPS.has(i.gap));
+  const first = abnormal[0] || attention[0];
+  const phrase = first ? `${first.label}：${first.value}`
+    : !ok.length ? (open.length && open.every(i => gapOf(i) === 'failed') ? '本次未查成，可稍后重查' : '资料尚待补齐或核实')
+    : open.length ? `已查项暂未见异常，另有 ${open.length} 项待核实` : '已查项暂未见异常';
+  const label = [abnormal.length && `${abnormal.length} 项异常记录`,attention.length && `${attention.length} 项一般关注`,
+    open.length && `${open.length} 项待核实`].filter(Boolean).join(' · ') || `${ok.length} 项已核验`;
   const scope = {risk:'承诺与履约',finance:'披露与资金',credit:'主体与履约',reputation:'报道与经历'};
   return `<button class="signal-card signal-${sig.key}" data-act="sigtile" data-key="${sig.key}" aria-label="查看${esc(sig.title)}方向：${esc(phrase)}"><span class="folder-tab" aria-hidden="true"><span>企er / 研究资料</span><b>0${index+1}</b></span><span class="folder-cover"><span class="folder-head"><span class="folder-heading"><strong>${esc(sig.title)}</strong><small>${scope[sig.key]}</small></span><span class="dossier-scene"><svg viewBox="0 0 156 138" aria-hidden="true">${dossierScenes[sig.key]}</svg></span></span><span class="paper-stack"><span class="paper-back"></span><span class="folder-paper"><span class="folder-paper-heading"><small>核查摘要</small><span class="folder-staple"></span></span><span class="badge">${label}</span><h3>${esc(phrase)}</h3><p>${esc(sig.lede)}</p></span></span><span class="signal-bottom"><span>内含 ${sig.items.length} 项核查记录</span><span class="signal-open">打开卷宗 ${dossierIcon('arrow')}</span></span></span></button>`;
 }
@@ -123,7 +128,7 @@ document.addEventListener('click', event => {
   if (button.dataset.act === 'dossier-group') {
     const group=button.dataset.group;
     document.querySelector('.decision-dossier').dataset.inspection=group;
-    document.querySelectorAll('[data-act="dossier-group"]').forEach(b=>b.setAttribute('aria-pressed',String(b === button)));
+    document.querySelectorAll('[data-act="dossier-group"]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.group === group)));
     document.querySelector('#dossier-inspection').innerHTML=dossierInspection(ver(),group,true);
   }
 });

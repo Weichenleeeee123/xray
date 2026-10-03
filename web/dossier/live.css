@@ -268,3 +268,51 @@ body.dossier-shell .assist.open { display:flex; }
 body.report-workspace .workspace-global-nav [data-sec=guide] { display:none; }
 body.report-workspace .workspace-sidebar-foot { flex-wrap:wrap; }
 body.report-workspace .workspace-sidebar-foot .workspace-guide { display:block; flex-basis:100%; border:0; padding:0; text-align:left; font:10px/1.8 var(--sans); color:#9aabae; background:transparent; cursor:pointer; }
+
+/* One evidence scope, with attention and missing coverage distinct from anomalies. */
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-summary { grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count { grid-template-columns:1fr auto; gap:8px 4px; padding:11px 10px; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count > span { grid-column:1/-1; font-size:11px; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count > strong { font-size:24px; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count.normal { color:#41715f; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count.attention { color:#916b35; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count.abnormal { color:#9e5141; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count.unknown { color:#66737b; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count[data-count="0"] { color:#949185; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count.normal[aria-pressed="true"] { background:#e8eddf; border-color:#91a58b; box-shadow:inset 0 -2px #638674; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count.abnormal[aria-pressed="true"] { background:#f1e3d9; border-color:#b17b66; box-shadow:inset 0 -2px #a86754; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count.unknown[aria-pressed="true"] { background:#e9e9e1; border-color:#a3aaa7; box-shadow:inset 0 -2px #7e8c8f; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.s-none { color:#65717a; }
+body.research-mode.report-workspace.dossier-live .verdict-explain { display:inline-flex; align-items:center; gap:7px; background:none; border:0; border-bottom:1px solid #b7a889; border-radius:0; color:#82714f; padding:2px 0; font:11px/1.8 var(--sans); cursor:pointer; margin-top:7px; }
+body.research-mode.report-workspace.dossier-live .verdict-explain svg { width:12px; height:12px; }
+body.research-mode.report-workspace.dossier-live .verdict-explain:hover { color:#334c56; border-color:currentColor; }
+body.research-mode.report-workspace.dossier-live .overview-detail { color:#787562; font-size:11px; line-height:1.8; margin:7px 0 0; }
+body.research-mode.report-workspace.dossier-live .decision-dossier #verdict-title { font-size:clamp(23px,2.1vw,31px); }
+body.research-mode.report-workspace.dossier-live .decision-dossier .summary-art { flex-basis:82px; max-width:82px; }
+body.research-mode.report-workspace.dossier-live .verdict-phrase { white-space:normal; }
+body.research-mode.report-workspace.dossier-live .overview-inspection { margin-bottom:16px; }
+body.research-mode.report-workspace.dossier-live .inspection-contents { max-height:310px; overflow:auto; padding-right:5px; scrollbar-color:#c7b68d transparent; scrollbar-width:thin; }
+body.research-mode.report-workspace.dossier-live .inspection-boundary { font-size:10px; line-height:1.8; }
+@container report-pane (max-width:1000px) {
+  body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count { grid-template-columns:1fr auto auto; }
+  body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count > span { grid-column:auto; }
+}
+@container report-pane (max-width:520px) {
+  body.research-mode.report-workspace.dossier-live .decision-dossier .summary-art { display:none; }
+  body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-count { padding:10px 8px; }
+  body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-mark { flex-shrink:0; }
+  body.research-mode.report-workspace.dossier-live .decision-dossier .decision-eyebrow { font-size:12px; }
+}
+
+/* Degree and qualifier are separate server fields; the browser never infers a rating from prose. */
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-high { color:#41715f; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-pending { color:#946d36; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-low { color:#a05240; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-unknown { color:#857653; }
+body.research-mode.report-workspace.dossier-live .trust-label { display:block; font-size:clamp(28px,3.3cqw,38px); font-weight:700; line-height:1.35; letter-spacing:.03em; }
+body.research-mode.report-workspace.dossier-live .trust-note { display:block; font:500 clamp(14px,1.6cqw,18px)/1.7 var(--sans); margin-top:6px; letter-spacing:0; color:#7b7867; }
+body.research-mode.report-workspace.dossier-live .trust-high.s-warn .trust-note { color:#936d35; }
+body.research-mode.report-workspace.dossier-live .trust-low .trust-note { color:#a05240; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-answer:has(.trust-label) { align-items:flex-start; margin:16px 0 10px; }
+body.research-mode.report-workspace.dossier-live .verdict-answer:has(.trust-label) .verdict-mark { margin-top:5px; }
