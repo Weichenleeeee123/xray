@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 function harness() {
-  const ctx = vm.createContext({console, URLSearchParams, FormData, AbortController, setTimeout:()=>0, clearTimeout(){},
+  const ctx = vm.createContext({console, URL, URLSearchParams, FormData, AbortController, setTimeout:()=>0, clearTimeout(){},
     location:{hash:'#/case/test',search:''}, document:{querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}}});
   for (const file of ['case-design.js','dossier/artwork.js','dossier-report.js','material-analysis.js','app.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8').replace(/boot\(\);\s*$/,''),ctx);
@@ -305,4 +305,27 @@ test('record counts use a factual label without changing classification or cover
   assert.equal(h.run(`stLabel({status:'ok',value:'无'})`),'暂未见异常');
   assert.equal(h.run(`stLabel({status:'none',gap:'failed',value:'2 条'})`),'没查成');
   assert.equal(h.run(`stLabel({status:'bad',value:'2 条'})`),'需重点核实');
+});
+
+test('source links distinguish provider portals from record pages and preserve nested document links',()=>{
+  const h=harness();
+  const portal=h.run(`rawSourceLinks({source_id:'qcc_labor',kind:'commercial',url:'https://agent.qcc.com',content:{}})`);
+  assert.match(portal,/数据平台入口/); assert.match(portal,/未提供这条记录的独立原文地址/);
+  assert.doesNotMatch(portal,/打开原文网站|原文链接/);
+  const docs=h.run(`rawSourceLinks({source_id:'cninfo',url:'https://static.cninfo.com.cn/annual.pdf',content:{'最新年度报告':{title:'年度报告',url:'https://static.cninfo.com.cn/annual.pdf'},'标题带处罚、诉讼、问询等字样的':[{title:'问询公告',url:'https://static.cninfo.com.cn/inquiry.pdf'}]}})`);
+  assert.match(docs,/年度报告/);assert.match(docs,/问询公告/);assert.match(docs,/inquiry.pdf/);
+  assert.doesNotMatch(docs,/打开原文网站/);
+  const news=h.run(`rawSourceLinks({source_id:'qcc_news',kind:'commercial',url:'https://agent.qcc.com',content:{'全部返回新闻':[{标题:'报道 <一>',链接:'https://www.qcc.com/postnews/123.html'}]}})`);
+  assert.match(news,/平台转载页面/);assert.match(news,/报道 &lt;一&gt;/);
+  assert.match(news,/postnews\/123.html/);
+});
+
+test('source link safety and search-only provenance survive old snapshots',()=>{
+  const h=harness();
+  assert.doesNotMatch(h.run(`rawSourceLinks({url:'javascript:alert(1)',content:null})`),/<a /);
+  assert.doesNotMatch(h.run(`rawSourceLinks({url:'https://user:secret@example.com/path',content:null})`),/<a /);
+  assert.match(h.run(`rawSourceLinks({source_id:'amac',url:'https://gs.amac.org.cn/amac-infodisc/res/pof/manager/index.html'})`),/查询入口/);
+  const snippet=h.run(`rawSourceLinks({source_id:'web_official',url:'https://example.gov.cn/article/1.html'})`);
+  assert.match(snippet,/搜索命中页面/);assert.match(snippet,/不代表已核验全文/);
+  assert.match(h.run(`rawSourceLinks({source_id:'nfra_bank_list',url:'https://example.gov.cn/list.pdf'})`),/来源文档/);
 });
