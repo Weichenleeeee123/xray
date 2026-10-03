@@ -35,10 +35,10 @@ test('overview uses current version evidence, excludes reviews and separates pen
     {key:'credit',items:[{key:'status',label:'登记',value:'存续',status:'ok'}]},
     {key:'reputation',items:[{key:'user_reviews',status:'warn',value:'仅供参考'}]}];`);
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(Object.fromEntries(Object.entries(dossierGroups(v)).map(([k,a])=>[k,a.length])))')),{problem:1,clear:1,open:1});
-  let html=h.run('dossierOverview(v)');assert.match(html,/有问题/);assert.doesNotMatch(html,/仅供参考/);
+  let html=h.run('dossierOverview(v)');assert.match(html,/有异常，<\/span><span class="verdict-phrase">需注意风险/);assert.doesNotMatch(html,/仅供参考/);
   h.run(`v.glance.first=['risk.license']`);html=h.run('dossierOverview(v)');
-  assert.match(html,/没查到数据/);assert.doesNotMatch(html,/id="verdict-title">有问题/);
-  h.run(`v.glance.first=['credit.status']`);assert.match(h.run('dossierOverview(v)'),/已查项暂未见异常/);
+  assert.match(html,/有异常，<\/span><span class="verdict-phrase">需注意风险/);assert.doesNotMatch(html,/id="verdict-title">可信度较高/);
+  h.run(`v.glance.first=['credit.status']`);assert.match(h.run('dossierOverview(v)'),/有异常，<\/span><span class="verdict-phrase">需注意风险/);
 });
 test('signal folder counts actual backend items and preserves its full details action',()=>{
   const h=harness();h.run(`v.signals=[{key:'finance',title:'财务',lede:'未提供财报 <说明>',items:[{key:'cash',label:'现金流',status:'none',gap:'failed'}]}]`);
@@ -92,4 +92,23 @@ test('overview replaces the numeric headline with escaped version-specific compa
   h.run('v.company_keywords=[]');
   assert.match(h.run('dossierCompanyKeywords(v)'),/资料不足/);
   assert.doesNotMatch(h.run('dossierCompanyKeywords(v)'),/高新技术|天使轮/);
+});
+
+
+test('trust answer distinguishes missing evidence from a clear report and preserves issue priority',()=>{
+  const h=harness();
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
+  h.run(`v.signals=[{key:'credit',items:[{key:'status',status:'ok'}]}]`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'可信度较高');
+  h.run(`v.signals[0].items.push({key:'other',status:'none',gap:'not_covered'})`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
+  h.run(`v.signals[0].items[1]={key:'other',status:'none',gap:'failed'}`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
+  h.run(`v.signals[0].items[1]={key:'other',status:'warn'}`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'有异常，需注意风险');
+  h.run(`v.signals[0].items[1]={key:'other',status:'miss'}`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/这家公司是否值得你的信任/);
+  assert.doesNotMatch(html,/结论仅限本版已查记录|id="verdict-scope"|这次合作，关键项有没有问题/);
 });
