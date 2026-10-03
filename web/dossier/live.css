@@ -83,12 +83,24 @@ body.research-mode.report-workspace.dossier-live .detail-panel { margin:0; min-h
 body.research-mode.report-workspace.dossier-live .timeline-strip { display:flex; overflow-x:auto; padding:12px 0 22px; border:0; align-items:stretch; }
 body.research-mode.report-workspace.dossier-live .timeline-stop { flex:1 0 150px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding:8px 0; border:0; background:transparent; min-width:150px; }
 body.research-mode.report-workspace.dossier-live .timeline-stop:before { display:none; }
-body.research-mode.report-workspace.dossier-live .timeline-wave { position:relative; display:block; width:100%; height:29px; border-bottom:1px solid #bd9c62; margin-top:10px; }
-body.research-mode.report-workspace.dossier-live .timeline-wave svg { display:block; width:100%; height:29px; overflow:visible; opacity:0; transition:opacity .3s; }
-body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-wave { border-color:transparent; }
+/* Separate year, track and ticket. Reset both legacy transform and translate:
+   their combined offsets used to lift the dot into the year text. */
+body.research-mode.report-workspace.dossier-live .timeline-year,
+body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-year { display:block; height:22px; line-height:22px; transform:none; translate:none; transition:color .25s; }
+body.research-mode.report-workspace.dossier-live .timeline-axis { position:relative; display:block; flex:none; width:100%; height:32px; margin-top:12px; pointer-events:none; }
+body.research-mode.report-workspace.dossier-live .timeline-axis::before { content:''; position:absolute; left:0; right:0; top:20px; height:1px; background:#bba47a; }
+body.research-mode.report-workspace.dossier-live .timeline-stop:first-child .timeline-axis::before { left:50%; }
+body.research-mode.report-workspace.dossier-live .timeline-stop:last-child .timeline-axis::before { right:50%; }
+body.research-mode.report-workspace.dossier-live .timeline-wave,
+body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-wave { position:absolute; inset:0; display:block; width:100%; height:32px; border:0; margin:0; opacity:1; transform:none; }
+body.research-mode.report-workspace.dossier-live .timeline-stop:first-child .timeline-wave { clip-path:inset(0 0 0 50%); }
+body.research-mode.report-workspace.dossier-live .timeline-stop:last-child .timeline-wave { clip-path:inset(0 50% 0 0); }
+body.research-mode.report-workspace.dossier-live .timeline-stop:only-child .timeline-wave { display:none; }
+body.research-mode.report-workspace.dossier-live .timeline-wave svg { display:block; width:100%; height:32px; overflow:visible; opacity:0; transition:opacity .25s; }
 body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-wave svg { opacity:1; stroke:#bd9c62; stroke-width:1.2; }
-body.research-mode.report-workspace.dossier-live .timeline-dot { width:7px; height:7px; border:1px solid #a88c54; border-radius:50%; margin-top:-4px; background:#fcf8ed; z-index:1; transition:translate .3s; }
-body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-dot { translate:0 -24px; background:#b79656; }
+body.research-mode.report-workspace.dossier-live .timeline-dot { position:absolute; left:calc(50% - 5px); top:15px; width:10px; height:10px; border:1.5px solid #a88c54; border-radius:50%; margin:0; background:#fcf8ed; box-shadow:none; z-index:1; transform:none; translate:none; transition:transform .25s,box-shadow .25s,background .25s; }
+body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-dot { translate:none; transform:translateY(-8px) scale(1.12); background:#b79656; box-shadow:0 0 0 4px #c9a46320,0 0 10px #c2995040; }
+body.research-mode.report-workspace.dossier-live .timeline-stop:focus-visible { outline:2px solid #987336; outline-offset:-2px; border-radius:4px; }
 body.research-mode.report-workspace.dossier-live .timeline-ticket { flex:1; margin-top:16px; max-width:170px; }
 body.research-mode.report-workspace.dossier-live .timeline-label { white-space:normal; font-size:11px; line-height:1.7; }
 body.research-mode.report-workspace.dossier-live .timeline-focus-card { display:flex; align-items:center; }
