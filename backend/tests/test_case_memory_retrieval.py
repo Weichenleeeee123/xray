@@ -230,7 +230,8 @@ def test_selected_term_keeps_glossary_separate_from_company_proof(selective, tmp
     term = find_terms("实缴资本")[0]
     gateway = FakeLLM([json.dumps({"segments":[{"fact_id":term_ref(term)}]})], tmp_path / "llm")
     result = answer(case, ChatIn(text="实缴资本是什么意思"), gateway)
-    assert result.context_mode == "selective" and term_ref(term) in result.citations
+    assert result.answer_kind == "glossary" and term_ref(term) in result.citations
+    assert not gateway.calls and result.context_mode is None
     assert term.plain in result.text and not result.error_code
 
 

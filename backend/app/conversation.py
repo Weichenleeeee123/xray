@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 WORRY = re.compile(r"害怕|担心|焦虑|不安|紧张|纠结|心里没底|不放心|慌|压力|难受|委屈|迷茫|失落|(?<!不)怕")
 DECISION = re.compile(r"怎么办|怎么做|建议|下一步|该不该|要不要|我想存|准备存|想投|准备付|想签|想入职")
 GUIDES = {
+    "investment.type": "可以一起看。你说的“投资这家公司”，是买它的股票、购买它销售的产品，还是直接出资合作？先确认这一点，我再帮你梳理该看哪些资料。",
     "savings.product": "你说的“存”，是办理银行存款，还是工作人员介绍的理财或其他产品？可以先告诉我产品名称。",
     "savings.terms": "可以先核对产品名称、办理机构、资金去向，以及合同中的取用条件；把不清楚的条款列出来再问对方。",
     "savings.withdraw": "可以先问对方：“如果我急用这笔钱，何时能取回、是否需要扣费？请指出合同里对应的条款。”拿到书面条款后，我们再一起核对。",
@@ -66,6 +67,8 @@ def guide_for(text: str, scenario: str) -> str:
         return "contract.parties"
     if re.search(r"充值|预付|会员|办卡", text):
         return "prepaid.refund"
+    if re.search(r"投资|想投|准备投", text) and not re.search(r"存|理财|产品", text):
+        return "investment.type"
     if re.search(r"存|理财|投资", text):
         return "savings.terms" if re.search(r"清单|检查|核对", text) else "savings.product"
     return {"job": "job.offer", "contract": "contract.parties", "prepaid": "prepaid.refund",

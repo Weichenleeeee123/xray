@@ -1745,8 +1745,14 @@ function chatSourcesHtml(m) {
     const id = parseRef(ref, m.version).id;
     if (/^R\d+$/.test(id)) { rawIds.add(id); continue; }
     if (id.startsWith('term.')) {
-      const term = (v.terms?.length ? v.terms : S.terms).find(t => t.id === id.slice(5));
-      if (term) extras.push(`<section class="chat-source"><h4>名词解释 · ${esc(term.term)}</h4><p>${esc(term.plain)}</p><p class="small muted">${term.origin === 'model' ? 'AI 解释，未经人工核对；不是企业事实证据。' : esc(term.law || '案卷名词表；不是企业事实证据。')}</p></section>`);
+      // A new explanation may use a corrected definition absent from an older
+      // report. Keep its saved knowledge snapshot with the answer; never rewrite
+      // report-version terminology or silently display a different definition.
+      const termId = id.slice(5);
+      const term = (m.knowledge_terms || []).find(t => t.id === termId)
+        || (v.terms || []).find(t => t.id === termId)
+        || S.terms.find(t => t.id === termId);
+      if (term) extras.push(`<section class="chat-source"><h4>名词解释 · ${esc(term.term)}</h4><p>${esc(term.plain)}</p>${term.why ? `<p>${esc(term.why)}</p>` : ''}<p class="small muted">通用名词解释，不代表企业情况。</p><p class="small muted">${term.origin === 'model' ? 'AI 解释，未经人工核对；不是企业事实证据。' : esc(term.law || '案卷名词表；不是企业事实证据。')}</p></section>`);
       continue;
     }
     const entry = [...(v.assertions || []), ...(v.missing || []), ...(v.questions || [])].find(x => x.id === id)
@@ -1784,7 +1790,8 @@ function msgHtml(m, prev, index = 0) {
   const add = (m.suggest || []).filter(s => s.includes('加入案卷'));
   const other = (m.suggest || []).filter(s => !s.includes('加入案卷'));
   const vNote = S.case && m.version !== ver().no ? `<span>基于第 ${m.version} 版</span>` : '';
-  const mode = m.mode === 'replay' ? `<span>离线回放${m.recorded_at ? ` · ${esc(fmtTime(m.recorded_at))}` : ''}</span>` : m.mode === 'template' ? '<span>当前为基础答复</span>' : '';
+  const answerKind = m.answer_kind === 'glossary' ? '<span>名词解释</span>' : m.answer_kind === 'clarification' ? '<span>先确认需求</span>' : '';
+  const mode = answerKind + (m.mode === 'replay' ? `<span>离线回放${m.recorded_at ? ` · ${esc(fmtTime(m.recorded_at))}` : ''}</span>` : m.mode === 'template' && !answerKind ? '<span>当前为基础答复</span>' : '');
   const filtered = m.has_omitted_claims === true;
   return `<div class="msg ai${m.not_found ? ' nf' : ''}${m.mode === 'guard' ? ' guard' : ''}">
     <div class="ans">${answerText(m.text)}</div>

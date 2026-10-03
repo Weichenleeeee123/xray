@@ -50,13 +50,14 @@ def test_template_explains_terms_with_citation(tmp_path):
     case = make_case(DEMO_COMPANY, flyer("manyinghe.txt"))
     msg = answer(case, ChatIn(text="实缴资本是什么意思"), FakeLLM([], tmp_path))
     assert msg.mode == "template" and "term.paid_capital" in msg.citations
-    assert "打进公司账户" in msg.text and "finance.paid_capital" in msg.citations   # 再接上本案那一条
+    assert "打进公司账户" in msg.text and "finance.paid_capital" not in msg.citations
+    assert msg.answer_kind == "glossary"  # 只问词义，不再附上未询问的公司数据
 
 
 def test_model_sees_glossary_and_may_cite_it(tmp_path):
     case = make_case(DEMO_COMPANY, flyer("manyinghe.txt"))
     fake = FakeLLM([_ans("实缴资本是股东实际拿出来的钱 [term.paid_capital]，它的实缴是 0 [finance.paid_capital]。")], tmp_path)
-    msg = answer(case, ChatIn(text="实缴资本是什么"), fake)
+    msg = answer(case, ChatIn(text="实缴资本是什么，这家公司的实缴是多少"), fake)
     # The gateway may prepend the output schema; inspect the case message, not its index.
     case_message = next(m["content"] for m in fake.calls[0]
                         if m["role"] == "user" and m["content"].startswith("<案卷数据>"))
@@ -72,5 +73,5 @@ def test_glossary_does_not_unlock_characterizations(tmp_path):
     assert overreach("非法集资是指没有经过许可、向社会公众吸收资金 [term.illegal_fundraising]", data) == []
     assert overreach("它这就是非法集资", data) == ["非法集资"]
     fake = FakeLLM([_ans("它这就是非法集资 [A1]"), _ans("持牌名单里查不到它 [A1]。")], tmp_path)
-    msg = answer(case, ChatIn(text="什么是非法集资"), fake)
+    msg = answer(case, ChatIn(text="什么是非法集资，这家公司涉及吗"), fake)
     assert msg.rewrites == 1 and msg.blocked == ["非法集资"]
