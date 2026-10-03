@@ -257,20 +257,42 @@ function libNote(id) {
   libWrite(list);
 }
 const libBtn = id => { const on = libHas(id); return `<button type="button" class="lib-tog" data-act="lib-toggle" data-term="${esc(id)}" aria-pressed="${on}">${on ? '★ 已收藏' : '☆ 收藏复习'}</button>`; };
+// Collection controls affect only the current view; saved records remain untouched.
+const collectionView = {caseQuery:'',caseFilter:'all',caseSort:'newest',libraryQuery:'',libraryFilter:'all',study:false};
+function collectionMatches(value, query) {
+  const words = String(query || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const haystack = String(value || '').toLocaleLowerCase();
+  return words.every(word => haystack.includes(word));
+}
+function visibleTerms(list) {
+  return list.filter(e => collectionMatches([e.term,e.plain,...(e.seen || []).map(x => x.company)].join(' '), collectionView.libraryQuery))
+    .filter(e => collectionView.libraryFilter === 'all' || (collectionView.libraryFilter === 'report' ? (e.seen || []).length > 0 : !(e.seen || []).length));
+}
+function libraryCards(list) {
+  if (!list.length) return '<div class="collection-empty"><span class="collection-empty-mark">⌕</span><h3>没有找到匹配的名词</h3><p>试试简短的关键词，或查看全部收藏。</p><button class="collection-button" data-act="library-reset">清除筛选</button></div>';
+  return list.map((e,i) => `<article class="term-file">
+    <div class="term-index"><span>名词索引 <b>${String(i+1).padStart(2,'0')}</b></span><span class="term-bookmark" aria-hidden="true">${collectionIcon('bookmark')}</span></div>
+    <div class="term-sheet"><div class="term-heading"><h3>${esc(e.term)}</h3>${e.origin === 'model' ? '<span class="lib-ai">AI 解释·未经人工核对</span>' : '<span class="term-type">名词解释</span>'}</div>
+    <details class="term-reading"${collectionView.study ? '' : ' open'}><summary><span class="term-reading-closed">想好了吗？展开解释</span><span class="term-reading-open">一句话看懂</span><span class="term-read-symbol" aria-hidden="true">＋</span></summary><p class="term-plain">${esc(e.plain)}</p>
+    ${e.why || (e.origin !== 'model' && e.basis) ? `<details class="term-context"><summary>继续看 · ${e.why ? '为什么要留意' : '解释依据'} <span>↗</span></summary><div>${e.why ? `<p>${esc(e.why)}</p>` : ''}${e.origin !== 'model' && e.basis ? `<p class="lib-basis">依据：${esc(e.basis)}</p>` : ''}</div></details>` : ''}</details>
+    <div class="term-origins"><span>${collectionIcon('file')} ${(e.seen || []).length ? '在这些报告里遇见' : '从词表里收藏'}</span>${(e.seen || []).map(x => `<a href="#/case/${esc(encodeURIComponent(x.caseId))}${x.version == null ? '' : `/v/${esc(x.version)}`}"><span>${esc(x.company)}</span><small>${x.version == null ? '查看案卷' : `第 ${esc(x.version)} 版`} ↗</small></a>`).join('')}</div>
+    <div class="term-bottom"><span>${e.savedAt ? `${esc(String(e.savedAt).slice(0,10))} 收藏` : '已收藏'}</span><button type="button" class="term-remove" data-act="lib-remove" data-term="${esc(e.id)}">移出</button></div></div>
+  </article>`).join('');
+}
 function libraryHtml(list) {
-  if (!list.length) return '<div class="empty-case"><p>还没有收藏的词。在报告里点开带虚线的词，点「☆ 收藏复习」，就会出现在这里。</p><a class="btn sm" href="#/cases">去看案卷</a></div>';
-  const where = S.session?.account ? `已同步到账号 ${esc(S.session.account.email)}，换设备登录也能看到。` : '只存在这个浏览器里，清除浏览器数据后会丢失；登录后可以同步到账号。';
-  return `<p class="lists-line">共 ${list.length} 个词。${where}</p>
-  <div class="lib-list">${list.map(e => `<article class="lib-card">
-    <div class="lib-h"><h3>${esc(e.term)}</h3>${e.origin === 'model' ? '<span class="lib-ai">AI 解释·未经人工核对</span>' : ''}</div>
-    <p>${esc(e.plain)}</p>
-    ${e.why ? `<p class="lib-why">${esc(e.why)}</p>` : ''}
-    ${e.origin !== 'model' && e.basis ? `<p class="lib-basis">依据：${esc(e.basis)}</p>` : ''}
-    <div class="lib-f">
-      ${(e.seen || []).length ? `<span class="lib-seen">在这些报告里碰到过：${e.seen.map(s => `<a href="#/case/${esc(s.caseId)}${s.version == null ? '' : `/v/${s.version}`}">${esc(s.company)}${s.version == null ? '' : ` · 第 ${s.version} 版`}</a>`).join('、')}</span>` : '<span class="lib-seen">从词表里收藏</span>'}
-      <button type="button" class="linkish small" data-act="lib-remove" data-term="${esc(e.id)}">移出</button>
-    </div>
-  </article>`).join('')}</div>`;
+  const where = S.session?.account ? `已同步到账号 ${esc(S.session.account.email)}，换设备登录也能看到。` : '收藏保存在此浏览器；登录后可以同步到账号。清除浏览器数据会丢失未同步的收藏。';
+  if (!list.length) return `<div class="collection-empty library-empty">${collectionArt('library')}<h3>把没看懂的词，收进自己的知识库。</h3><p>在报告里点开带虚线的名词，再点「☆ 收藏复习」。<br>解释、依据和遇到它的报告，会一起留在这里。</p><a class="collection-button solid" href="#/cases">去看案卷 ↗</a></div><p class="collection-storage">${where}</p>`;
+  const rows = visibleTerms(list);
+  return `<div class="collection-toolbar"><label class="collection-search">${collectionIcon('search')}<input id="librarySearch" type="search" placeholder="搜索名词、解释或公司" aria-label="搜索收藏的名词" value="${esc(collectionView.libraryQuery)}" autocomplete="off"></label><button class="collection-button study-toggle" data-act="library-study" aria-pressed="${collectionView.study}">${collectionIcon('cards')}<span>${collectionView.study ? '结束复习' : '复习一下'}</span></button></div>
+    <div class="collection-list-label"><div class="collection-filters" role="group" aria-label="名词来源筛选">${[['all','全部收藏'],['report','来自报告'],['glossary','词表收藏']].map(([key,label]) => `<button data-act="library-filter" data-filter="${key}" aria-pressed="${collectionView.libraryFilter === key}">${label}</button>`).join('')}</div><span id="libraryMatches" role="status">显示 ${rows.length} / ${list.length} 个词</span></div>
+    <p class="study-hint" id="studyHint"${collectionView.study ? '' : ' hidden'}>先想想这个词是什么意思，再展开卡片核对。解释和出处都在原处。</p>
+    <div class="knowledge-cards" id="knowledgeCards">${libraryCards(rows)}</div>
+    <p class="collection-storage">共 ${list.length} 个词。${where}</p>`;
+}
+function refreshLibraryCards() {
+  const list = libRead(), rows = visibleTerms(list);
+  if ($('#knowledgeCards')) $('#knowledgeCards').innerHTML = libraryCards(rows);
+  if ($('#libraryMatches')) $('#libraryMatches').textContent = `显示 ${rows.length} / ${list.length} 个词`;
 }
 const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问小企">${S.selected.has(id) ? '已选' : '问'}</button>`;
 // Keep raw record IDs for navigation, but use readable labels in the review UI.
@@ -412,66 +434,70 @@ function archiveAssistantHtml() {
     <div class="archive-assistant-bottom"><span class="archive-status-dot"></span>尚未选择案卷 · 暂不读取具体材料</div>`;
 }
 
+function collectionIcon(kind) {
+  const paths = {search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm5-2 6 6',file:'M5 3h10l4 4v14H5V3Zm10 0v5h4M9 12h6M9 16h4',bookmark:'M6 3h12v18l-6-4-6 4V3Z',cards:'M7 3h13v15H7V3ZM4 7H2v15h13v-2M11 8h5m-5 4h5',folder:'M3 6h7l3 3h8v12H3V6Z',arrow:'M4 12h15m-6-6 6 6-6 6'};
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.file}"/></svg>`;
+}
+function collectionArt(kind) {
+  return `<svg class="collection-art" viewBox="0 0 210 140" fill="none" aria-hidden="true"><path d="M22 114h168" stroke="#8b795a" opacity=".4"/><g class="collection-art-pages"><path d="m62 31 87-10 10 88-87 10Z" fill="#efe5cd" stroke="#b89a62"/><path d="M49 33h92v87H49Z" fill="#faf6e9" stroke="#bfa776"/><path d="M62 53h63M62 63h39M62 75h63M62 86h51" stroke="#b7a47a"/><path d="M106 33v30l10-7 10 7V33" fill="#9d7743"/></g>${kind === 'cases' ? '<path d="M25 76V58h41l12 14h101v54H25V76Z" fill="#d5bb87" stroke="#a58754"/><path d="M25 80h154v46H25Z" fill="#dec99f" stroke="#a58754"/><path d="M47 94h61v19H47Z" fill="#f7f0dd" stroke="#b59b6c"/><path d="M55 101h42m-42 6h29" stroke="#a18b68"/><circle cx="160" cy="104" r="6" fill="#233845" stroke="#b39966"/>' : '<path d="m127 99 45-64 8 6-45 64-11 7 3-13Z" fill="#223845" stroke="#b89960"/><path d="m127 99 8 6-11 7 3-13Z" fill="#d6bc85"/><path d="m166 44 8 6" stroke="#d6bc85"/>'}</svg>`;
+}
+function collectionHeader(kind) {
+  const library = kind === 'library';
+  return `<section class="collection-heading archive-heading"><div class="collection-heading-main"><div class="collection-kicker"><span>${library ? 'KNOWLEDGE INDEX' : 'CASE ARCHIVE'}</span><i></i>${library ? '知识库' : '企业研究档案'}</div><h1>${library ? '收藏的名词' : '查过的公司'}</h1><p>${library ? '把报告里遇到的陌生词，变成自己的理解。' : '从上次的疑问继续，每次核实都有迹可循。'}</p><div class="collection-header-actions"><a class="collection-button solid" href="${library ? '#/cases' : '/'}">${collectionIcon(library ? 'folder' : 'search')}${library ? '回到案卷' : '查一家公司'}</a><span>${library ? '解释 · 依据 · 对应报告' : '报告 · 补充材料 · 历次变化'}</span></div></div><div class="collection-header-art">${collectionArt(kind)}<span>${library ? '把理解留下来' : '你的私人档案'}</span></div></section>`;
+}
+function caseCollectionRows(cases) {
+  return cases.filter(c => collectionMatches([c.company_name,c.need,c.scenario_label].join(' '),collectionView.caseQuery))
+    .filter(c => collectionView.caseFilter !== 'multiple' || Number(c.versions) > 1)
+    .sort((a,b) => collectionView.caseSort === 'oldest' ? String(a.created_at || '').localeCompare(String(b.created_at || '')) : String(b.created_at || '').localeCompare(String(a.created_at || '')));
+}
+function renderCaseCollection() {
+  const all = S.cases || [], rows = caseCollectionRows(all);
+  $('#caseCount').textContent = String(all.length).padStart(2,'0');
+  $('#caseCompanies').textContent = String(new Set(all.map(c => c.company_name)).size).padStart(2,'0');
+  $('#caseVersions').textContent = String(all.reduce((n,c) => n + (Number(c.versions) || 0),0)).padStart(2,'0');
+  $('#caseMatches').textContent = `显示 ${rows.length} / ${all.length} 份案卷`;
+  $('#caseList').innerHTML = rows.length ? rows.map((c,i) => caseRow(c,i)).join('') : all.length ? '<div class="collection-empty"><span class="collection-empty-mark">⌕</span><h3>没有找到匹配的案卷</h3><p>试试公司简称、关注事项，或查看全部案卷。</p><button class="collection-button" data-act="cases-reset">清除筛选</button></div>' : '<div class="collection-empty empty-case"><h3>还没有案卷</h3><p>查一家公司，报告会保存在这里。之后可以继续补材料、看变化。</p><a class="collection-button solid" href="/">去查一家公司 ↗</a></div>';
+}
 async function renderCases(request = routeRequest) {
   S.case = null; useTerms(S.terms); renderTop();
-  document.body.classList.add('research-mode', 'cases-mode');
-  $('#view').innerHTML = `<div class="case-layout">
-  <main class="report" id="report">
-    <section class="archive-heading">
-      <div class="archive-topline"><span class="archive-eyebrow"><i></i> 企业研究档案 / 案卷</span><a class="research-button" href="/">＋ 查一家公司</a></div>
-      <h1>查过的公司</h1>
-      <p>从上次的疑问继续。报告、补充材料和每一次变化，都保留在同一份案卷里。</p>
-    </section>
-    <section aria-labelledby="archive-list-title">
-      <div class="archive-list-heading"><h2 id="archive-list-title">已保存的案卷 <span id="caseCount" aria-label="当前列表案卷数量">—</span></h2><span>按新建时间排列</span></div>
-      <div class="archive-list" id="caseList" aria-busy="true"><div class="archive-state" role="status">读取案卷…</div></div>
-    </section>
-    <footer class="archive-footer">${archiveIcon('file')}<p>拿到新合同、付款信息或对方回复？<br><span>打开对应案卷，补充材料后继续核对；旧版报告仍可回看。</span></p></footer>
-  </main>
-  <aside class="assist open" id="assist" aria-label="小企助手">${archiveAssistantHtml()}</aside>
-  </div>`;
+  document.body.classList.add('research-mode', 'cases-mode', 'collections-mode');
+  collectionView.caseQuery = ''; collectionView.caseFilter = 'all';
+  $('#view').innerHTML = `<div class="case-layout"><main class="report collection-page" id="report">${collectionHeader('cases')}
+    <div class="collection-ledger" aria-label="案卷统计"><div><strong id="caseCount" aria-label="当前列表案卷数量">—</strong><span>份案卷</span></div><div><strong id="caseCompanies">—</strong><span>家公司</span></div><div><strong id="caseVersions">—</strong><span>版报告</span></div><p>每一版都保留<br><span>新材料，接着原来的线索核实。</span></p></div>
+    <section aria-labelledby="archive-list-title"><div class="collection-toolbar"><label class="collection-search">${collectionIcon('search')}<input type="search" id="caseSearch" disabled aria-label="搜索案卷" placeholder="搜索公司名称或关注事项" autocomplete="off"></label><label class="collection-sort"><span>排列</span><select id="caseSort" disabled aria-label="案卷排列顺序"><option value="newest"${collectionView.caseSort === 'newest' ? ' selected' : ''}>最近新建</option><option value="oldest"${collectionView.caseSort === 'oldest' ? ' selected' : ''}>最早新建</option></select></label></div>
+    <div class="collection-list-label"><div class="collection-filters" role="group" aria-label="案卷筛选"><button data-act="cases-filter" disabled data-filter="all" aria-pressed="true" id="archive-list-title">全部案卷</button><button data-act="cases-filter" disabled data-filter="multiple" aria-pressed="false">有多个版本</button></div><span id="caseMatches" role="status">读取案卷…</span></div>
+    <div class="archive-list folder-grid" id="caseList" aria-busy="true"><div class="collection-empty" role="status">读取案卷…</div></div></section>
+    <footer class="collection-footer">${collectionIcon('file')}<p>拿到新合同或对方回复？<span>打开对应案卷，补充材料后继续核实，旧版报告仍可回看。</span></p></footer>
+    </main><aside class="assist" id="assist" aria-label="小企助手">${archiveAssistantHtml()}</aside></div>`;
   try {
     const cases = await api('/api/cases', {signal: request?.signal});
     if (!currentRoute(request)) return;
     if (!Array.isArray(cases)) throw new Error('列表内容格式不正确，请重试');
-    S.cases = cases;
-    $('#caseCount').textContent = String(cases.length).padStart(2, '0');
-    $('#caseList').innerHTML = S.cases.length
-      ? S.cases.map(caseRow).join('')
-      : '<div class="archive-state empty-case"><h3>还没有案卷</h3><p>查一家公司，这里就会保存报告，方便之后补材料、看变化。</p><a class="research-button" href="/">去查一家公司</a></div>';
+    S.cases = cases; renderCaseCollection();
+    $('#caseSearch').disabled=false; $('#caseSort').disabled=false;
+    $$('[data-act="cases-filter"]').forEach(button => {button.disabled=false;});
   } catch (e) {
     if (!currentRoute(request)) return;
-    $('#caseList').innerHTML = `<div class="archive-state"><p class="err" role="alert">读不到案卷列表：${esc(e.message)}</p><p>已保存的案卷不会因此清空。</p><button class="research-button" type="button" data-act="retry-read">重试</button></div>`;
+    $('#caseList').innerHTML = `<div class="collection-empty"><p class="err" role="alert">读不到案卷列表：${esc(e.message)}</p><p>已保存的案卷不会因此清空。</p><button class="collection-button" type="button" data-act="retry-read">重试</button></div>`;
+    $('#caseMatches').textContent = '读取暂未完成';
   } finally {
-    if (currentRoute(request)) $('#caseList')?.setAttribute('aria-busy', 'false');
+    if (currentRoute(request)) $('#caseList')?.setAttribute('aria-busy','false');
   }
 }
-
 function caseRow(c, index = 0) {
-  return `<a class="archive-row" href="#/case/${esc(encodeURIComponent(c.id))}">
-    <span class="archive-file">${archiveIcon('file')}<small>${String(index + 1).padStart(2, '0')}</small></span>
-    <div class="archive-row-body"><div class="archive-row-title"><h3>${esc(c.company_name)}</h3><span class="archive-versions">${esc(c.versions)} 个版本</span></div>
-      ${c.need ? `<p class="archive-need"><span>本次关注</span>${esc(c.need)}</p>` : ''}
-      <div class="archive-row-meta">${c.scenario_label ? `<span class="archive-scenario">${esc(c.scenario_label)}</span>` : ''}${c.created_at ? `<time datetime="${esc(c.created_at)}">${esc(fmtTime(c.created_at))} 新建</time>` : '<span>新建时间未记录</span>'}</div>
-    </div>
-    <span class="archive-open">打开报告 ${archiveIcon('arrow')}</span>
+  return `<a class="archive-row folder-card" href="#/case/${esc(encodeURIComponent(c.id))}">
+    <span class="folder-card-tab"><span>${esc(c.scenario_label || '企业核验')}</span><small>${String(index+1).padStart(2,'0')}</small></span>
+    <span class="folder-card-back" aria-hidden="true"></span><div class="folder-card-front"><div class="folder-card-top"><span>企er / 企业研究案卷</span><span class="archive-versions">${esc(c.versions)} 个版本</span></div>
+    <div class="folder-card-title"><h3>${esc(c.company_name)}</h3><span class="folder-seal" aria-hidden="true">${collectionIcon('file')}</span></div>
+    <div class="folder-question"><span>本次关注</span><p>${esc(c.need || '了解这家公司的公开资料')}</p></div>
+    <div class="folder-card-foot"><span>${c.created_at ? `<time datetime="${esc(c.created_at)}">${esc(fmtTime(c.created_at))} 新建</time>` : '新建时间未记录'}</span><span class="archive-open">打开报告 ${collectionIcon('arrow')}</span></div></div>
   </a>`;
 }
-
-// ---------- 分区三：知识库 ----------
-
 function renderLibrary() {
-  document.body.classList.add('research-mode', 'dossier-shell');
+  document.body.classList.add('research-mode','dossier-shell','collections-mode','knowledge-mode');
   S.case = null; useTerms(S.terms); renderTop();
-  $('#view').innerHTML = shellHtml(`
-  <div class="home">
-    <section class="home-hero">
-      <div class="kicker">知识库</div>
-      <h1>收藏的名词</h1>
-      <p>报告里看不懂的词，点开后可以收藏到这里，回头复习。每个词都记着你是在哪份报告里碰到的。</p>
-    </section>
-    <div id="libList">${libraryHtml(libRead())}</div>
-  </div>`);
+  collectionView.libraryQuery = ''; collectionView.libraryFilter = 'all'; collectionView.study = false;
+  $('#view').innerHTML = shellHtml(`<div class="collection-page">${collectionHeader('library')}<div class="knowledge-intro"><span>${collectionIcon('bookmark')} 收藏，是为了下次看懂</span><p>每张卡保留原来的解释，以及你在哪份报告里遇到它。</p></div><div id="libList">${libraryHtml(libRead())}</div></div>`);
 }
 
 // ---------- 分区四：我的 ----------
@@ -2166,6 +2192,28 @@ document.addEventListener('click', e => {
       toast(on ? '已收藏到「知识库」' : '已移出知识库');
       break;
     }
+    case 'cases-filter':
+      collectionView.caseFilter = d.filter;
+      $$('[data-act="cases-filter"]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter === d.filter)));
+      renderCaseCollection(); break;
+    case 'cases-reset':
+      collectionView.caseQuery=''; collectionView.caseFilter='all'; $('#caseSearch').value='';
+      $$('[data-act="cases-filter"]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter === 'all')));
+      renderCaseCollection(); break;
+    case 'library-filter':
+      collectionView.libraryFilter=d.filter;
+      $$('[data-act="library-filter"]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter === d.filter)));
+      refreshLibraryCards(); break;
+    case 'library-reset':
+      collectionView.libraryQuery=''; collectionView.libraryFilter='all'; $('#librarySearch').value='';
+      $$('[data-act="library-filter"]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter === 'all')));
+      refreshLibraryCards(); break;
+    case 'library-study':
+      collectionView.study=!collectionView.study;
+      el.setAttribute('aria-pressed',String(collectionView.study));
+      el.querySelector('span').textContent=collectionView.study ? '结束复习' : '复习一下';
+      $('#studyHint').hidden=!collectionView.study;
+      refreshLibraryCards(); break;
     case 'lib-remove':
       if (libToggle(d.term) === null) { toast('这个浏览器存不了收藏'); break; }
       if ($('#libList')) $('#libList').innerHTML = libraryHtml(libRead());
@@ -2241,7 +2289,7 @@ async function route() {
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();
   researchCleanup();
-  document.body.classList.remove('research-mode', 'cases-mode', 'dossier-live', 'dossier-shell');
+  document.body.classList.remove('research-mode', 'cases-mode', 'dossier-live', 'dossier-shell', 'collections-mode', 'knowledge-mode');
   // The research room is the only query homepage, including old #/new bookmarks.
   if (!location.hash || /^#\/(?:check|new)?\/?$/.test(location.hash)) {
     location.replace('/');
@@ -2295,4 +2343,16 @@ async function boot() {
   await startupReady;
   await initialRoute;
 }
+document.addEventListener('input', event => {
+  if (event.isComposing) return;
+  if (event.target.id === 'caseSearch') {collectionView.caseQuery=event.target.value;renderCaseCollection();}
+  if (event.target.id === 'librarySearch') {collectionView.libraryQuery=event.target.value;refreshLibraryCards();}
+});
+document.addEventListener('compositionend', event => {
+  if (event.target.id === 'caseSearch') {collectionView.caseQuery=event.target.value;renderCaseCollection();}
+  if (event.target.id === 'librarySearch') {collectionView.libraryQuery=event.target.value;refreshLibraryCards();}
+});
+document.addEventListener('change', event => {
+  if (event.target.id === 'caseSort') {collectionView.caseSort=event.target.value;renderCaseCollection();}
+});
 boot();

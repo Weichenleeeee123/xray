@@ -231,7 +231,7 @@ test('cases use the approved workspace without the browser visibility badge or s
   const loading=h.nodes.get('#view').innerHTML;
   assert.equal(h.run(`document.body.classList.contains('cases-mode')`),true);
   assert.equal(h.run(`document.body.classList.contains('research-mode')`),true);
-  assert.match(loading,/archive-heading/);assert.match(loading,/assist open/);
+  assert.match(loading,/archive-heading/);assert.match(loading,/aside class="assist"/);
   assert.match(loading,/读取案卷/);assert.match(loading,/aria-busy="true"/);
   assert.match(loading,/尚未选择案卷/);
   assert.doesNotMatch(loading,/仅此浏览器可见|跨设备暂不互通|示例数据|云杉|青禾|星桥|old-report-ref|asForm/);
