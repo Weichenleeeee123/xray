@@ -88,13 +88,14 @@ def test_finance_empty_and_failed_are_told_apart():
     assert fin.findings(Call({"企业名称": NAME, "摘要": "数据格式变了"}, None, False, WHEN)).coverage == "failed"
 
 
-def test_news_keeps_only_negative_titles_and_scrubs_person_names():
+def test_news_keeps_all_titles_and_scrubs_person_names():
     n = news_src.findings(Call(NEWS, None, False, WHEN), NAME)
     assert n.total == 120 and len(n.items) == 3
     assert n.counts() == {"消极": 1, "中立": 1, "积极": 1}
     assert n.negatives[0].title == "行政处罚决定书（远山股份、相关个人）"
     assert news_src.scrub_title("行政处罚决定书（巨鲸财富、张小明）", "杭州巨鲸财富管理有限公司") ==         "行政处罚决定书（巨鲸财富、相关个人）"
-    assert all(i.title is None for i in n.items if i.sentiment != "消极")  # 中立新闻里的人名不存
+    assert all(i.title for i in n.items)
+    assert "王某某" not in str(n.items)  # Preserve appointment news, not personal names.
     assert len(n.recent_negatives(date(2026, 10, 2))) == 1
     assert n.recent_negatives(date(2028, 1, 1)) == []
 

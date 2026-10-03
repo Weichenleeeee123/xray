@@ -167,6 +167,23 @@ class RegistryHit(BaseModel):
 
 # ---------- 原始数据 ----------
 
+class WebEvidence(BaseModel):
+    """Discovery provenance, never a truth score or an input to risk counters."""
+    canonical_url: str
+    read_url: str | None = None
+    content_hash: str = ""
+    relation: Literal["direct", "linked", "possible"] = "possible"
+    nature: Literal["self_description", "media", "review", "official_record", "discussion"] = "discussion"
+    read_state: Literal["full", "partial", "snippet_only", "link_only", "failed"] = "snippet_only"
+    published_at: str | None = None
+    indexed_at: str | None = None
+    updated_at: str | None = None
+    paths: list[dict] = Field(default_factory=list)
+    relations: list[dict] = Field(default_factory=list)
+    topics: list[str] = Field(default_factory=list)
+    duplicate_group: str | None = None
+
+
 class RawRecord(BaseModel):
     """每次取数据、每份用户材料都记一条。报告第四层就是这些记录。"""
     id: str                              # R1、R2……同一案卷内唯一
@@ -180,6 +197,7 @@ class RawRecord(BaseModel):
     content: dict | list | str | None = None  # 原文或字段
     screenshot: str | None = None
     note: str | None = None              # 例如"对方说的，未核实""手动录入"
+    discovery: WebEvidence | None = None  # 旧案卷无此字段仍可读取；不进入风险规则输入
 
 
 # ---------- 分析结果 ----------

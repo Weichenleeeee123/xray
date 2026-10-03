@@ -2,7 +2,7 @@
 
 - 情感倾向是企查查的模型标的，报告里写"企查查标为负面"，不当成我们的结论；口碑最多标"要留意"。
 - 平台只给最近 30 条明细（摘要里有总条数）。统计都按"返回的这 30 条"说，不外推。
-- 隐私（仓库公开）：只存负面新闻的标题，标题里括号中列的个人名字换成"相关个人"；中立、正面的只存日期、来源、倾向。
+- 各种倾向都保留接口实际返回的标题；个人信息作最小遮盖，旧缓存缺标题时不补造。
 """
 import re
 from dataclasses import dataclass, field
@@ -22,7 +22,8 @@ def scrub_title(title: str, company: str | None = None) -> str:
             return is_person(p) and not (company and p in company)
         return m.group(0)[0] + "".join("相关个人" if i % 2 == 0 and person(p.strip()) else p
                                        for i, p in enumerate(parts)) + m.group(0)[-1]
-    return scrub_text(PAREN.sub(fix, title or ""), company)
+    text = scrub_text(PAREN.sub(fix, title or ""), company)
+    return re.sub(r"(聘任|任命|选举)[一-龥·]{2,4}(?=担任|为)", r"\1相关个人", text)
 
 
 @dataclass
@@ -31,7 +32,7 @@ class NewsItem:
     sentiment: str            # 消极 / 中立 / 积极
     source: str
     url: str | None
-    title: str | None = None  # 只有负面的留标题
+    title: str | None = None  # 旧缓存可能未记录，不能补造
 
 
 @dataclass
@@ -66,7 +67,7 @@ def findings(call, company: str) -> NewsFindings:
         senti = str(r.get("情感类型") or r.get("情感倾向") or "中立")
         when = str(r.get("发布时间") or "")[:10] or None
         items.append(NewsItem(date=when, sentiment=senti, source=str(r.get("来源") or ""), url=r.get("链接") or None,
-                              title=scrub_title(str(r.get("标题") or ""), company) if senti == NEGATIVE else None))
+                              title=scrub_title(str(r.get("标题") or ""), company) or None))
     items.sort(key=lambda i: i.date or "", reverse=True)
     if items:
         return NewsFindings("found", max(total(data), len(items)), items, call.retrieved_at)

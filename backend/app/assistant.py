@@ -108,6 +108,9 @@ guidance / clarify 使用提供的行动目录 guide_id，服务端渲染；不�
 support 不能包含数值或企业事实；金额单独用 user_context。你无需输出同一内容的第二份 answer 字段。
 引用 RawRecord 时，quotes.text 只取 content 中单个叶子值里的连续原文；不得拼接 JSON 字段名、冒号或不同值，也不得把 note 等元数据当原文。
 原始材料只表示材料如此记载，不代表宣称属实；沿用官方/人工/商业/用户/演示的来源性质。
+web_discovery 是扩搜资料，不是新增规则事实。业务、品牌、产品、融资、招聘问题应读取这些原文；没有官方背书不等于不能引用。
+这种资料按原材料格式回答：text 使用“材料写明：”加连续原文，并提供对应 citations 和 quotes；服务端会附上来源性质、主体关联与读取程度。
+不要把 source_statement 导航卡当 fact_id，也不要自行增加确定性归属或安全判断。不同来源说法不同时分别引用，不能自行抹平分歧。
 user_reviews 是用户自己写的评价，没核实：引用时写"有用户评价说"，不当作事实，不替用户下结论。
 选中条目时围绕该条目回答，不能偷换版本。新聊天信息需用户加入案卷才能触发二次分析。
 缺少事实依据时 not_found=true，但仍可以保留 support、user_context 和 guidance，不能因为资料不足就拒绝正常交流。
@@ -198,6 +201,15 @@ def evidence_text(case: Case, valid: dict[str, str]) -> str:
     """越界检查用的"案卷记录"文字。用户评价不算：评价里写了"非法集资"，不能让助手借它说出口。"""
     reviews = {r.id for r in case.raw if r.source_id == "user_reviews"}
     return _flat(" ".join(text for ref, text in valid.items() if ref not in reviews))
+
+
+def public_attributions(case: Case, v: Version) -> dict[str, str]:
+    from urllib.parse import urlsplit
+    from app.sources.discovery import NATURE_LABELS, RELATION_LABELS, READ_LABELS
+    return {r.id: f"来源 {urlsplit(r.url or '').hostname or '公开页面'} 的说法"
+            f"（{NATURE_LABELS[r.discovery.nature]}；{RELATION_LABELS[r.discovery.relation]}；"
+            f"{READ_LABELS[r.discovery.read_state]}）："
+            for r in case.raw if r.id in v.raw_ids and r.discovery}
 
 
 def glossary_entries(terms: list[Term]) -> dict[str, str]:
@@ -360,7 +372,8 @@ def validate(ans: _ModelAnswer, valid: dict[str, str], *,
              fact_display: dict[str, str] | None = None,
              quote_links: dict[str, list[str]] | None = None,
              allowed_refs: set[str] | None = None,
-             read_leaves: dict[str, list[str]] | None = None) -> tuple[str, list[str], list[Quote], int]:
+             read_leaves: dict[str, list[str]] | None = None,
+             raw_attribution: dict[str, str] | None = None) -> tuple[str, list[str], list[Quote], int]:
     """Reject unsupported fact segments, not only their invalid footnotes.
 
     Verbatim checks and limited verdict/numeric checks do NOT prove general
@@ -439,7 +452,9 @@ def validate(ans: _ModelAnswer, valid: dict[str, str], *,
             dropped += len(invalid)
             continue
         invalid_own_quote = any(q not in quotes for q in seg.quotes)
-        if (not refs or invalid_own_quote or bad_quote_refs.intersection(refs)
+        attributed_refs = [r for r in refs if r in (raw_attribution or {})]
+        missing_source_quote = any(not any(q.ref == r and q in quotes for q in seg.quotes) for r in attributed_refs)
+        if (not refs or invalid_own_quote or missing_source_quote or bad_quote_refs.intersection(refs)
                 or not _supported(seg.text, refs, valid, rule_states)):
             dropped += 1
             if diagnostics is not None and refs:
@@ -451,6 +466,8 @@ def validate(ans: _ModelAnswer, valid: dict[str, str], *,
             continue
         # Every structured segment is one factual unit; references rendered by code.
         rendered = seg.text
+        if attributed_refs:
+            rendered = "\n".join(raw_attribution[r] for r in attributed_refs) + "\n" + rendered
         for ref in refs:
             if f"[{ref}]" not in rendered:
                 rendered += f" [{ref}]"
@@ -533,7 +550,15 @@ def _describe(target: str, case: Case, v: Version) -> tuple[list[str], list[str]
             lines.append(f"· {q.ask}（拿到答案后：{q.check_where}）[{q.id}]")
             cites.append(q.id)
     for r in case.raw:
-        if r.id == target:
+        if r.id == target and r.id in v.raw_ids:
+            if r.discovery:
+                content = r.content if isinstance(r.content, dict) else {}
+                extracts = [content.get("原文"), *(content.get("搜索摘要") or [])]
+                excerpt = next((s for s in extracts if isinstance(s, str) and 0 < len(s) <= 2400), None)
+                lines.append(public_attributions(case, v)[r.id] + "\n" +
+                    (f"材料写明：“{excerpt}”" if excerpt else "已收录这条资料，请通过原文出处查看完整内容。") + f" [{r.id}]")
+                cites.append(r.id)
+                continue
             lines.append(f"{r.title}：{r.note or ''}{_dump(r.content)[:200] if r.content else '没有内容'} [{r.id}]")
             cites.append(r.id)
     return lines, cites
@@ -541,6 +566,10 @@ def _describe(target: str, case: Case, v: Version) -> tuple[list[str], list[str]
 
 def template_answer(case: Case, v: Version, q: ChatIn) -> tuple[str, list[str], bool, list[str]]:
     targets = list(q.refs)
+    public_topics = set(memory_topics(q.text)) & {"business", "brand", "product", "funding", "activity", "media", "job"}
+    if not targets and public_topics:
+        targets.extend(r.id for r in case.raw if r.id in v.raw_ids and r.discovery
+                       and public_topics.intersection(r.discovery.topics))
     for pattern, ids in TOPICS:
         if re.search(pattern, q.text):
             targets += [i for i in ids if i not in targets]
@@ -799,7 +828,8 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
                                               diagnostics=diagnostics, user_text=q.text,
                                               user_history=[m.text for m in case.chat if m.role == "user" and m.version == v.no][-HISTORY:],
                                               fact_display=display, quote_links=links,
-                                              allowed_refs=allowed_refs, read_leaves=read_leaves)
+                                              allowed_refs=allowed_refs, read_leaves=read_leaves,
+                                              raw_attribution=public_attributions(case, v))
         total_dropped += dropped
         not_found = out.not_found or not bool(text)
         if not text:

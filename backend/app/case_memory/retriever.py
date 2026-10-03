@@ -57,7 +57,9 @@ def read_evidence(case: Case, no: int, owner: str, locator):
         parent = parent[part]
     return raw, {"ref": raw.id, "path": locator.path, "content": value, "parent_fields": parents,
                  "source": raw.source_id, "kind": raw.kind, "coverage": raw.coverage.value,
-                 "as_of": raw.as_of, "retrieved_at": raw.retrieved_at, "note": raw.note}
+                 "as_of": raw.as_of, "retrieved_at": raw.retrieved_at, "note": raw.note,
+                 **({"url": raw.url, "discovery": raw.discovery.model_dump(mode="json")}
+                    if raw.discovery else {})}
 
 
 def compare_versions(case: Case, owner: str, from_no: int, to_no: int) -> dict:

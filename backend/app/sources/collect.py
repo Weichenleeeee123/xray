@@ -12,7 +12,7 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from app import progress
+from app import config, progress
 from app.models import AmacHit, CompanyProfile, Coverage, LicenseHit, RawRecord, RegistryHit, Source
 from app.reviews import review_record
 from app.sources.amac_detail import summary as amac_summary
@@ -219,10 +219,12 @@ def _finance_record(f: FinancialFindings) -> RawRecord:
 
 
 def _news_record(n: NewsFindings) -> RawRecord:
-    note = "第三方商业数据；\"负面/中立/正面\"是企查查的模型标的，不是我们的判断。只存负面新闻的标题，其余只记日期和来源"
+    note = "第三方商业数据；\"负面/中立/正面\"是企查查的模型标的，不是我们的判断。保留各倾向的实际返回内容；旧缓存未记录的标题不补造"
     if n.coverage == "found":
         content = {"平台记录总数": n.total, "返回的最近几条": len(n.items), "倾向分布（返回的这几条）": n.counts(),
-                   "负面新闻": [{"标题": i.title, "日期": i.date, "来源": i.source, "链接": i.url} for i in n.negatives]}
+                   "负面新闻": [{"标题": i.title, "日期": i.date, "来源": i.source, "链接": i.url} for i in n.negatives],
+                   "全部返回新闻": [{"标题": i.title, "日期": i.date, "来源": i.source, "链接": i.url,
+                                     "平台情感标注": i.sentiment} for i in n.items]}
         return _raw("qcc_news", "新闻舆情（企查查）", "commercial", Coverage.found, content, retrieved_at=n.retrieved_at,
                     as_of=n.items[0].date if n.items else None, url=QCC_SITE, note=note)
     if n.coverage == "not_found":
@@ -242,6 +244,13 @@ def _network_steps(name: str, svc, records: list[RawRecord], *, is_demo: bool,
         progress.start("web")
         official = svc.web.find_official(name)
         records.extend(_web_part(official, "web_official"))
+        if config.WEB_DISCOVERY_ENABLED and hasattr(svc.web, "discover"):
+            # Separate archive channel: candidates never enter legacy risk counters.
+            try:
+                records.extend(svc.web.discover(name).records())
+            except Exception as exc:
+                records.append(_raw("web_discovery", "公开信息扩搜 · 覆盖说明", "web", Coverage.failed,
+                                    {"未完成": type(exc).__name__}, note="扩搜未完成，其他来源资料仍保留"))
         progress.done("web", records)
     else:
         progress.skip("web", f"没联网搜：{why}")
