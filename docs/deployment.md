@@ -1,6 +1,6 @@
 # qier.asia 部署与维护
 
-当前验收版本：`20261003T023800Z-253bdb9`，发布于 2026-10-03 10:38 左右（Asia/Taipei），包含加载优化、报告摘要与版本切换、预制来源说明和大案卷问答修复。详细记录见 [性能与部署](2026-10-03-performance-and-deployment.md)。
+当前验收版本：`20261003T035908Z-b3b052f`，发布于 2026-10-03 12:00 左右（Asia/Taipei），在 `253bdb9` 基础上改为五维雷达，并带上此后已提交的报告概况恢复与预制来源脚注。详见文末“五维雷达发布”；更早的发布见 [性能与部署](2026-10-03-performance-and-deployment.md)。
 
 > 当前站点无需登录，案卷、材料、聊天和生成结果按浏览器身份隔离。无法确认归属的历史案卷隐藏但保留，只有主动提交的评价公开。`XRAY_PRIVATE_DIR` 已持久化；公网验证了 HttpOnly、Secure、SameSite=Lax 和 API 的 private/no-store。维护时仍需遵循 [小企与私有案卷交接](2026-10-03-assistant-privacy-handoff.md)。
 
@@ -23,7 +23,7 @@
 | 路径 | 用途 |
 |---|---|
 | `/opt/qier/releases/20261002T152239Z` | 本次部署的代码、页面和公开资料 |
-| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261003T023800Z-253bdb9` |
+| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261003T035908Z-b3b052f` |
 | `/opt/qier/venv` | 独立 Python 环境 |
 | `/opt/qier/current/requirements-deployed.txt` | 服务器实际安装的完整依赖版本 |
 | `/etc/qier/backend.env` | 私有模型/企查查配置，由 systemd 加载，不在网站静态目录中 |
@@ -122,3 +122,12 @@ systemctl reload caddy
 - 本次仅增量上传 14 张 WebP 和当前 JS/CSS/HTML。两次发布前入口分别保存在 `/etc/qier/home-before-progressive-20261002T165355Z.html`、`/etc/qier/home-before-progressive-20261002T165801Z.html`；原 PNG、旧构建文件和当前报告前端均保留，后端 PID 未变化。服务器逐一核对线上文件 SHA-256、缓存头、两个域名首页及健康接口，通过；最终记录为 `/etc/qier/progressive-verification-20261002T165801Z.json`。
 - 初次线上测量发现双 requestAnimationFrame 仍可能早于首次内容绘制，因此在支持 Paint Timing 的浏览器上增加首次内容绘制观察，再安排空闲下载。最终普通代理网络单次冷启动：首次内容绘制 9.48s，首次高清请求 9.50s，背景切为原图画质 10.79s，全部高清图约 16s 下载完成；没有页面脚本错误。此流程保留了之前的首屏轻量层，不能消除代理建连等待。页面整体 CLS 为 0.01345；本地受控切换验证背景矩形未发生变化，未将整页表述为零位移。
 - 本地证据：`progressive-browser-final.txt`、`progressive-live-final.txt`，截图 `output/playwright/qier-two-stage-*.png`；它们位于忽略目录，不提交。
+
+## 2026-10-03 12:00 五维雷达发布
+
+- 发布提交 `b3b052f`（含 `f723b1b` 五维雷达、`1ee0b2b` 脚本版本号），服务器版本 `/opt/qier/releases/20261003T035908Z-b3b052f`，`XRAY_RELEASE_ID` 同名。复制上一版本后覆盖本次提交的代码，首页用本次提交重新构建；依赖未变，未删除文件。
+- 报告雷达去掉“宣传承诺”一维：这一维只来自用户提交的宣传、合同或聊天，没交材料的报告都缺一角。原有条目随风险信号计入经营资格，不丢记录；某一维没有记录时用虚线跨过，不再凹回中心。
+- Cloudflare 按版本查询参数缓存 `/xray/*.js` 4 小时（`max-age=14400`），因此改了 `case-design.js` 的 `?v=`。以后改报告脚本或样式，也要同步改 `web/index.html` 里对应的 `?v=`，否则访客最多 4 小时内仍拿到旧文件。
+- 切换前确认没有进行中的查询和 8000 端口连接；运行数据和私有配置先备份为 `/var/backups/qier/qier-before-20261003T035908Z-b3b052f.tar.gz`（仅 root 可读），配置备份为 `/etc/qier/backend.env.before-b3b052f-*`，旧链接保留为 `/opt/qier/current.before-b3b052f`。预制示例包沿用 `/var/lib/qier/demo_prebuilt`，`XRAY_QCC_MAX_POINTS` 未改。
+- 验证：后端 537、报告页 91、研究室 92 项测试通过；候选版本以服务用户在临时数据目录冒烟，A、B、C 三个示例均由预制包回放，无“没查成”。切换后本机与公网健康接口均报告新版本，首页哈希与构建一致；公网取到的新脚本 `cf-cache-status: MISS`，含“企业五维轮廓”。浏览器在公网新建一份 A 示例报告，雷达为闭合五边形，页面请求均为 200。
+- 上传时 SSH 多次被重置，改为逐个上传、校验 SHA-256，并在服务器上用 `setsid nohup` 执行，避免连接中断打断切换。
