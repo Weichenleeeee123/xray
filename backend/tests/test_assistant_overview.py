@@ -102,6 +102,22 @@ def test_all_serious_findings_survive_the_three_item_reading_default():
     assert "严重事项 6" in result.text
 
 
+def test_report_reading_preserves_dated_event_context_from_current_public_evidence():
+    case, version = prepared(scenario="job", need="想入职这家公司，关注经营稳定性")
+    version.created_at = "2026-10-04T00:00:00+08:00"
+    row(case, version, "credit.labor", text="劳动仲裁 2 条，当被告的劳动官司 0 条",
+        detail="近两年 0 条")
+    case.raw[0].content = {"平台记录总数": 2, "返回的明细": [
+        {"日期": "2016-10-12"}, {"日期": "2019-01-21"}]}
+    before = case.model_dump_json()
+    result = reply(case, version)
+    assert "历史劳动争议" in result.text
+    assert "2016" in result.text and "2019" in result.text
+    assert "近两年 0 条" in result.text
+    assert "credit.labor" in result.citations and "R201" in result.citations
+    assert case.model_dump_json() == before
+
+
 def test_long_conditions_are_not_sliced_into_a_favourable_claim():
     case, version = prepared()
     detail = "完整事项的限制说明。" * MAX_ITEM_CHARS + "除外情况：还需要确认执行对象。"

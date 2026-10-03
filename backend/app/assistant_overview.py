@@ -126,7 +126,11 @@ def build_overview_reply(case: Case, version: Version, question: str, route: str
                    and f"{signal.key}.{item.key}" not in conflicting]})
                    for signal in version.signals]
     company_view = version.model_copy(update={"signals": signal_view})
-    overview = build_overview(company_view)  # Never trust a previously stored headline.
+    # Match the report's event-date context using this version's bound records;
+    # do not fall back to undated wording after a report has identified old events.
+    public_records = [record for record in records.values()
+                      if record.kind in PUBLIC_KINDS and record.source_id not in private_sources]
+    overview = build_overview(company_view, public_records)  # Never trust a stored headline.
     rows = {row.id: row for row in overview.items}
     summary = overview.summary
     basis = summary.basis_ids if summary else []

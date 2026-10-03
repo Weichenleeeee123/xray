@@ -9,7 +9,7 @@ function harness() {
   function node(selector) {
     if (!nodes.has(selector)) nodes.set(selector, { innerHTML: '', textContent: '', isConnected: true,
       dataset: {}, hidden: true, open: true, value: '', focus(){}, setAttribute(){}, close() { this.open = false; }, showModal(){this.open=true;}, append() {}, remove() {}, addEventListener() {},
-      classList: { add() {}, remove() {}, contains() { return false; } }, querySelector: () => null });
+      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } }, querySelector: () => null });
     return nodes.get(selector);
   }
   const sent = [], stops = [];
