@@ -29,9 +29,10 @@ body.research-mode.report-workspace .flow-secondary .flow-label {
   background:linear-gradient(150deg,#fffcf3,#ede2cd);
 }
 body.research-mode.report-workspace .flow-label:after {
-  content:"";position:absolute;inset:3px;border:1px solid #e2bc7829;border-radius:inherit;pointer-events:none;
+  content:"";position:absolute;inset:3px;border:1px solid rgb(226 188 120 / calc(.16 + var(--pass)*.56));border-radius:inherit;pointer-events:none;
+  box-shadow:inset 0 0 10px rgb(255 217 130 / calc(var(--pass)*.18));
 }
-body.research-mode.report-workspace .flow-secondary .flow-label:after {border-color:#fff9ec99}
+body.research-mode.report-workspace .flow-secondary .flow-label:after {border-color:rgb(184 139 76 / calc(.12 + var(--pass)*.58))}
 body.research-mode.report-workspace .research-heading .research-eyebrow {position:relative;color:#8a641f}
 body.research-mode.report-workspace .research-heading .research-eyebrow:after {
   content:"";position:absolute;width:36px;height:1px;background:linear-gradient(90deg,#b88b4c,transparent);left:31px;top:50%;pointer-events:none;

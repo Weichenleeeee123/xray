@@ -33,48 +33,97 @@ const event = (id, phase = 'done', coverage = 'found') => ({
   counts: { [coverage]: 1 },
 });
 const state = () => reduceEvent(emptyResearch(), begin);
-test('a social start cannot invent a visitor before a found result, including en-route failures', () => {
-  for (const coverage of ['not_found', 'not_covered', 'failed', 'found']) {
+test('social queries without found records stay away from the closed door', () => {
+  for (const coverage of ['not_found', 'not_covered', 'failed']) {
     const d = new OfficeDirector();
     let s = reduceEvent(emptyResearch(), {
-      ...begin,
-      steps: [{ id: 'reviews', label: '评价', lookup: true }],
+      ...begin, steps: [{ id: 'reviews', label: '评价', lookup: true }],
     });
-    s = reduceEvent(s, {
-      type: 'step',
-      id: 'reviews',
-      label: '评价',
-      phase: 'start',
-    });
-    d.tick(900, s);
-    // Complete while the actor has already queued its journey.
-    s = {
-      ...reduceEvent(s, event('reviews', 'done', coverage)),
-      connection: 'saved',
-    };
-    let sawVisitor = false;
-    for (let i = 0; i < 3000 && !d.finished; i++) {
-      d.tick(40, s);
-      if (d.sample().door > 0) sawVisitor = true;
+    s = reduceEvent(s, event('reviews','start'));
+    for (let i=0;i<300;i++) {
+      d.tick(20,s);
+      assert.equal(d.sample().knocking,false);
+      assert.deepEqual(d.sample().motion.position,SEAT);
     }
-    assert.equal(sawVisitor, false, 'completed runs skip obsolete visitor scenes: ' + coverage);
+    s = {...reduceEvent(s,event('reviews','done',coverage)),connection:'saved'};
+    for (let i=0;i<200 && !d.finished;i++) {
+      d.tick(20,s);
+      assert.equal(d.sample().door,0);
+      assert.equal(d.sample().knocking,false);
+      assert.deepEqual(d.sample().motion.position,SEAT);
+    }
+    assert.equal(d.finished,true);
   }
-  const d = new OfficeDirector();
-  let s = reduceEvent(emptyResearch(), {
-    ...begin,
-    steps: [{ id: 'reviews', label: '评价', lookup: true }],
-  });
-  s = reduceEvent(s, {
-    type: 'step',
-    id: 'reviews',
-    label: '评价',
-    phase: 'start',
-  });
-  for (let i = 0; i < 600; i++) {
-    d.tick(40, s);
+});
+test('a live found social result goes directly from arrival to opening, ahead of other sources', () => {
+  for (const id of ['reviews', 'opinion']) {
+    const d = new OfficeDirector();
+    let s = reduceEvent(emptyResearch(), {
+      ...begin, steps: [{ id:'lists',label:'名单',lookup:true },{ id, label: id, lookup: true }],
+    });
+    s = reduceEvent(reduceEvent(s,event('lists','start')),event(id));
+    const seen = [];
+    let prior = d.sample().motion.position;
+    let sawKnock = false;
+    for (let i = 0; i < 1500 && !d.finished; i++) {
+      d.tick(20, s);
+      const sample = d.sample();
+      if(sample.knocking) sawKnock=true;
+      if (seen.at(-1) !== sample.phase.id) seen.push(sample.phase.id);
+      assert.ok(Math.hypot((sample.motion.position.x - prior.x) * 16.72,
+        (sample.motion.position.y - prior.y) * 9.41) < 13, 'continuous route');
+      prior = sample.motion.position;
+      if(sample.phase.id==='talk-visitor')
+        s={...reduceEvent(s,event('lists')),connection:'saved'};
+    }
+    assert.equal(sawKnock, true);
+    assert.deepEqual(seen.slice(0,6),['idle','stand','walk','open-door','talk-visitor','close-door']);
+    assert.equal(seen.filter((phase) => phase === 'open-door').length, 1);
+    assert.equal(d.finished, true);
     assert.equal(d.sample().door, 0);
+    assert.equal(d.sample().knocking, false);
+    assert.deepEqual(d.sample().motion.position, SEAT);
   }
-  assert.equal(d.sample().motion.distance, 0);
+});
+test('saving during the journey to a knocking visitor still opens and closes the door', () => {
+  const d=new OfficeDirector();
+  let s=reduceEvent(state(),event('reviews'));
+  for(let t=0;t<1400;t+=20) d.tick(20,s);
+  assert.equal(d.action.mode,'walk');
+  assert.equal(d.sample().knocking,true);
+  s={...s,connection:'saved',steps:s.steps.map(s=>({...s,phase:'done',coverage:'found'}))};
+  const seen=new Set();
+  for(let t=0;t<12000 && !d.finished;t+=20) {
+    d.tick(20,s);
+    seen.add(d.action.id);
+  }
+  for(const id of ['open-door','talk-visitor','close-door']) assert.ok(seen.has(id));
+  assert.equal(d.finished,true);
+});
+test('finishing collection while the door opens does not cut off the visitor or snap the door', () => {
+  const d = new OfficeDirector();
+  let s = reduceEvent(state(), event('reviews'));
+  for (let i = 0; i < 1000 && d.action.id !== 'open-door'; i++) d.tick(20, s);
+  assert.equal(d.action.id, 'open-door');
+  d.tick(200, s);
+  assert.ok(d.sample().door > 0 && d.sample().door < 1);
+  for (const step of s.steps) s = reduceEvent(s, event(step.id));
+  s = { ...s, connection: 'saved' };
+  let priorDoor = d.sample().door;
+  let talking = 0;
+  let sawClosing = false;
+  for (let i = 0; i < 1500 && !d.finished; i++) {
+    d.tick(20, s);
+    const sample = d.sample();
+    assert.ok(Math.abs(sample.door - priorDoor) < 0.05, 'door must not snap shut');
+    priorDoor = sample.door;
+    if (sample.phase.visual === 'talk') talking += 20;
+    if (sample.phase.id === 'close-door') sawClosing = true;
+    if (d.returning) assert.equal(sawClosing, true);
+  }
+  assert.ok(talking >= 1200);
+  assert.equal(d.finished, true);
+  assert.equal(d.socialHandled, true);
 });
 test('parallel starts remain visible and mixed failures are not hidden by found records', () => {
   let s = state();
@@ -111,10 +160,11 @@ test('slow lookup waits on planted feet until the done event', () => {
   d.tick(40, s);
   assert.deepEqual(d.sample().motion.position, pos);
 });
-test('fast result stays at the desk and archives before presenting without replaying old visits', () => {
+test('an entirely uncovered run stays at the desk without inventing source visits', () => {
   const d = new OfficeDirector();
   let s = state();
-  for (const step of s.steps) s = reduceEvent(s, event(step.id));
+  for (const step of s.steps)
+    s = reduceEvent(s, event(step.id, 'done', 'not_covered'));
   s = { ...s, connection: 'saved' };
   let prior = d.sample().motion.position;
   const seen = [];
@@ -263,7 +313,7 @@ test('the desk stays clear until all sources finish and the actor brings the pap
       false,
     );
   }
-  s = reduceEvent(s, event(s.steps.at(-1).id));
+  s = reduceEvent(s, event(s.steps.at(-1).id, 'done', 'not_found'));
   const saved = { ...s, connection: 'saved', result: candidate };
   const d = new OfficeDirector();
   let sawDossier = false;

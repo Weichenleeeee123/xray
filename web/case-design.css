@@ -464,9 +464,9 @@ body.research-mode{--paper:#2b201a;--paper-hi:#38291f;--paper-lo:#453124;--ink:#
 
 /* Light and labels share one measured path and one animation clock. */
 .research-flow .flow-wire{left:0;top:0;width:100%;height:160px}
-.research-flow .wire-light{animation:none;stroke-dasharray:12 1000;stroke-width:2;filter:drop-shadow(0 0 5px #f2c889aa)}
+.research-flow .wire-light{animation:none;stroke-dasharray:20 1000;stroke-width:2.7;stroke-linecap:round;filter:drop-shadow(0 0 5px #f2c889aa)}
 .research-flow .flow-stop{--pass:0}
-.research-flow .flow-label{transform:scale(calc(1 + var(--pass)*.018));transform-origin:center;filter:brightness(calc(1 + var(--pass)*.18));box-shadow:0 0 0 7px #2b201a,0 0 calc(var(--pass)*26px) rgb(230 184 120 / calc(var(--pass)*.28));border-color:rgb(191 152 102 / calc(.55 + var(--pass)*.45))}
+.research-flow .flow-label{transform:scale(calc(1 + var(--pass)*.028));transform-origin:center;filter:brightness(calc(1 + var(--pass)*.18));box-shadow:0 0 0 7px #2b201a,0 0 calc(var(--pass)*34px) rgb(230 184 120 / calc(var(--pass)*.38));border-color:rgb(191 152 102 / calc(.55 + var(--pass)*.45))}
 .research-flow .flow-primary .flow-label{border-color:rgb(213 170 112 / calc(.7 + var(--pass)*.3))}
 .research-flow .flow-preview{animation:none;opacity:calc(.6 + var(--pass)*.4);transform:translateY(calc(var(--pass)*-1.5px));border-left-color:rgb(216 176 120 / calc(.22 + var(--pass)*.5))}
 .research-flow .mini-trace{filter:brightness(calc(1 + var(--pass)*.4))}
