@@ -7,7 +7,7 @@
 - 模板回答：按问题里的关键词找到相关条目，原样念出来。
 - 用户评价（source user_reviews）可以引用，但只是"有用户说"；越界检查不把评价原文算作记录，
   评价里写了"非法集资"，助手也不能借它说出口。
-- 名词解释使用所选版本的 terms（含标记为 model 的 AI 解释），旧案卷回退固定词表；出处为 [term.<id>]，不能当公司证据给定性词放行。
+- 纯术语问题独立使用人工词表；混合问题保留版本词表中的补充项，已知词义以当前人工修订为准。新回答保存知识快照，不改历史报告；词表不能给企业定性放行。
 """
 import json
 import re
@@ -17,7 +17,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.glossary import find_terms, term_ref
+from app.glossary import find_terms, term_ref, load_glossary
 from app.sources.collect import now
 from app.llm import LLM, LLMError, REQUEST_DEADLINE, REQUEST_CONTEXT_LIMIT
 from app import config
@@ -28,6 +28,7 @@ from app import privacy
 from app.case_memory.store import MemoryStore
 from app.case_memory.retriever import retrieve, condition_excerpts
 from app.case_memory.builder import tags as memory_topics
+from app.question_routing import definition_terms, needs_investment_clarification, current_terms
 
 log = logging.getLogger("xray.assistant")
 
@@ -50,7 +51,7 @@ CHARACTERIZATION = re.compile(r"涉嫌(非法集资|非法吸收公众存款|集
                               r"非法吸收公众存款|超范围经营|非法经营|违法|违规|传销|不受[^，。；、,;\s]{0,8}保护")
 QUOTED = re.compile(r"[\"“「『][^\"”」』]*[\"”」』]")
 DEFINES = re.compile(r"[，,：:]?(是指|指的是|的意思是)")
-MEANING = re.compile(r"是什么|什么意思|啥意思|什么叫|是啥|指什么|怎么理解|解释一下")
+MEANING = re.compile(r"什么是|是什么|什么意思|啥意思|什么叫|是啥|指什么|怎么理解|解释一下")
 MAX_REWRITES = 2
 REWRITE = ("你上一版回答里有这些说法：{bad}。它们是推测或定性，案卷的记录和规则里没有这样写，不能说。"
            "请重写：只说记录里查到了什么、规则的判定是什么（可以用判定原词，如\"与记录不符\"\"不合规承诺\"）、"
@@ -139,7 +140,7 @@ class _Segment(BaseModel):
     citations: list[str] = Field(default_factory=list, max_length=20)
     quotes: list[Quote] = Field(default_factory=list, max_length=20)
     kind: Literal["fact", "support", "user_context", "guidance", "clarify"] = "fact"
-    guide_id: Literal["user.amount", "savings.product", "savings.terms", "savings.withdraw", "job.offer", "job.checklist",
+    guide_id: Literal["user.amount", "investment.type", "savings.product", "savings.terms", "savings.withdraw", "job.offer", "job.checklist",
                       "contract.parties", "prepaid.refund", "general.next", "scope.boundary", "scope.no_guarantee", "material.private"] | None = None
     user_quote: str = Field("", max_length=500)
 
@@ -228,10 +229,17 @@ def context(case: Case, v: Version, terms: list[Term] = ()) -> dict:
         # This optional field was added after existing recordings were made.
         # Keep their exact payload; actual snapshot provenance must stay visible.
         report_exclude.add("prebuilt")
+    report = v.model_dump(mode="json", exclude=report_exclude)
+    supplied_terms = {t.id: t for t in terms}
+    if any(t.id in supplied_terms and t != supplied_terms[t.id] for t in v.terms):
+        # This metadata is general knowledge, not case evidence. The updated
+        # glossary above is authoritative for a NEW reply; the saved historical
+        # report and every original company/material field remain untouched.
+        report.pop("terms", None)
     return {
         "名词解释": [{"id": term_ref(t), "名词": t.term, "解释": t.plain, "对你意味着": t.why} for t in terms],
         "案卷id": case.id, "公司": case.case.company_name, "报告版本": v.no,
-        "报告": v.model_dump(mode="json", exclude=report_exclude),
+        "报告": report,
         "原始数据": [r.model_dump(mode="json", exclude={"retrieved_at"}) for r in case.raw if r.id in v.raw_ids],
         "来源目录（不可作为事实出处）": {sid: s.model_dump(mode="json") for sid, s in (v.sources or case.sources).items()},
         "行动目录（仅问题与核对步骤，不是公司事实）": GUIDES,
@@ -256,7 +264,7 @@ def _context_json(case: Case, v: Version, terms: list[Term] | None = None, *,
     if len(original) <= max_chars:
         return original
     data["报告"].pop("sources")
-    data["报告"].pop("terms")
+    data["报告"].pop("terms", None)
     data["名词解释"] = [{**term.model_dump(mode="json"), "id": term_ref(term)}
                       for term in (v.terms if terms is None else terms)]
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
@@ -615,7 +623,9 @@ def _select(case: Case, refs: list[str], version_no: int | None) -> tuple[Versio
     v = next((v for v in case.versions if v.no == selected), None)
     if v is None:
         raise ValueError("没有所选的报告版本")
-    valid = citable(case, v)
+    # No selected reference requires reading the case's original records just
+    # to establish which version a standalone vocabulary question belongs to.
+    valid = citable(case, v) if normalized else {}
     if any(ref not in valid for ref in normalized):
         raise ValueError("选中条目不属于该版本或没有可读取的原始记录")
     return v, normalized
@@ -637,10 +647,15 @@ def answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
         REQUEST_CONTEXT_LIMIT.reset(size_token)
         log.info("assistant_finished mode=%s elapsed_ms=%d", config.ASSISTANT_CONTEXT_MODE,
                  (time.monotonic() - started) * 1000)
-    if GUARD.search(q.text) or "超出本次模型上下文预算" in result.text or "没查到可用的引用" in result.text:
+    if result.answer_kind or GUARD.search(q.text) or "超出本次模型上下文预算" in result.text or "没查到可用的引用" in result.text:
         return result
     version = next((v for v in case.versions if v.no == result.version), case.versions[-1])
-    return complete_reply(result, q.text, version.scenario)
+    result = complete_reply(result, q.text, version.scenario)
+    # Mixed fact+definition replies also need the exact knowledge used, so old
+    # reports cannot cause the source drawer to display a superseded definition.
+    known = {term_ref(t): t for t in [*version.terms, *load_glossary()]}
+    snapshots = [known[ref].model_copy(deep=True) for ref in result.citations if ref in known]
+    return result.model_copy(update={"knowledge_terms": snapshots})
 
 
 def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
@@ -656,10 +671,30 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
     base = dict(role="assistant", version=v.no, created_at=now(), refs=refs)
     if GUARD.search(q.text):
         return ChatMessage(text=GUARD_ANSWER, mode="guard", suggest=suggest_add, **base)
+    # A definition is not a company investigation: use only vetted, snapshotted
+    # knowledge, without loading/truncating company evidence or changing rules.
+    knowledge = definition_terms(q.text)
+    if knowledge is not None:
+        if not knowledge:
+            return ChatMessage(text="这个词还没有对应到可核对的解释。你可以贴一下它所在的完整句子，"
+                                    "我先帮你确认词义，再区分它与这家公司的实际情况。",
+                mode="template", answer_kind="clarification", **base)
+        entries = glossary_entries(knowledge)
+        display = {term_ref(t): f"{t.plain}\n\n{t.why}" if t.why else t.plain for t in knowledge}
+        definition = _ModelAnswer(segments=[_Segment(fact_id=term_ref(t)) for t in knowledge])
+        text, cites, quotes, dropped = validate(definition, entries, fact_display=display)
+        return ChatMessage(text=text, citations=cites, quotes=quotes, dropped=dropped,
+            knowledge_terms=knowledge, mode="template", answer_kind="glossary", **base)
+    if needs_investment_clarification(q.text, refs):
+        # No enterprise facts or safety verdict are emitted. Concrete financial
+        # questions, mixed questions and selected entries still take the path below.
+        clarification = _ModelAnswer(segments=[_Segment(kind="clarify", guide_id="investment.type")])
+        text, cites, quotes, dropped = validate(clarification, {}, user_text=q.text)
+        return ChatMessage(text=text, mode="template", answer_kind="clarification", **base)
     valid = citable(case, v)
     data = evidence_text(case, valid)  # Only company records, never glossary definitions or user reviews.
     # 报告生成时已经整理好这一版的名词（含模型补的）；旧案卷没有，就现场从词表里找
-    terms = list(v.terms) or find_terms(" ".join(valid.values()))
+    terms = current_terms(list(v.terms) or find_terms(" ".join(valid.values())))
     terms += [t for t in find_terms(q.text) if t.id not in {x.id for x in terms}]
     valid.update(glossary_entries(terms))
     allowed_refs, read_leaves, selection = None, None, None
