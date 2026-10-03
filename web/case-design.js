@@ -21,7 +21,7 @@ function researchVersionPicker(c,v) {
 }
 function researchHero(c,v) {
   const demo=(c.raw || []).some(r=>v.raw_ids.includes(r.id) && r.kind==='demo' && r.coverage==='found');
-  const steps=[['overview','阅读摘要'],['signals','四个信号'],['inquiry','问询与复核'],['details','详细信息']];
+  const steps=[['overview','企业概况'],['signals','四个信号'],['inquiry','问询与复核'],['details','详细信息']];
   return `<header class="research-hero report-brief-hero">
     <div class="research-topline"><a href="/" class="back-study">← 回到小企研究室</a><div class="research-actions"><button class="research-button ghost" data-act="print-open" aria-haspopup="dialog" aria-controls="printDlg">${researchIcon('print')}打印一页结论</button><button class="research-button ghost" data-act="supplement">＋ 补充信息</button><button class="research-button" data-act="section" data-section="photo">${researchIcon('camera')}拍照复核</button></div></div>
     <div class="hero-title"><span class="research-eyebrow"><i></i> 企业研究档案 <span class="hero-scenario">${esc(v.scenario_label || '企业核验')}</span></span><h1>${esc(c.case.company_name)}</h1><div class="hero-meta"><span>案卷 ${esc(c.id.slice(0,8).toUpperCase())}</span><span>${esc(v.created_at.slice(0,10))} 更新</span>${researchVersionPicker(c,v)}${demo?'<span class="report-demo-note">演示数据 · 公司为虚构</span>':''}<button data-act="tab" data-tab="raw">${v.raw_ids.length} 条来源记录 ${researchIcon()}</button>${v.no>1?`<button data-act="tab" data-tab="changes">查看本版变化 ${researchIcon()}</button>`:''}</div></div>
@@ -89,9 +89,8 @@ function researchOverview(v) {
   const first=html.querySelector('.gl-first')?.outerHTML || '<p>现有记录尚不足以形成结论。</p>';
   html.querySelectorAll('[data-act="sigtile"]').forEach(el=>{el.setAttribute('aria-haspopup','dialog');el.setAttribute('aria-controls','signalDlg');});
   const tiles=html.querySelector('.tiles')?.innerHTML || '';
-  const brief=researchBrief(v) || `<div class="brief-fallback">${first}${researchNext(v)}</div>`;
-  return `<section id="research-overview" class="research-section">${researchHeading('01','阅读摘要','围绕本次需求，先看重点')}${brief}</section>
-    <section id="research-signals" class="research-section">${researchHeading('02','四个信号','点开任一信号，查看完整记录与核查范围')}<div class="research-signals">${tiles}</div><details class="report-radar-disclosure"><summary><span>企业六维轮廓</span><small>查看定性分布与覆盖范围</small><span aria-hidden="true">＋</span></summary><div class="report-radar-content">${researchRadar(v)}<div class="radar-reading"><h3>怎么看这张图</h3><p>每一维汇总对应的核查记录。实线依据已查项目，虚线表示未覆盖；“没查成”表示查询失败。</p><p>它帮助定位该展开的资料，不是企业评分。各维度的具体记录和未覆盖项，仍以四个信号为准。</p></div></div></details></section>`;
+  return `<section id="research-overview" class="research-section">${researchHeading('01','企业概况','')}<div class="overview-grid">${researchRadar(v)}<div class="overview-summary"><span class="research-eyebrow">初步结论</span>${first}<div class="overview-note"><span>查询需求</span><p>${esc(v.need || v.scenario_label)}</p></div><button class="research-text-link" data-act="tab" data-tab="raw">查看资料来源 ${researchIcon()}</button></div></div></section>
+    <section id="research-signals" class="research-section">${researchHeading('02','四个信号','点开任一信号，查看完整记录与核查范围')}<div class="research-signals">${tiles}</div></section>`;
 }
 
 // Preserve every signal item; only long, repetitive record lists have a disclosure.

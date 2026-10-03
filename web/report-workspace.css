@@ -254,12 +254,13 @@ body.report-workspace .research-disclaimer {padding:22px 0 72px;margin-top:24px}
   body.report-workspace .overview-grid {grid-template-columns:1fr;background:#fcf8ee}
   body.report-workspace .research-radar {background:#243642;border-radius:10px;padding:16px}
   body.report-workspace .overview-summary {border:0;padding:4px 0 0}
-  body.report-workspace #research-overview .radar-caption {color:#f7f0e0}
-  body.report-workspace .radar-caption span:last-child,body.report-workspace .research-radar>p {color:#d4cebd}
-  body.report-workspace .research-radar svg text {fill:#f7f0e0}
-  body.report-workspace .research-radar svg text[font-size="12"] {fill:#d4cebd}
-  body.report-workspace .research-radar svg path {fill:#e2bc78;stroke:#e2bc78}
-  body.report-workspace .research-radar svg text[fill="#ed9b89"] {fill:#efb19e}
+  body.research-mode.report-workspace #research-overview .radar-caption {color:#f7f0e0}
+  body.research-mode.report-workspace .radar-caption span:last-child,body.research-mode.report-workspace .research-radar>p {color:#d4cebd}
+  body.research-mode.report-workspace .research-radar svg text {fill:#f7f0e0}
+  body.research-mode.report-workspace .research-radar svg text[font-size="12"] {fill:#d4cebd}
+  body.research-mode.report-workspace .research-radar svg polygon,body.research-mode.report-workspace .research-radar svg line {stroke:#e2bc78}
+  body.research-mode.report-workspace .research-radar svg path {fill:#e2bc78;stroke:#e2bc78}
+  body.research-mode.report-workspace .research-radar svg text[fill="#ed9b89"] {fill:#efb19e}
   body.report-workspace .inquiry-stage {grid-template-columns:1fr}
   body.report-workspace .research-tab-panel {padding:18px}
   body.report-workspace .research-tabs [role=tab] {font-size:13px;padding:11px}

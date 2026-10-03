@@ -169,13 +169,26 @@ test('the report header offers all saved versions with the viewed and latest ver
  assert.doesNotMatch(h.run('researchHero(c,v)'),/切换版本/);
 });
 
-test('a historical report without a one-pager still offers its own next question',()=>{
+test('company overview restores the prominent conclusion beside an always-visible radar',()=>{
+ const h=harness();
+ h.ctx.document.createElement=()=>({innerHTML:'',querySelector:selector=>selector==='.gl-first'?{outerHTML:'<div class="gl-first"><strong class="gl-a">需重点核实</strong><button data-act="goto" data-id="risk.promise">本版依据</button></div>'}:selector==='.tiles'?{innerHTML:'<button data-act="sigtile">完整信号</button>'}:null,querySelectorAll:()=>[]});
+ h.ctx.glanceHtml=()=>'';h.ctx.refLinks=()=>'';
+ h.ctx.v={need:'核对 <合同>',signals:[],onepager:{headline:'旧的统计摘要',mismatch:[],found:[],unknown:[]},questions:[]};
+ const html=h.run('researchOverview(v)');
+ const overview=html.split('<section id="research-signals"')[0];
+ assert.match(overview,/企业概况/);assert.match(overview,/overview-grid/);
+ assert.match(overview,/六维雷达/);assert.match(overview,/初步结论/);assert.match(overview,/需重点核实/);
+ assert.match(overview,/data-id="risk.promise"/);assert.match(overview,/核对 &lt;合同&gt;/);
+ assert.doesNotMatch(overview,/<details|report-brief|旧的统计摘要/);
+ assert.match(html,/完整信号/);assert.doesNotMatch(html,/report-radar-disclosure/);
+});
+
+test('a historical report without a conclusion retains the radar, need and source entry',()=>{
  const h=harness();
  h.ctx.document.createElement=()=>({innerHTML:'',querySelector:()=>null,querySelectorAll:()=>[]});
  h.ctx.glanceHtml=()=>'';
- h.ctx.v={onepager:null,signals:[],questions:[{ask:'本版要核对合同吗',check_where:'阅读合同原文'}]};
+ h.ctx.v={onepager:null,signals:[],need:'核对原合同',questions:[]};
  const html=h.run('researchOverview(v)');
- assert.match(html,/本版要核对合同吗/);assert.match(html,/data-act="question-detail"/);
- h.ctx.v.questions=[];
- assert.match(h.run('researchOverview(v)'),/data-act="supplement"/);
+ assert.match(html,/现有记录尚不足以形成结论/);assert.match(html,/六维雷达/);
+ assert.match(html,/核对原合同/);assert.match(html,/data-act="tab" data-tab="raw"/);
 });
