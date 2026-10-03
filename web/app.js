@@ -41,7 +41,7 @@ function pendingNote(list) {   // "2 项没查成、1 项待补材料"，没查�
 }
 const stLabel = i => (isRef(i) ? '只作参考' : (i.status === 'none' && GAP[i.gap]) || STATUS[i.status] || '');
 // 三个分区。顺序就是顶栏顺序，也是第一次用的人该走的顺序
-const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['me', '我的', '使用说明、服务与资料覆盖']];
+const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['library', '资料库', '收藏的名词，回头复习'], ['me', '我的', '使用说明、服务与资料覆盖']];
 const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
 const SUP_KIND = {
   material: { label: '新材料', help: '宣传单、合同、聊天记录的文字。可以上传图片、PDF、Word，读出来的文字会填进下面，你可以改。' },
@@ -171,13 +171,68 @@ function termText(text, seen = new Set()) {
   return out + esc(text.slice(last));
 }
 const termify = label => termText(label);
+const termBasis = t => { const src = t.basis && srcOf(t.basis); return (src ? src.name : t.law) || ''; };
+function termPopHtml(t) {
+  const basis = termBasis(t);
+  const note = t.origin === 'model' ? 'AI 解释：词表里没有这个词，报告生成时由模型补充，没有经过人工核对。' : (basis ? `依据：${basis}` : '');
+  return `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}${libBtn(t.id)}`;
+}
 function termPop(el, id) {
   const t = termOf(id);
   if (!t) return;
-  const src = t.basis && srcOf(t.basis);
-  const basis = src ? src.name : t.law;
-  const note = t.origin === 'model' ? 'AI 解释：词表里没有这个词，报告生成时由模型补充，没有经过人工核对。' : (basis ? `依据：${basis}` : '');
-  popAt(el, `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}`);
+  libNote(id);
+  popAt(el, termPopHtml(t));
+}
+
+// ---------- 资料库：看不懂的名词收藏起来，回头复习 ----------
+// 只存在这个浏览器里（和案卷一个口径）。存的是收藏当时的解释快照：AI 词条只在那一版报告里有，
+// 固定词表以后改了措辞，复习时看到的也还是当时那一版。seen 记在哪几份报告里碰到过，按案卷去重。
+const LIB_KEY = 'xray.library';
+function libRead() {
+  try { const list = JSON.parse(localStorage.getItem(LIB_KEY) || '[]'); return Array.isArray(list) ? list : []; }
+  catch { return []; }
+}
+function libWrite(list) {
+  try { localStorage.setItem(LIB_KEY, JSON.stringify(list)); return true; } catch { return false; }
+}
+const libHas = id => libRead().some(e => e.id === id);
+// 正在看的那份报告；不在案卷页（比如「我的」里的词表）就不记
+function libHere() {
+  if (!S.case || !/^#\/case\//.test(location.hash)) return null;
+  return { caseId: S.case.id, version: ver()?.no ?? null, company: S.case.case.company_name };
+}
+const libSeen = (seen, here) => here ? [...seen.filter(s => s.caseId !== here.caseId), here] : seen;
+// 收藏或取消；返回 true 已收藏、false 已取消、null 存不了
+function libToggle(id) {
+  const list = libRead();
+  if (list.some(e => e.id === id)) return libWrite(list.filter(e => e.id !== id)) ? false : null;
+  const t = termOf(id);
+  if (!t) return null;
+  const entry = { id: t.id, term: t.term, plain: t.plain, why: t.why || '', basis: termBasis(t), origin: t.origin || '',
+    savedAt: new Date().toISOString(), seen: libSeen([], libHere()) };
+  return libWrite([entry, ...list]) ? true : null;
+}
+// 已收藏的词在另一份报告里又碰到了：把这份报告记进 seen
+function libNote(id) {
+  const here = libHere(), list = libRead(), e = here && list.find(x => x.id === id);
+  if (!e || e.seen.some(s => s.caseId === here.caseId && s.version === here.version)) return;
+  e.seen = libSeen(e.seen || [], here);
+  libWrite(list);
+}
+const libBtn = id => { const on = libHas(id); return `<button type="button" class="lib-tog" data-act="lib-toggle" data-term="${esc(id)}" aria-pressed="${on}">${on ? '★ 已收藏' : '☆ 收藏复习'}</button>`; };
+function libraryHtml(list) {
+  if (!list.length) return '<div class="empty-case"><p>还没有收藏的词。在报告里点开带虚线的词，点「☆ 收藏复习」，就会出现在这里。</p><a class="btn sm" href="#/cases">去看案卷</a></div>';
+  return `<p class="lists-line">共 ${list.length} 个词。只存在这个浏览器里，清除浏览器数据后会丢失。</p>
+  <div class="lib-list">${list.map(e => `<article class="lib-card">
+    <div class="lib-h"><h3>${esc(e.term)}</h3>${e.origin === 'model' ? '<span class="lib-ai">AI 解释·未经人工核对</span>' : ''}</div>
+    <p>${esc(e.plain)}</p>
+    ${e.why ? `<p class="lib-why">${esc(e.why)}</p>` : ''}
+    ${e.origin !== 'model' && e.basis ? `<p class="lib-basis">依据：${esc(e.basis)}</p>` : ''}
+    <div class="lib-f">
+      ${(e.seen || []).length ? `<span class="lib-seen">在这些报告里碰到过：${e.seen.map(s => `<a href="#/case/${esc(s.caseId)}${s.version == null ? '' : `/v/${s.version}`}">${esc(s.company)}${s.version == null ? '' : ` · 第 ${s.version} 版`}</a>`).join('、')}</span>` : '<span class="lib-seen">从词表里收藏</span>'}
+      <button type="button" class="linkish small" data-act="lib-remove" data-term="${esc(e.id)}">移出</button>
+    </div>
+  </article>`).join('')}</div>`;
 }
 const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问小企">${S.selected.has(id) ? '已选' : '问'}</button>`;
 // Keep raw record IDs for navigation, but use readable labels in the review UI.
@@ -233,7 +288,7 @@ const chgTag = (id, cm) => (cm[id] ? `<span class="chg-tag ${cm[id]}" title="和
 
 function renderTop() {
   const onCase = S.case && location.hash.startsWith('#/case/');
-  const sec = onCase ? 'cases' : (location.hash.match(/^#\/(check|cases|me)/) || [])[1] || 'check';
+  const sec = onCase ? 'cases' : (location.hash.match(/^#\/(check|cases|library|me)/) || [])[1] || 'check';
   $('#shellNav').innerHTML = NAV.map(([k, label, hint]) =>
     `<button type="button" class="snav-b" data-act="go" data-sec="${k}" aria-current="${k === sec}" title="${esc(hint)}">${label}</button>`).join('');
   $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : '';
@@ -358,7 +413,22 @@ function caseRow(c) {
   </a>`;
 }
 
-// ---------- 分区三：我的 ----------
+// ---------- 分区三：资料库 ----------
+
+function renderLibrary() {
+  S.case = null; useTerms(S.terms); renderTop();
+  $('#view').innerHTML = shellHtml(`
+  <div class="home">
+    <section class="home-hero">
+      <div class="kicker">资料库</div>
+      <h1>收藏的名词</h1>
+      <p>报告里看不懂的词，点开后可以收藏到这里，回头复习。每个词都记着你是在哪份报告里碰到的。</p>
+    </section>
+    <div id="libList">${libraryHtml(libRead())}</div>
+  </div>`);
+}
+
+// ---------- 分区四：我的 ----------
 
 async function renderMe(request = routeRequest) {
   S.case = null; useTerms(S.terms); renderTop();
@@ -408,7 +478,7 @@ async function renderMe(request = routeRequest) {
     </section>
 
     <section class="me-sec"><h2>名词解释</h2>
-      <p class="me-p">报告里带虚线的词可以点开解释；模型补充的解释会标注为“AI 解释”，需要结合原文核对。这里是固定词表中的几个：</p>
+      <p class="me-p">报告里带虚线的词可以点开解释，不熟的可以收藏到「资料库」复习；模型补充的解释会标注为“AI 解释”，需要结合原文核对。这里是固定词表中的几个：</p>
       ${terms.length ? `<div class="chips">${terms.map(t => `<button type="button" class="chip" data-act="term" data-term="${esc(t.id)}">${esc(t.term)}</button>`).join('')}</div>` : '<p class="muted small">词表暂未读到，请刷新页面再试。</p>'}
     </section>
 
@@ -1865,6 +1935,17 @@ document.addEventListener('click', e => {
       $('#onepager').innerHTML = opBody(currentOp(ver()), ver()); loadOnepager(ver()); break;
     case 'print': printOnepager(); break;
     case 'term': termPop(el, d.term); break;
+    case 'lib-toggle': {
+      const on = libToggle(d.term);
+      if (on === null) { toast('这个浏览器存不了收藏'); break; }
+      el.setAttribute('aria-pressed', on); el.textContent = on ? '★ 已收藏' : '☆ 收藏复习';
+      toast(on ? '已收藏到「资料库」' : '已移出资料库');
+      break;
+    }
+    case 'lib-remove':
+      if (libToggle(d.term) === null) { toast('这个浏览器存不了收藏'); break; }
+      if ($('#libList')) $('#libList').innerHTML = libraryHtml(libRead());
+      break;
     case 'src': showSource(el, d.src); break;
     case 'close-pop': closePop(); break;
     case 'ask': ask(d.q); break;
@@ -1929,8 +2010,9 @@ async function route() {
     return;
   }
   // 三个分区。#/check、#/cases、#/me，其余（含空 hash）都当查企
-  const sec = (location.hash.match(/^#\/(check|cases|me)/) || [])[1] || 'check';
+  const sec = (location.hash.match(/^#\/(check|cases|library|me)/) || [])[1] || 'check';
   if (sec === 'cases') await renderCases(request);
+  else if (sec === 'library') renderLibrary();
   else if (sec === 'me') await renderMe(request);
   else await renderCheck(request);
   if (currentRoute(request)) window.scrollTo(0, 0);

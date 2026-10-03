@@ -182,6 +182,8 @@ body.research-mode .holder-list button:hover {color:var(--qier-navy);background:
 
 /* Dialogs and all scrollable signal records share the paper reading surface. */
 body.research-mode :is(.dlg,.research-signal-dialog,.research-question-dialog,.pop,.assist) {background:var(--qier-paper);color:var(--qier-ink);border-color:var(--qier-brass)}
+body.research-mode .pop .pw {color:var(--qier-ink)}
+body.research-mode .pop :is(.pb,.x) {color:var(--qier-secondary)}
 body.research-mode .dlg::backdrop {background:#222e3999}
 body.research-mode :is(.dlg-head,.research-signal-dialog .dlg-head,.research-question-dialog .dlg-head) {border-color:var(--qier-divider)}
 body.research-mode .research-signal-dialog .dlg-head .research-eyebrow {color:var(--qier-secondary)}

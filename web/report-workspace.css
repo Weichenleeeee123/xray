@@ -141,6 +141,7 @@ body.report-workspace .workspace-sidebar .snav-b {display:flex;align-items:cente
 body.report-workspace .workspace-sidebar .snav-b:before {content:'';width:17px;height:17px;flex:none;background:currentColor;mask:center/contain no-repeat var(--nav-icon)}
 body.report-workspace .snav-b[data-sec=check] {--nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='10' cy='10' r='6'/%3E%3Cpath d='m15 15 6 6'/%3E%3C/svg%3E")}
 body.report-workspace .snav-b[data-sec=cases] {--nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M3 6h7l2 3h9v11H3V6Z'/%3E%3C/svg%3E")}
+body.report-workspace .snav-b[data-sec=library] {--nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Cpath d='M6 3h12v18l-6-4-6 4V3Z'/%3E%3C/svg%3E")}
 body.report-workspace .snav-b[data-sec=me] {--nav-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6'%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3Cpath d='M4 21v-3c0-8 16-8 16 0v3'/%3E%3C/svg%3E")}
 body.report-workspace .workspace-sidebar .snav-b[aria-current=true] {background:#222e39;color:#f7f0e0;box-shadow:0 4px 10px #222e3910}
 .workspace-chapters {display:grid;gap:5px}

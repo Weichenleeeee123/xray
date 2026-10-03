@@ -428,6 +428,7 @@ export default function Home() {
           <nav className="office-nav" aria-label="站点导航">
             <a href="/xray/#/cases">案卷</a>
             <a href="/xray/#/new">附带材料查询</a>
+            <a href="/xray/#/library">资料库</a>
             <a href="/xray/#/me">使用说明</a>
           </nav>
         </details>
