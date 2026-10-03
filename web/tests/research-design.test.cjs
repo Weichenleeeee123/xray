@@ -46,6 +46,41 @@ test('all signal items are visible; priority items precede ok and uncovered reco
  assert.equal((html.match(/<article/g)||[]).length,3);assert.ok(html.indexOf('finance.bad')<html.indexOf('finance.none'));assert.ok(html.indexOf('finance.none')<html.indexOf('finance.ok'));
  assert.doesNotMatch(html,/<details|data-act="rest"/);for(const ref of ['R1','R2','R3'])assert.ok(html.includes(ref));
 });
+
+test('signal values distinguish standalone quantities from prose, without rewriting numbers or units',()=>{
+ const h=harness();
+ for(const value of ['劳动仲裁 5 条，当被告的劳动官司 1 条','净利润 -3.7 亿元，同比下降 5%','未覆盖','存续']) {
+  h.ctx.value=value;const html=h.run('researchItemValue(value,new Set())');
+  assert.match(html,/signal-value-prose/);assert.ok(html.includes(value));
+ }
+ for(const value of ['5 条','-3.7 亿元','1,234.50 万元','12.5%',0,'¥0','¥5,000 万','￥1.23']) {
+  h.ctx.value=value;const html=h.run('researchItemValue(value,new Set())');
+  assert.match(html,/signal-value-metric/);assert.ok(html.includes(String(value)));
+ }
+ h.ctx.value='<script>500 万元</script>';
+ assert.doesNotMatch(h.run('researchItemValue(value,new Set())'),/<script>/);
+});
+
+test('dense source statistics keep every pair, original precision and units, and never add a total',()=>{
+ const h=harness();h.ctx.value='裁判文书 3297、立案信息 3607、开庭公告 3645、法院公告 416、送达公告 350、诉前调解 43、劳动仲裁 5、公示催告 3';
+ const html=h.run('researchItemValue(value,new Set())');
+ assert.match(html,/<dl class="signal-metrics">/);assert.equal((html.match(/<dt>/g)||[]).length,8);
+ for(const value of ['3297','3607','3645','416','350','43','5','3']) assert.ok(html.includes(`<dd>${value}</dd>`));
+ assert.doesNotMatch(html,/合计|总计/);
+ h.ctx.value='指标一 1,234.50 万元、指标二 -12.5%、指标三 0 条';
+ const precise=h.run('researchItemValue(value,new Set())');
+ for(const value of ['1,234.50 万元','-12.5%','0 条'])assert.ok(precise.includes(`<dd>${value}</dd>`));
+ h.ctx.value='裁判文书 3297、立案信息 待确认、开庭公告 3645';
+ assert.match(h.run('researchItemValue(value,new Set())'),/signal-value-prose/);
+});
+
+test('dialog heading distinguishes check items from source event counts and retains uncovered wording',()=>{
+ const h=harness();h.ctx.sig={key:'credit',title:'信用 <测试>',lede:'未覆盖不等于正常',items:[{status:'warn'},{status:'none'},{status:'ok'}]};
+ const heading=h.run('researchSignalHeading(sig)');
+ assert.match(heading,/3 项核查项/);assert.match(heading,/其中 1 项需要关注/);
+ assert.match(heading,/信用 &lt;测试&gt;/);assert.match(heading,/未覆盖不等于正常/);
+ h.ctx.sig.items=[];assert.doesNotMatch(h.run('researchSignalHeading(sig)'),/需要关注/);
+});
 test('question cards use the current company output for zero, one and seven questions',()=>{
  const h=harness();
  for(const count of [0,1,7]){

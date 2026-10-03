@@ -27,7 +27,7 @@ STEPS = {
     "registry": "工商登记",
     "finance": "财务数据",
     "pack": "人工摘录的文书",
-    "web": "政府网站",
+    "web": "公开信息与政府网站",
     "opinion": "新闻舆情和网上投诉",
     "reviews": "本站用户评价",
     "rules": "对照规则",
@@ -38,7 +38,7 @@ LOOKUPS = {"lists", "amac", "registry", "finance", "pack", "web", "opinion", "re
 GROUPS = {"lists": {"nfra_bank_list", *LICENSE_LISTS}, "amac": {"amac", "amac_detail"},
           "registry": {"registry", "annual_report", "qcc_controller", "qcc_licenses", "qcc_qualifications",
                        "qcc_changes", "qcc_hearings", "qcc_filings", "qcc_labor"},
-          "finance": {"qcc_finance", "cninfo", "qcc_jobs"}, "web": {"web_official"},
+          "finance": {"qcc_finance", "cninfo", "qcc_jobs"}, "web": {"web_official", "web_discovery"},
           "opinion": {"qcc_news", "web_news", "web_media", "complaints"}, "reviews": {"user_reviews"}}
 GROUPED = set().union(*GROUPS.values())
 KIND_LABEL = {"collected": "人工证据包", "commercial": "企查查商业数据", "demo": "演示数据"}
@@ -104,6 +104,12 @@ def _replay(recs: list[RawRecord]) -> str:
 
 def _web_text(recs: list[RawRecord]) -> str:
     # 是搜到的页面数，不是"点名它的文件"数：哪些文件以它为当事人，由报告里的规则去分
+    expanded = [r for r in recs if r.source_id == "web_discovery"]
+    if expanded:
+        gov = sum(r.source_id == "web_official" for r in _found(recs))
+        public = len(_found(expanded))
+        return (f"政府网站 {gov} 个页面；扩搜保留 {public} 条公开资料或待确认线索"
+                + ("；部分查询或读取未完成" if any(r.coverage is Coverage.failed for r in recs) else "") + _replay(recs))
     n = len(_found(recs))
     if n:
         return f"搜到政府网站页面 {n} 个" + _replay(recs)

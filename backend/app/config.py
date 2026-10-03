@@ -56,6 +56,19 @@ ASSISTANT_EVIDENCE_CHARS = int(os.getenv("XRAY_ASSISTANT_EVIDENCE_CHARS", "70000
 # live：调用网关并录下响应，失败时回放录音；replay：只回放；off：不调用
 LLM_MODE = os.getenv("XRAY_LLM_MODE", "live")
 
+# Public discovery only; no private input is sent to search providers.
+WEB_DISCOVERY_ENABLED = os.getenv("XRAY_WEB_DISCOVERY", "1") == "1"
+WEB_DISCOVERY_QUERIES = int(os.getenv("XRAY_WEB_DISCOVERY_QUERIES", "10"))
+WEB_DISCOVERY_ROUNDS = int(os.getenv("XRAY_WEB_DISCOVERY_ROUNDS", "2"))
+WEB_DISCOVERY_WORKERS = int(os.getenv("XRAY_WEB_DISCOVERY_WORKERS", "3"))
+WEB_DISCOVERY_SECONDS = float(os.getenv("XRAY_WEB_DISCOVERY_SECONDS", "35"))
+WEB_DISCOVERY_READS = int(os.getenv("XRAY_WEB_DISCOVERY_READS", "8"))
+WEB_DISCOVERY_HOST_READS = int(os.getenv("XRAY_WEB_DISCOVERY_HOST_READS", "3"))
+WEB_DISCOVERY_SEARCH_TIMEOUT = float(os.getenv("XRAY_WEB_DISCOVERY_SEARCH_TIMEOUT", "10"))
+WEB_DISCOVERY_READ_TIMEOUT = float(os.getenv("XRAY_WEB_DISCOVERY_READ_TIMEOUT", "8"))
+WEB_DISCOVERY_PAGE_CHARS = int(os.getenv("XRAY_WEB_DISCOVERY_PAGE_CHARS", "12000"))
+WEB_DISCOVERY_LLM = os.getenv("XRAY_WEB_DISCOVERY_LLM", "1") == "1"
+
 # 演示参数：一年期定期存款参考利率。正式版应按实际挂牌利率更新，并在界面标注来源。
 REF_DEPOSIT_RATE = float(os.getenv("XRAY_REF_DEPOSIT_RATE", "0.011"))
 # 宣称收益超过定存多少倍时标为"要留意"
@@ -79,6 +92,19 @@ def validate_settings():
         errors.append("XRAY_ASSISTANT_CONTEXT_MODE 必须为 full/shadow/selective")
     if ASSISTANT_CONTEXT_CHARS < 2000 or not 1000 <= ASSISTANT_EVIDENCE_CHARS < ASSISTANT_CONTEXT_CHARS:
         errors.append("问答上下文预算必须大于证据预算，且均为正整数")
+    for name, value, low, high in (("QUERIES", WEB_DISCOVERY_QUERIES, 1, 30),
+                                 ("ROUNDS", WEB_DISCOVERY_ROUNDS, 1, 3),
+                                 ("WORKERS", WEB_DISCOVERY_WORKERS, 1, 6),
+                                 ("READS", WEB_DISCOVERY_READS, 0, 30),
+                                 ("HOST_READS", WEB_DISCOVERY_HOST_READS, 1, 10),
+                                 ("PAGE_CHARS", WEB_DISCOVERY_PAGE_CHARS, 500, 50000)):
+        if not low <= value <= high:
+            errors.append(f"XRAY_WEB_DISCOVERY_{name} 必须在 {low} 到 {high} 之间")
+    if not math.isfinite(WEB_DISCOVERY_SECONDS) or not 1 <= WEB_DISCOVERY_SECONDS <= 120:
+        errors.append("XRAY_WEB_DISCOVERY_SECONDS 必须在 1 到 120 秒之间")
+    for name, value in (("SEARCH_TIMEOUT", WEB_DISCOVERY_SEARCH_TIMEOUT), ("READ_TIMEOUT", WEB_DISCOVERY_READ_TIMEOUT)):
+        if not math.isfinite(value) or not 1 <= value <= 30:
+            errors.append(f"XRAY_WEB_DISCOVERY_{name} 必须在 1 到 30 秒之间")
     if os.getenv("XRAY_COMMERCIAL", "").strip().lower() not in ("", "qcc", "qcc_agent", "tianyancha"):
         errors.append("XRAY_COMMERCIAL 数据源名称无效")
     for name, default, minimum in (("XRAY_MAX_RUNS", "4", 1), ("XRAY_QCC_MAX_POINTS", "1500", 0),

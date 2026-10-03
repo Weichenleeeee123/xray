@@ -294,7 +294,7 @@ function refreshLibraryCards() {
   if ($('#knowledgeCards')) $('#knowledgeCards').innerHTML = libraryCards(rows);
   if ($('#libraryMatches')) $('#libraryMatches').textContent = `显示 ${rows.length} / ${list.length} 个词`;
 }
-const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问小企">${S.selected.has(id) ? '已选' : '问'}</button>`;
+const askBtn = (id, label = '问') => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}"${label !== '问' ? ` data-idle-label="${esc(label)}"` : ''} aria-pressed="${S.selected.has(id)}" title="选中这一条，去问小企">${S.selected.has(id) ? '已选' : esc(label)}</button>`;
 // Keep raw record IDs for navigation, but use readable labels in the review UI.
 const hideRecordIds = () => typeof isDesignReview === 'function' && isDesignReview();
 const recordRefText = ref => hideRecordIds() && /^R\d+$/.test(ref) ? '查看出处' : ref;
@@ -326,12 +326,15 @@ const refLinks = refs => (refs || []).map(r => `<button type="button" class="rf"
 const selCls = id => (S.selected.has(id) ? ' is-sel' : '');
 
 // Source metadata opens the original record; internal record IDs stay in data attributes.
-function srcLink(sourceId, ref) {
+function srcLink(sourceId, ref, separateAction = false) {
   const s = srcOf(sourceId), r = ref && rawById(ref);
   const kind = (r && rawKind(r)) || (s && s.kind) || '';
   const date = kind === 'none' ? null : (r && r.as_of) || (s && s.as_of);
   const title = s ? s.name : sourceId;
-  const inner = `<span class="k-${esc(kind)}">${esc(KIND[kind] || '来源')}</span>${date ? ` · ${esc(date)}` : ''}${ref ? hideRecordIds() ? ' · 查看出处 ↗' : ` · <b>${esc(ref)}</b>` : ''}`;
+  const metadata = `<span class="k-${esc(kind)}">${esc(KIND[kind] || '来源')}</span>${date ? ` · ${esc(date)}` : ''}`;
+  const inner = separateAction
+    ? `<span class="signal-source-meta">${metadata}</span><span class="signal-source-action">${ref ? '查看出处 ↗' : '来源说明 ↗'}</span>`
+    : `${metadata}${ref ? hideRecordIds() ? ' · 查看出处 ↗' : ` · <b>${esc(ref)}</b>` : ''}`;
   return ref
     ? `<button type="button" class="src" data-act="raw" data-ref="${esc(ref)}" title="${esc(title)} · 点开看原始数据">${inner}</button>`
     : `<button type="button" class="src" data-act="src" data-src="${esc(sourceId)}" title="${esc(title)}">${inner}</button>`;
@@ -1591,7 +1594,7 @@ function toggleSel(id) {
 function refreshSel() {
   $$('.ask').forEach(b => {
     const on = S.selected.has(b.dataset.id);
-    b.setAttribute('aria-pressed', on); b.textContent = on ? '已选' : '问';
+    b.setAttribute('aria-pressed', on); b.textContent = on ? '已选' : (b.dataset.idleLabel || '问');
   });
   $$('#panel [data-item], #signalDlg [data-item], #research-inquiry [data-item]').forEach(el => el.classList.toggle('is-sel', S.selected.has(el.dataset.item) && !el.classList.contains('raw-row')));
   const box = $('#asSel');

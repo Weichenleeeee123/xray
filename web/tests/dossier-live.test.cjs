@@ -72,6 +72,34 @@ test('timeline range includes future recorded dates instead of ending at query y
   assert.match(h.run('dossierTimeline(v)'),/2025 — 2030/);
 });
 
+test('timeline gives each node a separate decorative track and retains full event labels and source actions',()=>{
+  const h=harness();h.run(`v.charts=[{kind:'timeline',events:[{date:'2025-02-18',label:'记录 <一>',ref:'R1'},{date:'2025-02-18',label:'同日另一条记录',ref:'R2'}]}]`);
+  const html=h.run('dossierTimeline(v)');
+  assert.equal((html.match(/class="timeline-axis" aria-hidden="true"/g)||[]).length,2);
+  assert.equal((html.match(/aria-pressed="true"/g)||[]).length,1);
+  assert.match(html,/记录 &lt;一&gt;/);assert.match(html,/同日另一条记录/);
+  assert.match(html,/data-ref="R1"/);
+  h.run('v.charts=[]');assert.match(h.run('dossierTimeline(v)'),/暂无有日期的事件记录/);
+});
+
+test('signal sources retain exact original-record actions and dates while separating the action visually',()=>{
+  const h=harness();h.run(`v.sources={commercial:{name:'商业数据',kind:'commercial',as_of:'2026-10-01'}};S.case.sources=v.sources;v.raw_ids=['R1'];S.case.raw=[{id:'R1',source_id:'commercial',kind:'commercial',as_of:'2026-10-02',title:'原始记录'}]`);
+  const html=h.run(`srcLink('commercial','R1',true)`);
+  assert.match(html,/class="signal-source-meta"/);assert.match(html,/class="signal-source-action">查看出处/);
+  assert.match(html,/data-act="raw" data-ref="R1"/);assert.match(html,/2026-10-02/);assert.doesNotMatch(html,/2026-10-01/);
+  assert.doesNotMatch(h.run(`srcLink('commercial','R1')`),/signal-source-action/);
+  assert.match(h.run(`srcLink('commercial',null,true)`),/data-act="src"/);
+});
+
+test('signal selection labels can be explicit without changing the original selection contract',()=>{
+  const h=harness();let html=h.run(`askBtn('credit.penalty','问小企')`);
+  assert.match(html,/data-act="sel" data-id="credit.penalty"/);assert.match(html,/data-idle-label="问小企"/);
+  assert.match(html,/>问小企<\/button>/);
+  h.run(`S.selected.add('credit.penalty')`);
+  assert.match(h.run(`askBtn('credit.penalty','问小企')`),/aria-pressed="true"[^>]*>已选<\/button>/);
+  assert.match(h.run(`askBtn('credit.status')`),/>问<\/button>/);
+});
+
 test('production dossier assets contain no preview company or preview print footer',()=>{
   const root=path.join(__dirname,'..','dossier');
   for(const filename of fs.readdirSync(root).filter(name=>/\.(css|js)$/.test(name))) {

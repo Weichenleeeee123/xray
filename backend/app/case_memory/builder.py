@@ -9,7 +9,7 @@ from app import config
 from app.models import Case, Version
 from .models import CaseMemory, EvidenceCard, EvidenceUnit, Locator
 
-BUILDER_VERSION = "deterministic-1"
+BUILDER_VERSION = "deterministic-2-public-discovery"
 TOPICS = {
     "identity": ("名称", "身份", "登记", "主体", "股东", "成立", "状态", "统一社会信用", "registry", "status"),
     "license": ("资质", "资格", "牌照", "持牌", "许可证", "经营范围", "scope", "bank_list", "amac"),
@@ -20,7 +20,13 @@ TOPICS = {
     "term": ("期限", "到期", "提前", "服务开始", "终止", "条件", "例外"),
     "returns": ("收益", "回报", "年化", "保本", "保息", "利息", "promise"),
     "credit": ("处罚", "纠纷", "诉讼", "失信", "被执行", "欠税", "监管", "penalt", "litigation"),
-    "job": ("工作", "薪酬", "工资", "岗位", "入职", "试用", "offer", "欠薪"),
+    "job": ("工作", "薪酬", "工资", "岗位", "入职", "试用", "offer", "欠薪", "招聘"),
+    "business": ("业务", "做什么", "干什么", "主营", "公司介绍", "公司简介"),
+    "brand": ("品牌", "简称", "英文名", "旗下"),
+    "product": ("产品", "应用", "软件", "硬件", "app"),
+    "funding": ("融资", "投资方", "融资轮", "创投"),
+    "activity": ("活动", "发布", "参访", "展会", "园区", "合作"),
+    "media": ("报道", "采访", "新闻", "记者", "快讯"),
     "finance": ("财务", "净利润", "营业收入", "资产", "负债", "资本", "实缴", "认缴", "抵押", "质押", "finance"),
     "reputation": ("投诉", "评价", "口碑", "舆情", "新闻", "reputation"),
     "gaps": ("未查", "失败", "未覆盖", "尚不", "没查", "缺失", "未知", "gap"),
@@ -114,6 +120,17 @@ def build(case: Case, no: int, owner: str) -> CaseMemory:
         memory.cards.append(EvidenceCard(card_id=ref, topics=tags(ref + " " + text) or ["identity"],
             statement_type=kind, summary=text, fact_refs=[ref], raw_refs=sorted(set(refs) & raw_ids),
             coverage=str(payload.get("gap") or payload.get("status") or kind), payload=payload))
+    for raw in case.raw:
+        if raw.id not in raw_ids or raw.discovery is None:
+            continue
+        # Navigation cards are NOT new fact_ids or risk judgments. Read the raw unit.
+        memory.cards.append(EvidenceCard(card_id=f"public:{raw.id}",
+            topics=raw.discovery.topics or tags(raw.title) or ["business"],
+            statement_type="source_statement", summary=raw.title, raw_refs=[raw.id],
+            coverage=raw.coverage.value, conditions=[raw.note or "来源说法待核实"],
+            payload={"title": raw.title, "navigation_only": True,
+                     "provenance": raw.discovery.model_dump(mode="json", include={
+                         "relation", "nature", "read_state", "canonical_url"})}))
     by_ref = {c.card_id: c for c in memory.cards}
     for judgment in v.judgments:
         card = by_ref.get(judgment.target)
@@ -132,11 +149,14 @@ def build(case: Case, no: int, owner: str) -> CaseMemory:
     for raw in case.raw:
         if raw.id not in raw_ids:
             continue
-        parts = [([], raw.content)] if raw.kind == "user_material" else units(raw.content)
+        # A public page stays together with its relationship, acquisition state and
+        # conflicting statements. Avoid repeating a large parent body per metadata field.
+        parts = [([], raw.content)] if raw.kind == "user_material" or raw.discovery else units(raw.content)
         for i, (path, value) in enumerate(parts):
             searchable = raw.title + " " + dump(path) + " " + dump(value)
             memory.evidence_index.append(EvidenceUnit(unit_id=f"{raw.id}:{i}", locator=Locator(raw_id=raw.id, path=path),
-                topics=tags(searchable), keywords=words(searchable), chars=len(dump(value))))
+                topics=sorted(set(tags(searchable)) | set(raw.discovery.topics if raw.discovery else [])),
+                keywords=words(searchable), chars=len(dump(value))))
     memory.overview = {
         "company": case.case.company_name, "purpose": v.need, "version": no, "report_date": v.created_at,
         "navigation_only": True,
@@ -146,7 +166,10 @@ def build(case: Case, no: int, owner: str) -> CaseMemory:
         "changes": [c.model_dump(mode="json") for c in v.changes],
         "judgment_changes": [c.model_dump(mode="json") for c in v.judgment_changes],
         "coverage": [{"ref": r.id, "kind": r.kind, "coverage": r.coverage.value, "as_of": r.as_of,
-                      "retrieved_at": r.retrieved_at, "note": r.note} for r in case.raw if r.id in raw_ids],
+                      "retrieved_at": r.retrieved_at, "note": r.note,
+                      **({"discovery": r.discovery.model_dump(mode="json", include={
+                          "relation", "nature", "read_state", "topics"})} if r.discovery else {})}
+                     for r in case.raw if r.id in raw_ids],
     }
     memory.state = "ready"
     memory.built_at = datetime.now(timezone.utc).isoformat()

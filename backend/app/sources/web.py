@@ -13,6 +13,7 @@
 import hashlib
 import json
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -174,6 +175,8 @@ class WebClient:
         return bool(self.root and self.api_key) and self.mode != "off"
 
     def _cached(self, kind: str, params: dict, fetch) -> tuple[list[dict], bool]:
+        if self.mode == "off":
+            raise ValueError("联网搜索已关闭")
         key = hashlib.sha256(json.dumps([kind, params], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:32]
         path = self.cache_dir / f"{key}.json"
         if self.mode != "replay":
@@ -191,18 +194,31 @@ class WebClient:
                     raise
         if not path.exists():
             raise ValueError("没有录好的搜索结果")
-        return json.loads(path.read_text(encoding="utf-8"))["pages"], True
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        return [{**p, "retrieved_at": p.get("retrieved_at") or cached.get("recorded_at")}
+                for p in cached["pages"]], True
 
-    def _post(self, path: str, body: dict) -> dict:
-        with httpx.Client(timeout=self.timeout, transport=self.transport) as c:
+    def _post(self, path: str, body: dict, *, timeout: float | None = None) -> dict:
+        with httpx.Client(timeout=timeout or self.timeout, transport=self.transport) as c:
             r = c.post(self.root + path, json=body, headers={"Authorization": f"Bearer {self.api_key}"})
         r.raise_for_status()
         return r.json()
 
     def search(self, query: str, include: list[str] | None = None, exclude: list[str] | None = None,
-               count: int = 20) -> tuple[list[dict], bool]:
+               count: int = 20, *, provider: str = "auto", timeout: float | None = None) -> tuple[list[dict], bool]:
         """返回 (网页列表, 是否回放)。网页字段统一成 name / url / site / date / text。"""
         params = {"query": query, "include": include, "exclude": exclude, "count": count}
+        if provider not in ("auto", "bocha", "unifuncs") or (include and provider == "unifuncs"):
+            raise ValueError("不支持的搜索供应商或域名限定")
+        if provider != "auto":
+            params["provider"] = provider  # Existing auto-mode cache keys stay compatible.
+        deadline = time.monotonic() + (timeout or self.timeout * 2)
+
+        def post(path, body):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise httpx.TimeoutException("search deadline")
+            return self._post(path, body, timeout=min(self.timeout, remaining))
 
         def fetch() -> list[dict]:
             body = {"query": query, "summary": True, "count": count, "freshness": "noLimit"}
@@ -210,17 +226,32 @@ class WebClient:
                 body["include"] = "|".join(include)
             if exclude:
                 body["exclude"] = "|".join(exclude)
-            try:
-                pages = self._post("/bocha/v1/web-search", body)["data"]["webPages"]["value"]
-            except (httpx.HTTPError, KeyError, TypeError):
-                if include:
-                    raise  # UniFuncs 不支持限定域名，官方搜索不降级
-                pages = self._post("/unifuncs/web-search", {"query": query, "count": count})["data"]["webPages"]
+            used = provider
+            if provider == "unifuncs":
+                pages = post("/unifuncs/web-search", {"query": query, "count": count})["data"]["webPages"]
+            else:
+                try:
+                    pages = post("/bocha/v1/web-search", body)["data"]["webPages"]["value"]
+                    used = "bocha"
+                except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                    if include or provider == "bocha":
+                        raise  # UniFuncs does not support domain restriction.
+                    pages = post("/unifuncs/web-search", {"query": query, "count": count})["data"]["webPages"]
+                    used = "unifuncs"
+            if not isinstance(pages, list):
+                raise ValueError("搜索响应格式错误")
+            recorded = datetime.now().astimezone().isoformat(timespec="seconds")
             return [{"name": p.get("name") or "", "url": p.get("url") or "", "site": p.get("siteName") or "",
                      "date": (p.get("datePublished") or "")[:10] or None,
-                     "text": " ".join(filter(None, [p.get("name"), p.get("summary"), p.get("snippet")]))} for p in pages]
+                     "provider": used, "retrieved_at": recorded,
+                     "text": " ".join(filter(None, [p.get("name"), p.get("summary"), p.get("snippet")]))}
+                    for p in pages if isinstance(p, dict)]
 
         return self._cached("search", params, fetch)
+
+    def discover(self, name: str):
+        from app.sources.discovery import discover, model_planner
+        return discover(self, name, planner=model_planner(self))
 
     def _find(self, name: str, kinds: tuple[str, ...]) -> WebFindings:
         out = WebFindings(searched=True)

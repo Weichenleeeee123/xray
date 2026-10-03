@@ -177,6 +177,11 @@ def health() -> dict:
             "commercial": svc.commercial.status() if svc.commercial else {"configured": False},
             "assistant_context": {"mode": config.ASSISTANT_CONTEXT_MODE,
                                   "memory_enabled": config.CASE_MEMORY_ENABLED},
+            "web_discovery": {"enabled": config.WEB_DISCOVERY_ENABLED,
+                              "search_configured": svc.web is not None,
+                              "max_queries": config.WEB_DISCOVERY_QUERIES,
+                              "max_rounds": config.WEB_DISCOVERY_ROUNDS,
+                              "total_seconds": config.WEB_DISCOVERY_SECONDS},
             "llm": llm.status(), "deployment": deployment.status()}
 
 

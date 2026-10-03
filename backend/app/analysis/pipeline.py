@@ -79,7 +79,7 @@ def load_services() -> Services:
 def attach(raw: list[RawRecord], draft: RawRecord) -> str:
     """同一来源、同样内容的记录只存一份；内容变了才新增一条。"""
     for r in raw:
-        fields = ("source_id", "title", "coverage", "content", "retrieved_at", "as_of", "url", "note", "kind", "screenshot")
+        fields = ("source_id", "title", "coverage", "content", "retrieved_at", "as_of", "url", "note", "kind", "screenshot", "discovery")
         if all(getattr(r, k) == getattr(draft, k) for k in fields):
             return r.id
     rid = f"R{len(raw) + 1}"
@@ -184,14 +184,17 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     return ver
 
 
-def _collect_into(raw: list[RawRecord], name: str, svc: Services) -> tuple[Collected, list[str]]:
-    collected = collect(name, svc)
+def _collect_into(raw: list[RawRecord], name: str, svc: Services, scenario: str = "") -> tuple[Collected, list[str]]:
+    from app.sources.discovery import public_search_scope
+    # Only an enumerated scenario travels to public search, never the need or uploads.
+    with public_search_scope(scenario):
+        collected = collect(name, svc)
     return collected, [attach(raw, r) for r in collected.records]
 
 
 def new_case(body: CaseIn, intake: Intake, svc: Services) -> Case:
     raw: list[RawRecord] = []
-    collected, ids = _collect_into(raw, body.company_name, svc)
+    collected, ids = _collect_into(raw, body.company_name, svc, intake.scenario)
     if body.material_text and body.material_text.strip():
         attach(raw, material_record(body.material_text, body.material_title, "initial"))
     inp = body.model_copy(update={"scenario": intake.scenario, "for_whom": body.for_whom or intake.for_whom,
@@ -217,7 +220,7 @@ def supplement(case: Case, body: SupplementIn, intake: Intake | None, svc: Servi
         rid = attach(case.raw, material_record(body.text, body.title, body.kind))
         new_texts = {rid: body.text}
 
-    collected, ids = _collect_into(case.raw, inp.company_name, svc)
+    collected, ids = _collect_into(case.raw, inp.company_name, svc, intake.scenario)
     cur = build_version(prev.no + 1, body.kind, inp, intake, collected, ids, case.raw, svc)
     if body.kind == "reply" and DODGE.search(body.text) and not CHECKABLE.search(body.text):
         cur.notes.append("对方的回复没有给出任何可以核对的信息（编号、合同、户名），只是让你放心。这不算回答。")
@@ -248,7 +251,7 @@ def refresh_reviews(case: Case, svc: Services) -> Case:
         raise NoNewReviews(case.id)
     intake = Intake(scenario=prev.scenario, scenario_label=prev.scenario_label, focus=prev.focus,
                     for_whom=prev.for_whom, amount=prev.amount, method="user")
-    collected, ids = _collect_into(case.raw, case.case.company_name, svc)
+    collected, ids = _collect_into(case.raw, case.case.company_name, svc, prev.scenario)
     cur = build_version(prev.no + 1, "reviews", case.case, intake, collected, ids, case.raw, svc)
     after = _review_raw(case, cur)
     cur.changes, base = diff(prev, cur, {after.id: ""} if after else {})
