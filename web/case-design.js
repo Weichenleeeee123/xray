@@ -179,7 +179,7 @@ function researchQuestions(v) {
 function openResearchQuestion(index) {
   const q=ver().questions[index], dlg=$('#questionDlg');
   if(!q || !dlg) return;
-  dlg.innerHTML=`<div class="dlg-in"><div class="dlg-head"><span class="research-eyebrow">该问对方的 · ${String(index+1).padStart(2,'0')}</span><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭问题详情" autofocus>×</button></div><div class="dlg-body"><h3 id="research-question-title">${esc(q.ask)}</h3><div class="question-detail-grid"><div><span class="column-label">为什么要问</span><p>${esc(q.why)}</p>${q.linked.length?`<button class="research-text-link" data-act="goto" data-id="${esc(q.linked[0])}">查看相关线索 →</button>`:''}</div><div><span class="column-label">如何核对</span><p>${esc(q.check_where)}</p></div></div><div class="question-detail-actions"><button class="research-button ghost" data-act="copy-question" data-question="${index}">复制问题 ${researchIcon()}</button><button class="research-button" data-act="supplement" data-kind="reply" data-title="对 ${esc(q.id)} 的回复">填写回复 →</button></div></div></div>`;
+  dlg.innerHTML=`<div class="dlg-in"><div class="dlg-head"><span class="research-eyebrow">建议后续询问 · ${String(index+1).padStart(2,'0')}</span><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭问题详情" autofocus>×</button></div><div class="dlg-body"><h3 id="research-question-title">${esc(q.ask)}</h3><div class="question-detail-grid"><div><span class="column-label">为什么要问</span><p>${esc(q.why)}</p>${q.linked.length?`<button class="research-text-link" data-act="goto" data-id="${esc(q.linked[0])}">查看相关线索 →</button>`:''}</div><div><span class="column-label">如何核对</span><p>${esc(q.check_where)}</p></div></div><div class="question-detail-actions"><button class="research-button ghost" data-act="copy-question" data-question="${index}">复制问题 ${researchIcon()}</button><button class="research-button" data-act="supplement" data-kind="reply" data-title="对 ${esc(q.id)} 的回复">填写回复 →</button></div></div></div>`;
   if(!dlg.open) dlg.showModal();
 }
 // The printable one-pager reuses the classic audience switch and /onepager endpoint.
@@ -222,7 +222,7 @@ function researchTabPanel(group,key,content) {
   return `<div class="research-tab-panel" id="research-${group}-panel-${key}" role="tabpanel" aria-labelledby="research-${group}-tab-${key}" tabindex="0"${researchActiveTab[group]===key?'':' hidden'}>${content}</div>`;
 }
 function researchNotes(c,v) {
-  return `<details class="research-notes"><summary>版本与阅读说明</summary><div class="research-versions">${c.versions.map(x=>`<button class="research-button ghost" data-act="ver" data-no="${x.no}" aria-current="${x.no===v.no}">第 ${x.no} 版 · ${esc(x.trigger_label)}</button>`).join('')}</div><ul>${reportReadingNotes(v).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></details>`;
+  return `<details class="research-notes" id="research-versions"><summary>版本与阅读说明</summary><div class="research-versions">${c.versions.map(x=>`<button class="research-button ghost" data-act="ver" data-no="${x.no}" aria-current="${x.no===v.no}">第 ${x.no} 版 · ${esc(x.trigger_label)}</button>`).join('')}</div><ul>${reportReadingNotes(v).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></details>`;
 }
 function researchReviews(v) {
   return `<div class="research-reviews" id="research-reviews-body">${reviewsPanel(v)}</div>`;

@@ -98,5 +98,30 @@ test('blocked storage does not throw and reports failure', () => {
 
 test('library is a top-level section', () => {
   const h = harness();
-  assert.match(h.run('JSON.stringify(NAV)'), /"library","资料库"/);
+  assert.match(h.run('JSON.stringify(NAV)'), /"library","知识库"/);
+});
+
+test('collection searches match complete queries without modifying stored favorites',()=>{
+  const h=harness();h.run(`libToggle('dishonest'); libToggle('m_x'); collectionView.libraryQuery='巨鲸 协议'`);
+  const before=h.run('JSON.stringify(libRead())');
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(visibleTerms(libRead()).map(e=>e.id))')),['m_x']);
+  h.run(`collectionView.libraryFilter='glossary'`);
+  assert.equal(h.run('visibleTerms(libRead()).length'),0);
+  assert.equal(h.run('JSON.stringify(libRead())'),before);
+});
+test('review mode collapses explanations while retaining original citations and report links',()=>{
+  const h=harness();h.run(`libToggle('dishonest');collectionView.study=true`);
+  const html=h.run('libraryHtml(libRead())');
+  assert.doesNotMatch(html,/<details class="term-reading" open>/);
+  assert.match(html,/法院认定有能力履行却不履行的人/);
+  assert.match(html,/最高法相关规定/);
+  assert.match(html,/href="#\/case\/c1\/v\/2"/);
+  assert.match(html,/结束复习/);
+});
+test('case search and multi-version filter retain separate cases for the same company',()=>{
+  const h=harness();h.run(`globalThis.rows=[{id:'a',company_name:'同家公司',need:'合同',versions:1,created_at:'2026-10-01'}, {id:'b',company_name:'同家公司',need:'退款',versions:3,created_at:'2026-10-03'}, {id:'c',company_name:'另一家',need:'合同',versions:2,created_at:'2026-10-02'}];collectionView.caseQuery='同家'`);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(caseCollectionRows(rows).map(e=>e.id))')),['b','a']);
+  h.run(`collectionView.caseFilter='multiple'`);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(caseCollectionRows(rows).map(e=>e.id))')),['b']);
+  assert.equal(h.run('rows.length'),3);
 });

@@ -41,7 +41,7 @@ function pendingNote(list) {   // "2 项没查成、1 项待补材料"，没查�
 }
 const stLabel = i => (isRef(i) ? '只作参考' : (i.status === 'none' && GAP[i.gap]) || STATUS[i.status] || '');
 // 与研究室首页的功能列表保持相同顺序。
-const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['library', '资料库', '收藏的名词，回头复习'], ['me', '我的', '个人主页'], ['guide', '使用说明', '使用方法、服务与资料覆盖']];
+const NAV = [['check', '企业', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['library', '知识库', '收藏的名词，回头复习'], ['me', '我的', '个人主页'], ['guide', '使用说明', '使用方法、服务与资料覆盖']];
 const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
 const SUP_KIND = {
   material: { label: '新材料', help: '宣传单、合同、聊天记录的文字。可以上传图片、PDF、Word，读出来的文字会填进下面，你可以改。' },
@@ -184,7 +184,7 @@ function termPop(el, id) {
   popAt(el, termPopHtml(t));
 }
 
-// ---------- 资料库：看不懂的名词收藏起来，回头复习 ----------
+// ---------- 知识库：看不懂的名词收藏起来，回头复习 ----------
 // 只存在这个浏览器里（和案卷一个口径）。存的是收藏当时的解释快照：AI 词条只在那一版报告里有，
 // 固定词表以后改了措辞，复习时看到的也还是当时那一版。seen 记在哪几份报告里碰到过，按案卷去重。
 const LIB_KEY = 'xray.library';
@@ -204,7 +204,7 @@ function libPush() {
   if (!S.session?.account) return;
   clearTimeout(libPush.t);
   libPush.t = setTimeout(() => api('/api/me/library', {method: 'PUT', body: libRead()})
-    .catch(() => toast('资料库没同步到账号，下次打开会再试', true)), 400);
+    .catch(() => toast('知识库没同步到账号，下次打开会再试', true)), 400);
 }
 function libMerge(a, b) {
   const byId = new Map();
@@ -257,20 +257,42 @@ function libNote(id) {
   libWrite(list);
 }
 const libBtn = id => { const on = libHas(id); return `<button type="button" class="lib-tog" data-act="lib-toggle" data-term="${esc(id)}" aria-pressed="${on}">${on ? '★ 已收藏' : '☆ 收藏复习'}</button>`; };
+// Collection controls affect only the current view; saved records remain untouched.
+const collectionView = {caseQuery:'',caseFilter:'all',caseSort:'newest',libraryQuery:'',libraryFilter:'all',study:false};
+function collectionMatches(value, query) {
+  const words = String(query || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const haystack = String(value || '').toLocaleLowerCase();
+  return words.every(word => haystack.includes(word));
+}
+function visibleTerms(list) {
+  return list.filter(e => collectionMatches([e.term,e.plain,...(e.seen || []).map(x => x.company)].join(' '), collectionView.libraryQuery))
+    .filter(e => collectionView.libraryFilter === 'all' || (collectionView.libraryFilter === 'report' ? (e.seen || []).length > 0 : !(e.seen || []).length));
+}
+function libraryCards(list) {
+  if (!list.length) return '<div class="collection-empty"><span class="collection-empty-mark">⌕</span><h3>没有找到匹配的名词</h3><p>试试简短的关键词，或查看全部收藏。</p><button class="collection-button" data-act="library-reset">清除筛选</button></div>';
+  return list.map((e,i) => `<article class="term-file">
+    <div class="term-index"><span>名词索引 <b>${String(i+1).padStart(2,'0')}</b></span><span class="term-bookmark" aria-hidden="true">${collectionIcon('bookmark')}</span></div>
+    <div class="term-sheet"><div class="term-heading"><h3>${esc(e.term)}</h3>${e.origin === 'model' ? '<span class="lib-ai">AI 解释·未经人工核对</span>' : '<span class="term-type">名词解释</span>'}</div>
+    <details class="term-reading"${collectionView.study ? '' : ' open'}><summary><span class="term-reading-closed">想好了吗？展开解释</span><span class="term-reading-open">一句话看懂</span><span class="term-read-symbol" aria-hidden="true">＋</span></summary><p class="term-plain">${esc(e.plain)}</p>
+    ${e.why || (e.origin !== 'model' && e.basis) ? `<details class="term-context"><summary>继续看 · ${e.why ? '为什么要留意' : '解释依据'} <span>↗</span></summary><div>${e.why ? `<p>${esc(e.why)}</p>` : ''}${e.origin !== 'model' && e.basis ? `<p class="lib-basis">依据：${esc(e.basis)}</p>` : ''}</div></details>` : ''}</details>
+    <div class="term-origins"><span>${collectionIcon('file')} ${(e.seen || []).length ? '在这些报告里遇见' : '从词表里收藏'}</span>${(e.seen || []).map(x => `<a href="#/case/${esc(encodeURIComponent(x.caseId))}${x.version == null ? '' : `/v/${esc(x.version)}`}"><span>${esc(x.company)}</span><small>${x.version == null ? '查看案卷' : `第 ${esc(x.version)} 版`} ↗</small></a>`).join('')}</div>
+    <div class="term-bottom"><span>${e.savedAt ? `${esc(String(e.savedAt).slice(0,10))} 收藏` : '已收藏'}</span><button type="button" class="term-remove" data-act="lib-remove" data-term="${esc(e.id)}">移出</button></div></div>
+  </article>`).join('');
+}
 function libraryHtml(list) {
-  if (!list.length) return '<div class="empty-case"><p>还没有收藏的词。在报告里点开带虚线的词，点「☆ 收藏复习」，就会出现在这里。</p><a class="btn sm" href="#/cases">去看案卷</a></div>';
-  const where = S.session?.account ? `已同步到账号 ${esc(S.session.account.email)}，换设备登录也能看到。` : '只存在这个浏览器里，清除浏览器数据后会丢失；登录后可以同步到账号。';
-  return `<p class="lists-line">共 ${list.length} 个词。${where}</p>
-  <div class="lib-list">${list.map(e => `<article class="lib-card">
-    <div class="lib-h"><h3>${esc(e.term)}</h3>${e.origin === 'model' ? '<span class="lib-ai">AI 解释·未经人工核对</span>' : ''}</div>
-    <p>${esc(e.plain)}</p>
-    ${e.why ? `<p class="lib-why">${esc(e.why)}</p>` : ''}
-    ${e.origin !== 'model' && e.basis ? `<p class="lib-basis">依据：${esc(e.basis)}</p>` : ''}
-    <div class="lib-f">
-      ${(e.seen || []).length ? `<span class="lib-seen">在这些报告里碰到过：${e.seen.map(s => `<a href="#/case/${esc(s.caseId)}${s.version == null ? '' : `/v/${s.version}`}">${esc(s.company)}${s.version == null ? '' : ` · 第 ${s.version} 版`}</a>`).join('、')}</span>` : '<span class="lib-seen">从词表里收藏</span>'}
-      <button type="button" class="linkish small" data-act="lib-remove" data-term="${esc(e.id)}">移出</button>
-    </div>
-  </article>`).join('')}</div>`;
+  const where = S.session?.account ? `已同步到账号 ${esc(S.session.account.email)}，换设备登录也能看到。` : '收藏保存在此浏览器；登录后可以同步到账号。清除浏览器数据会丢失未同步的收藏。';
+  if (!list.length) return `<div class="collection-empty library-empty">${collectionArt('library')}<h3>把没看懂的词，收进自己的知识库。</h3><p>在报告里点开带虚线的名词，再点「☆ 收藏复习」。<br>解释、依据和遇到它的报告，会一起留在这里。</p><a class="collection-button solid" href="#/cases">去看案卷 ↗</a></div><p class="collection-storage">${where}</p>`;
+  const rows = visibleTerms(list);
+  return `<div class="collection-toolbar"><label class="collection-search">${collectionIcon('search')}<input id="librarySearch" type="search" placeholder="搜索名词、解释或公司" aria-label="搜索收藏的名词" value="${esc(collectionView.libraryQuery)}" autocomplete="off"></label><button class="collection-button study-toggle" data-act="library-study" aria-pressed="${collectionView.study}">${collectionIcon('cards')}<span>${collectionView.study ? '结束复习' : '复习一下'}</span></button></div>
+    <div class="collection-list-label"><div class="collection-filters" role="group" aria-label="名词来源筛选">${[['all','全部收藏'],['report','来自报告'],['glossary','词表收藏']].map(([key,label]) => `<button data-act="library-filter" data-filter="${key}" aria-pressed="${collectionView.libraryFilter === key}">${label}</button>`).join('')}</div><span id="libraryMatches" role="status">显示 ${rows.length} / ${list.length} 个词</span></div>
+    <p class="study-hint" id="studyHint"${collectionView.study ? '' : ' hidden'}>先想想这个词是什么意思，再展开卡片核对。解释和出处都在原处。</p>
+    <div class="knowledge-cards" id="knowledgeCards">${libraryCards(rows)}</div>
+    <p class="collection-storage">共 ${list.length} 个词。${where}</p>`;
+}
+function refreshLibraryCards() {
+  const list = libRead(), rows = visibleTerms(list);
+  if ($('#knowledgeCards')) $('#knowledgeCards').innerHTML = libraryCards(rows);
+  if ($('#libraryMatches')) $('#libraryMatches').textContent = `显示 ${rows.length} / ${list.length} 个词`;
 }
 const askBtn = id => `<button type="button" class="ask" data-act="sel" data-id="${esc(id)}" aria-pressed="${S.selected.has(id)}" title="选中这一条，去问小企">${S.selected.has(id) ? '已选' : '问'}</button>`;
 // Keep raw record IDs for navigation, but use readable labels in the review UI.
@@ -412,65 +434,70 @@ function archiveAssistantHtml() {
     <div class="archive-assistant-bottom"><span class="archive-status-dot"></span>尚未选择案卷 · 暂不读取具体材料</div>`;
 }
 
+function collectionIcon(kind) {
+  const paths = {search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm5-2 6 6',file:'M5 3h10l4 4v14H5V3Zm10 0v5h4M9 12h6M9 16h4',bookmark:'M6 3h12v18l-6-4-6 4V3Z',cards:'M7 3h13v15H7V3ZM4 7H2v15h13v-2M11 8h5m-5 4h5',folder:'M3 6h7l3 3h8v12H3V6Z',arrow:'M4 12h15m-6-6 6 6-6 6'};
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.file}"/></svg>`;
+}
+function collectionArt(kind) {
+  return `<svg class="collection-art" viewBox="0 0 210 140" fill="none" aria-hidden="true"><path d="M22 114h168" stroke="#8b795a" opacity=".4"/><g class="collection-art-pages"><path d="m62 31 87-10 10 88-87 10Z" fill="#efe5cd" stroke="#b89a62"/><path d="M49 33h92v87H49Z" fill="#faf6e9" stroke="#bfa776"/><path d="M62 53h63M62 63h39M62 75h63M62 86h51" stroke="#b7a47a"/><path d="M106 33v30l10-7 10 7V33" fill="#9d7743"/></g>${kind === 'cases' ? '<path d="M25 76V58h41l12 14h101v54H25V76Z" fill="#d5bb87" stroke="#a58754"/><path d="M25 80h154v46H25Z" fill="#dec99f" stroke="#a58754"/><path d="M47 94h61v19H47Z" fill="#f7f0dd" stroke="#b59b6c"/><path d="M55 101h42m-42 6h29" stroke="#a18b68"/><circle cx="160" cy="104" r="6" fill="#233845" stroke="#b39966"/>' : '<path d="m127 99 45-64 8 6-45 64-11 7 3-13Z" fill="#223845" stroke="#b89960"/><path d="m127 99 8 6-11 7 3-13Z" fill="#d6bc85"/><path d="m166 44 8 6" stroke="#d6bc85"/>'}</svg>`;
+}
+function collectionHeader(kind) {
+  const library = kind === 'library';
+  return `<section class="collection-heading archive-heading"><div class="collection-heading-main"><div class="collection-kicker"><span>${library ? 'KNOWLEDGE INDEX' : 'CASE ARCHIVE'}</span><i></i>${library ? '知识库' : '企业研究档案'}</div><h1>${library ? '收藏的名词' : '查过的公司'}</h1><p>${library ? '把报告里遇到的陌生词，变成自己的理解。' : '从上次的疑问继续，每次核实都有迹可循。'}</p><div class="collection-header-actions"><a class="collection-button solid" href="${library ? '#/cases' : '/'}">${collectionIcon(library ? 'folder' : 'search')}${library ? '回到案卷' : '查一家公司'}</a><span>${library ? '解释 · 依据 · 对应报告' : '报告 · 补充材料 · 历次变化'}</span></div></div><div class="collection-header-art">${collectionArt(kind)}<span>${library ? '把理解留下来' : '你的私人档案'}</span></div></section>`;
+}
+function caseCollectionRows(cases) {
+  return cases.filter(c => collectionMatches([c.company_name,c.need,c.scenario_label].join(' '),collectionView.caseQuery))
+    .filter(c => collectionView.caseFilter !== 'multiple' || Number(c.versions) > 1)
+    .sort((a,b) => collectionView.caseSort === 'oldest' ? String(a.created_at || '').localeCompare(String(b.created_at || '')) : String(b.created_at || '').localeCompare(String(a.created_at || '')));
+}
+function renderCaseCollection() {
+  const all = S.cases || [], rows = caseCollectionRows(all);
+  $('#caseCount').textContent = String(all.length).padStart(2,'0');
+  $('#caseCompanies').textContent = String(new Set(all.map(c => c.company_name)).size).padStart(2,'0');
+  $('#caseVersions').textContent = String(all.reduce((n,c) => n + (Number(c.versions) || 0),0)).padStart(2,'0');
+  $('#caseMatches').textContent = `显示 ${rows.length} / ${all.length} 份案卷`;
+  $('#caseList').innerHTML = rows.length ? rows.map((c,i) => caseRow(c,i)).join('') : all.length ? '<div class="collection-empty"><span class="collection-empty-mark">⌕</span><h3>没有找到匹配的案卷</h3><p>试试公司简称、关注事项，或查看全部案卷。</p><button class="collection-button" data-act="cases-reset">清除筛选</button></div>' : '<div class="collection-empty empty-case"><h3>还没有案卷</h3><p>查一家公司，报告会保存在这里。之后可以继续补材料、看变化。</p><a class="collection-button solid" href="/">去查一家公司 ↗</a></div>';
+}
 async function renderCases(request = routeRequest) {
   S.case = null; useTerms(S.terms); renderTop();
-  document.body.classList.add('research-mode', 'cases-mode');
-  $('#view').innerHTML = `<div class="case-layout">
-  <main class="report" id="report">
-    <section class="archive-heading">
-      <div class="archive-topline"><span class="archive-eyebrow"><i></i> 企业研究档案 / 案卷</span><a class="research-button" href="/">＋ 查一家公司</a></div>
-      <h1>查过的公司</h1>
-      <p>从上次的疑问继续。报告、补充材料和每一次变化，都保留在同一份案卷里。</p>
-    </section>
-    <section aria-labelledby="archive-list-title">
-      <div class="archive-list-heading"><h2 id="archive-list-title">已保存的案卷 <span id="caseCount" aria-label="当前列表案卷数量">—</span></h2><span>按新建时间排列</span></div>
-      <div class="archive-list" id="caseList" aria-busy="true"><div class="archive-state" role="status">读取案卷…</div></div>
-    </section>
-    <footer class="archive-footer">${archiveIcon('file')}<p>拿到新合同、付款信息或对方回复？<br><span>打开对应案卷，补充材料后继续核对；旧版报告仍可回看。</span></p></footer>
-  </main>
-  <aside class="assist open" id="assist" aria-label="小企助手">${archiveAssistantHtml()}</aside>
-  </div>`;
+  document.body.classList.add('research-mode', 'cases-mode', 'collections-mode');
+  collectionView.caseQuery = ''; collectionView.caseFilter = 'all';
+  $('#view').innerHTML = `<div class="case-layout"><main class="report collection-page" id="report">${collectionHeader('cases')}
+    <div class="collection-ledger" aria-label="案卷统计"><div><strong id="caseCount" aria-label="当前列表案卷数量">—</strong><span>份案卷</span></div><div><strong id="caseCompanies">—</strong><span>家公司</span></div><div><strong id="caseVersions">—</strong><span>版报告</span></div><p>每一版都保留<br><span>新材料，接着原来的线索核实。</span></p></div>
+    <section aria-labelledby="archive-list-title"><div class="collection-toolbar"><label class="collection-search">${collectionIcon('search')}<input type="search" id="caseSearch" disabled aria-label="搜索案卷" placeholder="搜索公司名称或关注事项" autocomplete="off"></label><label class="collection-sort"><span>排列</span><select id="caseSort" disabled aria-label="案卷排列顺序"><option value="newest"${collectionView.caseSort === 'newest' ? ' selected' : ''}>最近新建</option><option value="oldest"${collectionView.caseSort === 'oldest' ? ' selected' : ''}>最早新建</option></select></label></div>
+    <div class="collection-list-label"><div class="collection-filters" role="group" aria-label="案卷筛选"><button data-act="cases-filter" disabled data-filter="all" aria-pressed="true" id="archive-list-title">全部案卷</button><button data-act="cases-filter" disabled data-filter="multiple" aria-pressed="false">有多个版本</button></div><span id="caseMatches" role="status">读取案卷…</span></div>
+    <div class="archive-list folder-grid" id="caseList" aria-busy="true"><div class="collection-empty" role="status">读取案卷…</div></div></section>
+    <footer class="collection-footer">${collectionIcon('file')}<p>拿到新合同或对方回复？<span>打开对应案卷，补充材料后继续核实，旧版报告仍可回看。</span></p></footer>
+    </main><aside class="assist" id="assist" aria-label="小企助手">${archiveAssistantHtml()}</aside></div>`;
   try {
     const cases = await api('/api/cases', {signal: request?.signal});
     if (!currentRoute(request)) return;
     if (!Array.isArray(cases)) throw new Error('列表内容格式不正确，请重试');
-    S.cases = cases;
-    $('#caseCount').textContent = String(cases.length).padStart(2, '0');
-    $('#caseList').innerHTML = S.cases.length
-      ? S.cases.map(caseRow).join('')
-      : '<div class="archive-state empty-case"><h3>还没有案卷</h3><p>查一家公司，这里就会保存报告，方便之后补材料、看变化。</p><a class="research-button" href="/">去查一家公司</a></div>';
+    S.cases = cases; renderCaseCollection();
+    $('#caseSearch').disabled=false; $('#caseSort').disabled=false;
+    $$('[data-act="cases-filter"]').forEach(button => {button.disabled=false;});
   } catch (e) {
     if (!currentRoute(request)) return;
-    $('#caseList').innerHTML = `<div class="archive-state"><p class="err" role="alert">读不到案卷列表：${esc(e.message)}</p><p>已保存的案卷不会因此清空。</p><button class="research-button" type="button" data-act="retry-read">重试</button></div>`;
+    $('#caseList').innerHTML = `<div class="collection-empty"><p class="err" role="alert">读不到案卷列表：${esc(e.message)}</p><p>已保存的案卷不会因此清空。</p><button class="collection-button" type="button" data-act="retry-read">重试</button></div>`;
+    $('#caseMatches').textContent = '读取暂未完成';
   } finally {
-    if (currentRoute(request)) $('#caseList')?.setAttribute('aria-busy', 'false');
+    if (currentRoute(request)) $('#caseList')?.setAttribute('aria-busy','false');
   }
 }
-
 function caseRow(c, index = 0) {
-  return `<a class="archive-row" href="#/case/${esc(encodeURIComponent(c.id))}">
-    <span class="archive-file">${archiveIcon('file')}<small>${String(index + 1).padStart(2, '0')}</small></span>
-    <div class="archive-row-body"><div class="archive-row-title"><h3>${esc(c.company_name)}</h3><span class="archive-versions">${esc(c.versions)} 个版本</span></div>
-      ${c.need ? `<p class="archive-need"><span>本次关注</span>${esc(c.need)}</p>` : ''}
-      <div class="archive-row-meta">${c.scenario_label ? `<span class="archive-scenario">${esc(c.scenario_label)}</span>` : ''}${c.created_at ? `<time datetime="${esc(c.created_at)}">${esc(fmtTime(c.created_at))} 新建</time>` : '<span>新建时间未记录</span>'}</div>
-    </div>
-    <span class="archive-open">打开报告 ${archiveIcon('arrow')}</span>
+  return `<a class="archive-row folder-card" href="#/case/${esc(encodeURIComponent(c.id))}">
+    <span class="folder-card-tab"><span>${esc(c.scenario_label || '企业核验')}</span><small>${String(index+1).padStart(2,'0')}</small></span>
+    <span class="folder-card-back" aria-hidden="true"></span><div class="folder-card-front"><div class="folder-card-top"><span>企er / 企业研究案卷</span><span class="archive-versions">${esc(c.versions)} 个版本</span></div>
+    <div class="folder-card-title"><h3>${esc(c.company_name)}</h3><span class="folder-seal" aria-hidden="true">${collectionIcon('file')}</span></div>
+    <div class="folder-question"><span>本次关注</span><p>${esc(c.need || '了解这家公司的公开资料')}</p></div>
+    <div class="folder-card-foot"><span>${c.created_at ? `<time datetime="${esc(c.created_at)}">${esc(fmtTime(c.created_at))} 新建</time>` : '新建时间未记录'}</span><span class="archive-open">打开报告 ${collectionIcon('arrow')}</span></div></div>
   </a>`;
 }
-
-// ---------- 分区三：资料库 ----------
-
 function renderLibrary() {
+  document.body.classList.add('research-mode','dossier-shell','collections-mode','knowledge-mode');
   S.case = null; useTerms(S.terms); renderTop();
-  $('#view').innerHTML = shellHtml(`
-  <div class="home">
-    <section class="home-hero">
-      <div class="kicker">资料库</div>
-      <h1>收藏的名词</h1>
-      <p>报告里看不懂的词，点开后可以收藏到这里，回头复习。每个词都记着你是在哪份报告里碰到的。</p>
-    </section>
-    <div id="libList">${libraryHtml(libRead())}</div>
-  </div>`);
+  collectionView.libraryQuery = ''; collectionView.libraryFilter = 'all'; collectionView.study = false;
+  $('#view').innerHTML = shellHtml(`<div class="collection-page">${collectionHeader('library')}<div class="knowledge-intro"><span>${collectionIcon('bookmark')} 收藏，是为了下次看懂</span><p>每张卡保留原来的解释，以及你在哪份报告里遇到它。</p></div><div id="libList">${libraryHtml(libRead())}</div></div>`);
 }
 
 // ---------- 分区四：我的 ----------
@@ -483,6 +510,7 @@ async function renderMe(request = routeRequest) {
 // ---------- 使用说明：独立于个人主页 ----------
 
 async function renderGuide(request = routeRequest, showAccount = false) {
+  document.body.classList.add('research-mode', 'dossier-shell');
   S.case = null; useTerms(S.terms); renderTop();
   $('#view').innerHTML = '<div class="home"><p class="muted">读取服务状态…</p></div>';
   let cases = null;
@@ -540,7 +568,7 @@ async function renderGuide(request = routeRequest, showAccount = false) {
     </section>
 
     <section class="me-sec"><h2>名词解释</h2>
-      <p class="me-p">报告里带虚线的词可以点开解释，不熟的可以收藏到「资料库」复习；模型补充的解释会标注为“AI 解释”，需要结合原文核对。这里是固定词表中的几个：</p>
+      <p class="me-p">报告里带虚线的词可以点开解释，不熟的可以收藏到「知识库」复习；模型补充的解释会标注为“AI 解释”，需要结合原文核对。这里是固定词表中的几个：</p>
       ${terms.length ? `<div class="chips">${terms.map(t => `<button type="button" class="chip" data-act="term" data-term="${esc(t.id)}">${esc(t.term)}</button>`).join('')}</div>` : '<p class="muted small">词表暂未读到，请刷新页面再试。</p>'}
     </section>
 
@@ -564,7 +592,7 @@ async function renderGuide(request = routeRequest, showAccount = false) {
   </div>`);
 }
 
-// ---------- 账号（可选）：登录了换设备也能找回案卷和资料库 ----------
+// ---------- 账号（可选）：登录了换设备也能找回案卷和知识库 ----------
 
 const quotaLine = q => !q ? '' : q.limit ? `今天已新建 ${q.used} / ${q.limit} 次研究` : `今天已新建 ${q.used} 次研究`;
 function acctHtml() {
@@ -580,13 +608,13 @@ function acctHtml() {
         <label>新密码 <input type="password" name="new" required minlength="8" maxlength="128" autocomplete="new-password"></label>
         <button class="btn sm" type="submit">修改</button><p class="small muted">改完后，其他设备上的登录会失效。</p></form></details>
     <details class="acct-more"><summary>注销账号</summary>
-      <form class="acct-form" id="acctDel"><p class="small">注销后账号和资料库会删除，账号里的案卷也再打不开，不能恢复。</p>
+      <form class="acct-form" id="acctDel"><p class="small">注销后账号和知识库会删除，账号里的案卷也再打不开，不能恢复。</p>
         <label>密码 <input type="password" name="password" required autocomplete="current-password"></label>
         <button class="btn sm danger" type="submit">确认注销</button></form></details>`;
   const mode = S.acctMode || 'login';
   const tabs = [['login', '登录'], ['register', '注册']].map(([k, l]) =>
     `<button type="button" class="acct-tab" data-act="acct-mode" data-mode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('');
-  const intro = `<h2>账号</h2><p class="me-p">不登录也能用。登录后，换手机或电脑也能找回案卷和资料库。${ses.quota ? `未登录${quotaLine(ses.quota)}，登录后每天额度更多。` : ''}</p>`;
+  const intro = `<h2>账号</h2><p class="me-p">不登录也能用。登录后，换手机或电脑也能找回案卷和知识库。${ses.quota ? `未登录${quotaLine(ses.quota)}，登录后每天额度更多。` : ''}</p>`;
   if (mode === 'forgot') return `${intro}
     <form class="acct-form" id="acctForgot"><label>注册时的邮箱 <input type="email" name="email" required autocomplete="email"></label>
       <button class="btn sm" type="submit">发送重设密码邮件</button>
@@ -834,10 +862,12 @@ async function openCase(id, no, request = routeRequest) {
   if (S.viewNo !== next) S.selected.clear();
   S.viewNo = next;
   renderCase();
+  if (pendingSupplement(id)) void resumeSupplement();
 }
 
 function renderCase() {
   const c = S.case, v = ver();
+  document.body.classList.toggle('dossier-live', isDesignReview());
   if (S.tab === 'changes' && v.no === 1) S.tab = 'signals';
   if (isDesignReview() && ['signals', 'reviews'].includes(S.tab)) S.tab = 'claims';
   const assistOpen = $('#assist') && $('#assist').classList.contains('open');
@@ -846,7 +876,8 @@ function renderCase() {
   $('#view').innerHTML = `
   <div class="case-layout">
     <div class="report" id="report">
-      ${isDesignReview() ? researchReport(c, v) : caseHead(c, v) + conclusionHtml(v) + chartsHtml(v)}
+      <div id="supplementNotice">${supplementNoticeHtml()}</div>
+      ${isDesignReview() ? dossierReport(c, v) : caseHead(c, v) + conclusionHtml(v) + chartsHtml(v)}
       ${!isDesignReview() ? `${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc((SHOW_JUDGMENTS && v.judgment_summary) || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}${tabsHtml(v)}<div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>` : ''}
       ${isDesignReview() ? researchDisclaimer() : '<footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>'}
       ${prebuiltNoticeHtml(v)}
@@ -855,6 +886,7 @@ function renderCase() {
   </div>
   ${qiLauncherHtml()}`;
   initResearchDesign();
+  if (isDesignReview()) initDossierReport();
   if ($('#onepager')) loadOnepager(v);
   loadReviews();
   scrollChat();
@@ -1392,7 +1424,7 @@ function refreshReviewTab(rerender = true) {
   const n = $('.tabs .tab[data-tab="reviews"] .n');
   if (n && S.reviews) n.textContent = S.reviews.count;
   const reviewBody = $('#research-reviews-body');
-  if (reviewBody && rerender) reviewBody.innerHTML = reviewsPanel(ver());
+  if (reviewBody && rerender) reviewBody.innerHTML = document.body.classList.contains('dossier-live') ? dossierReviews(ver()) : reviewsPanel(ver());
   else if (S.tab === 'reviews' && rerender) renderPanel();
 }
 
@@ -1425,11 +1457,11 @@ function reviewsPanel(v) {
     <div class="rv-list">${R.reviews.map(reviewHtml).join('')}</div>`;
 }
 function reviewFormHtml() {
-  return `<form class="rv-form" id="rvForm" novalidate>
+  return `<form class="rv-form experience-form" id="rvForm" novalidate>
     <h4>写一条评价</h4>
     <div class="rv-row"><span class="lbl">打几星</span><span class="stars" role="group" aria-label="星级">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="star" data-act="rv-star" data-n="${n}" aria-pressed="${n <= S.rvStars}" aria-label="${n} 星">★</button>`).join('')}</span><span class="small muted" id="rvStarTxt">${S.rvStars ? `${S.rvStars} 星` : ''}</span></div>
     <div class="rv-row"><span class="lbl">你是它的</span><span class="seg">${Object.entries(REL).map(([k, l]) => `<button type="button" data-act="rv-rel" data-rel="${k}" aria-pressed="${S.rvRel === k}">${l}</button>`).join('')}</span></div>
-    <textarea class="big-inp sm" name="text" rows="4" maxlength="500" placeholder="写你遇到的事：对方怎么说的、钱打到哪、能不能取出来。10–500 字。手机号、身份证号会自动遮掉。"></textarea>
+    <textarea class="big-inp sm" name="text" rows="3" maxlength="500" placeholder="写你遇到的事：对方怎么说的、钱打到哪、能不能取出来。10–500 字。手机号、身份证号会自动遮掉。"></textarea>
     <div class="rv-row"><input class="big-inp sm" name="nickname" maxlength="20" placeholder="昵称（选填，不填显示匿名用户）"><button type="submit" class="btn sm">发布评价</button></div>
     <p class="small muted">没有账号，防不了刷：同一个浏览器对同一家公司只能写一条。发布后所有人都能看到。</p>
     <div class="err" id="rvErr" role="alert"></div>
@@ -1933,6 +1965,7 @@ function openContract() {
 }
 
 function openSupplement(opt = {}) {
+  if (pendingSupplement(S.case?.id)) { void resumeSupplement(); return; }
   const kind = opt.kind || 'material';
   const photo = !!opt.photo;                 // 拍合同进来：只收照片，手机直接开相机
   const dlg = $('#supDlg');
@@ -1946,7 +1979,7 @@ function openSupplement(opt = {}) {
       <p class="small muted">材料仅用于你的私人案卷，不会自动发布为评价。仅此浏览器可访问，清除浏览器数据后不能自动恢复。</p>
       ${photo ? `<p class="sup-note">照片只证明你手上确实有这份纸。写了什么要看读出来的文字；签没签、对方认不认、照片有没有被改过，都不算验证过。所以这一版里，合同上的说法会记成「材料里写的」，和查询结果分开列。</p>` : ''}
       <div id="supMat"${kind === 'material' ? '' : ' hidden'}><div class="mat-tools">${camOn ? `<span class="btn sm cam file-btn">📷 拍照 / 选照片（可多张）<input type="file" id="supCam" accept="image/*" capture="environment" multiple></span>` : ''}<span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="supFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="muted small" id="supRead"></span></div></div>
-      <div id="supScen"${kind === 'need' ? '' : ' hidden'}><div class="small muted">场景（不选就从新需求里识别）</div><div class="chips" style="margin:4px 0 10px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="sup-scen" data-id="${esc(s.id)}" aria-pressed="false">${esc(s.label)}</button>`).join('')}</div></div>
+      <div id="supScen"${kind === 'need' ? '' : ' hidden'}><div class="small muted">场景（不选就从新需求里识别）</div><div class="chips" style="margin:4px 0 10px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="sup-scen" data-id="${esc(s.id)}" aria-pressed="${s.id === opt.scenario}">${esc(s.label)}</button>`).join('')}</div></div>
       <input class="big-inp sm" name="title" id="supTitleIn" placeholder="${kind === 'reply' ? '例如：业务员的微信回复' : '材料名称，例如：认购协议'}" value="${esc(opt.title || '')}"${kind === 'need' ? ' hidden' : ''}>
       <textarea class="big-inp sm" name="text" rows="8" required placeholder="${kind === 'need' ? '例如：我收到这家公司的 offer，让我去做理财顾问' : '把文字贴在这里'}">${esc(opt.text || '')}</textarea>
       ${demo && demo.supplements.length ? `<div class="sup-demo"><span class="muted">演示案例准备好的补充：</span><div class="chips">${demo.supplements.map((s, i) => `<button type="button" class="chip" data-act="sup-fill" data-i="${i}">${esc(SUP_KIND[s.kind].label)}：${esc(s.title || s.text.slice(0, 18))}</button>`).join('')}</div></div>` : ''}
@@ -1954,7 +1987,7 @@ function openSupplement(opt = {}) {
     </div>
     <div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">取消</button><button type="submit" class="btn sm" id="supGo">生成新版报告</button></div>
   </form>`;
-  dlg.dataset.kind = kind; dlg.dataset.scen = '';
+  dlg.dataset.kind = kind; dlg.dataset.scen = opt.scenario || '';
   if (!dlg.open) dlg.showModal();
   $('#supForm textarea').focus();
   const readIn = files => readMaterials([...files], { note: $('#supRead'), form: $('#supForm'),
@@ -1997,40 +2030,103 @@ function setSupKind(kind) {
   $('#supScen').hidden = kind !== 'need';
   $('#supTitleIn').hidden = kind === 'need';
 }
+// Pending data is scoped by case; no material or browser credentials go in the URL.
+let supplementClient = null;
+function supplementTasks() {
+  if (!supplementClient) supplementClient = SupplementRuns.create({
+    api: (path, opts) => api(path, opts), randomUUID: () => crypto.randomUUID(),
+    storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) },
+  });
+  return supplementClient;
+}
+function pendingSupplement(id) {
+  return id && typeof SupplementRuns !== 'undefined' ? supplementTasks().pending(id) : null;
+}
+function supplementNoticeHtml() {
+  return pendingSupplement(S.case?.id) ? '<div class="old-banner" role="status">有一次补充分析待查看。<button type="button" class="linkish" data-act="sup-resume">查看任务进度 / 结果</button></div>' : '';
+}
+function refreshSupplementNotice() {
+  const notice = $('#supplementNotice');
+  if (notice) notice.innerHTML = supplementNoticeHtml();
+}
+function stopSupplementWatch() {
+  S.supplementRequest?.abort();
+  S.supplementRequest = null;
+  S.supplementBusy = false;
+}
 async function submitSupplement(e) {
   e.preventDefault();
-  if (S.supplementBusy) { toast('已有补充信息正在处理，请稍候或到「案卷」查看'); return; }
+  if (S.supplementBusy) { toast('已有补充信息正在处理，请稍候或查看任务进度'); return; }
+  if (pendingSupplement(S.case?.id)) return resumeSupplement();
   const dlg = $('#supDlg'), f = e.target;
   const kind = dlg.dataset.kind, text = f.text.value.trim();
   if (!text) { $('#supErr').textContent = '请填写内容'; return; }
   const body = { kind, text, title: kind === 'need' ? null : (f.title.value.trim() || null), scenario: kind === 'need' ? (dlg.dataset.scen || null) : null };
-  const go = $('#supGo');
-  const caseId = S.case.id, route = location.hash;
-  const host = document.createElement('div'), scrollBody = f.querySelector('.dlg-body');
-  scrollBody.append(host);
-  const waiting = ResearchProgress.mount(host, S.case.case.company_name);
-  scrollBody.scrollTop = scrollBody.scrollHeight;
-  S.supplementBusy = true;
-  go.disabled = true; go.textContent = '正在重新判断…';
+  try { supplementTasks().prepare(S.case.id, body); }
+  catch (err) { $('#supErr').textContent = err.message; return; }
+  return resumeSupplement();
+}
+async function resumeSupplement() {
+  const record = pendingSupplement(S.case?.id);
+  if (!record) return;
+  const dlg = $('#supDlg');
+  if (S.supplementBusy && S.supplementWatchCase === record.caseId) {
+    if (!dlg.open) dlg.showModal();
+    return;
+  }
+  stopSupplementWatch();
+  const request = S.supplementRequest = new AbortController();
+  S.supplementBusy = true; S.supplementWatchCase = record.caseId;
+  S.supplementTerminal = null;
+  const caseId = record.caseId, route = location.hash;
+  dlg.innerHTML = `<div class="dlg-in">
+    <div class="dlg-head"><div><div class="kicker">二次分析</div><h3 id="supTitle">补充分析进度</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
+    <div class="dlg-body"><p>刷新页面或暂时离开后，回到本案卷会接着查看这次任务。</p>
+      <p class="small muted">${esc(SUP_KIND[record.body.kind]?.label || '补充信息')} · ${esc(record.body.title || record.body.text.slice(0, 60))}</p>
+      <div id="supProgress"></div><p id="supErr" class="err" role="status" aria-live="polite"></p></div>
+    <div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">暂时收起</button><button type="button" id="supResume" class="btn sm" data-act="sup-resume" hidden>恢复进度 / 结果</button><button type="button" id="supEdit" class="btn sm" data-act="sup-edit" hidden>检查材料并重新提交</button></div>
+  </div>`;
+  if (!dlg.open) dlg.showModal();
+  refreshSupplementNotice();
+  const waiting = ResearchProgress.mount($('#supProgress'), S.case.case.company_name);
+  const stillHere = () => S.supplementRequest === request && !request.signal.aborted && S.case?.id === caseId && location.hash === route;
   try {
-    const c = await ResearchProgress.readCaseStream(`/api/cases/${encodeURIComponent(caseId)}/supplements/stream`, body, { onEvent: waiting.onEvent });
-    if (!S.case || S.case.id !== caseId || location.hash !== route || !f.isConnected || !dlg.open) {
-      toast('新版报告已生成，可以在「案卷」查看'); return;
-    }
+    const result = await supplementTasks().follow(record, { signal: request.signal, onEvent: event => { if (stillHere()) waiting.onEvent(event); } });
+    if (!stillHere()) return;
+    if (!dlg.open) { toast('新版报告已生成，点「查看任务进度 / 结果」打开'); return; }
+    supplementTasks().clear(record);
+    const c = result.case, version = result.version;
     S.case = c; S.opCache = {}; S.tab = 'changes';
     S.selected.clear(); S.reviews = null;
     dlg.close();
-    const target = `#/case/${c.id}/v/${c.current}`;
-    if (location.hash === target) { S.viewNo = c.current; renderCase(); } else location.hash = target;
-    setTimeout(() => { const t = $('.chg-banner'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
-    toast(`已生成第 ${c.current} 版`);
+    const target = `#/case/${c.id}/v/${version}`;
+    if (location.hash === target) { S.viewNo = version; renderCase(); } else location.hash = target;
+    toast(`已生成第 ${version} 版`);
   } catch (err) {
-    if (f.isConnected && dlg.open && S.case?.id === caseId) $('#supErr').textContent = '没生成出来：' + err.message;
-    else toast('补充信息的连接已结束，请到「案卷」确认结果', true);
+    if (!stillHere()) return;
+    $('#supProgress .research-current').textContent = err.terminal ? '任务已停止，请确认结果后再提交' : '连接中断，进度待确认';
+    $('#supProgress .kicker').textContent = '补充分析 · 等待恢复';
+    $('#supProgress .research-wait').setAttribute('aria-busy', 'false');
+    $('#supErr').textContent = err.terminal ? err.message : '暂时无法确认结果：' + err.message + ' 恢复时会继续查看同一次任务。';
+    $('#supResume').hidden = false;
+    $('#supEdit').hidden = !err.terminal;
+    if (err.terminal) S.supplementTerminal = record;
   } finally {
-    waiting.stop(); host.remove(); S.supplementBusy = false;
-    go.disabled = false; go.textContent = '生成新版报告';
+    waiting.stop();
+    if (S.supplementRequest === request) {
+      S.supplementRequest = null; S.supplementBusy = false;
+      if (S.case?.id === caseId) refreshSupplementNotice();
+    }
   }
+}
+function editFailedSupplement() {
+  const record = S.supplementTerminal;
+  if (!record || record.caseId !== S.case?.id || S.supplementBusy) return;
+  try { supplementTasks().clear(record); }
+  catch (err) { $('#supErr').textContent = err.message; return; }
+  S.supplementTerminal = null;
+  openSupplement(record.body);
+  refreshSupplementNotice();
 }
 
 // ---------- 打印 ----------
@@ -2093,9 +2189,31 @@ document.addEventListener('click', e => {
       const on = libToggle(d.term);
       if (on === null) { toast('这个浏览器存不了收藏'); break; }
       el.setAttribute('aria-pressed', on); el.textContent = on ? '★ 已收藏' : '☆ 收藏复习';
-      toast(on ? '已收藏到「资料库」' : '已移出资料库');
+      toast(on ? '已收藏到「知识库」' : '已移出知识库');
       break;
     }
+    case 'cases-filter':
+      collectionView.caseFilter = d.filter;
+      $$('[data-act="cases-filter"]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter === d.filter)));
+      renderCaseCollection(); break;
+    case 'cases-reset':
+      collectionView.caseQuery=''; collectionView.caseFilter='all'; $('#caseSearch').value='';
+      $$('[data-act="cases-filter"]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter === 'all')));
+      renderCaseCollection(); break;
+    case 'library-filter':
+      collectionView.libraryFilter=d.filter;
+      $$('[data-act="library-filter"]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter === d.filter)));
+      refreshLibraryCards(); break;
+    case 'library-reset':
+      collectionView.libraryQuery=''; collectionView.libraryFilter='all'; $('#librarySearch').value='';
+      $$('[data-act="library-filter"]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter === 'all')));
+      refreshLibraryCards(); break;
+    case 'library-study':
+      collectionView.study=!collectionView.study;
+      el.setAttribute('aria-pressed',String(collectionView.study));
+      el.querySelector('span').textContent=collectionView.study ? '结束复习' : '复习一下';
+      $('#studyHint').hidden=!collectionView.study;
+      refreshLibraryCards(); break;
     case 'lib-remove':
       if (libToggle(d.term) === null) { toast('这个浏览器存不了收藏'); break; }
       if ($('#libList')) $('#libList').innerHTML = libraryHtml(libRead());
@@ -2113,6 +2231,8 @@ document.addEventListener('click', e => {
     case 'open-assist': $('#assist').classList.add('open'); setTimeout(() => { const t = $('#asForm textarea'); if (t) t.focus(); }, 50); break;
     case 'close-assist': $('#assist').classList.remove('open'); break;
     case 'contract': openContract(); break;
+    case 'sup-resume': void resumeSupplement(); break;
+    case 'sup-edit': editFailedSupplement(); break;
     case 'supplement': openSupplement({ kind: d.kind, text: d.text, title: d.title }); break;
     case 'sup-kind': setSupKind(d.kind); break;
     case 'pick-company': { const f = $('#caseForm'); S.form.resolved = d.name; f.company.value = d.name; $('#nameCands').hidden = true; f.requestSubmit(); } break;
@@ -2154,6 +2274,7 @@ function refreshScenarioParts() {
   const match = location.hash.match(/^#\/case\/([\w-]+)(?:\/v\/(\d+))?$/);
   const v = S.case && ver();
   if (!match || S.case?.id !== match[1] || !v || (match[2] && v.no !== +match[2])) return;
+  if (typeof refreshDossierScenario === 'function') refreshDossierScenario(v);
   for (const el of $$('[data-first-question]')) {
     if (el.isConnected) el.innerHTML = glanceFirstHtml(v) || '<p>现有记录尚不足以形成结论。</p>';
   }
@@ -2164,10 +2285,11 @@ let startupReady = Promise.resolve();
 const currentRoute = request => !request || (request === routeRequest && !request.signal.aborted);
 
 async function route() {
+  stopSupplementWatch();
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();
   researchCleanup();
-  document.body.classList.remove('research-mode', 'cases-mode');
+  document.body.classList.remove('research-mode', 'cases-mode', 'dossier-live', 'dossier-shell', 'collections-mode', 'knowledge-mode');
   // The research room is the only query homepage, including old #/new bookmarks.
   if (!location.hash || /^#\/(?:check|new)?\/?$/.test(location.hash)) {
     location.replace('/');
@@ -2221,4 +2343,16 @@ async function boot() {
   await startupReady;
   await initialRoute;
 }
+document.addEventListener('input', event => {
+  if (event.isComposing) return;
+  if (event.target.id === 'caseSearch') {collectionView.caseQuery=event.target.value;renderCaseCollection();}
+  if (event.target.id === 'librarySearch') {collectionView.libraryQuery=event.target.value;refreshLibraryCards();}
+});
+document.addEventListener('compositionend', event => {
+  if (event.target.id === 'caseSearch') {collectionView.caseQuery=event.target.value;renderCaseCollection();}
+  if (event.target.id === 'librarySearch') {collectionView.libraryQuery=event.target.value;refreshLibraryCards();}
+});
+document.addEventListener('change', event => {
+  if (event.target.id === 'caseSort') {collectionView.caseSort=event.target.value;renderCaseCollection();}
+});
 boot();

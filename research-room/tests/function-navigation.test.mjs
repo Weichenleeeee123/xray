@@ -8,7 +8,7 @@ test('home menu lists all five functions in order and retires the old material q
   assert.ok(menu);
   const links = [...menu.matchAll(/<a href="([^"]+)">([^<]+)<\/a>/g)].map(m => [m[1], m[2]]);
   assert.deepEqual(links, [
-    ['/', '查企'], ['/xray/#/cases', '案卷'], ['/xray/#/library', '资料库'],
+    ['/', '企业'], ['/xray/#/cases', '案卷'], ['/xray/#/library', '知识库'],
     ['/xray/#/me', '我的'], ['/xray/#/guide', '使用说明'],
   ]);
   assert.doesNotMatch(menu, /附带材料查询|#\/new/);
