@@ -85,5 +85,26 @@ test('library header says where the list lives', () => {
   h.run(`S.session={account:null}`);
   assert.match(h.run(`libraryHtml([{id:'a',term:'a',plain:'',seen:[]}])`), /登录后可以同步到账号/);
   h.run(`S.session={account:{email:'me@example.com'}}`);
-  assert.match(h.run(`libraryHtml([{id:'a',term:'a',plain:'',seen:[]}])`), /已同步到账号 me@example\.com/);
+  assert.match(h.run(`libraryHtml([{id:'a',term:'a',plain:'',seen:[]}])`), /当前为账号 me@example\.com 的收藏/);
+  assert.doesNotMatch(h.run(`libraryHtml([{id:'a',term:'a',plain:'',seen:[]}])`), /已同步到账号/);
+});
+
+test('account library cache is hidden before session loading and from a different account', () => {
+  const h = harness();
+  h.store['xray.library'] = JSON.stringify([entry('private-term', '2026-10-04')]);
+  h.store['xray.library.owner'] = 'one@example.test';
+  for (const session of [null, {account:null}, {account:{email:'two@example.test'}}]) {
+    h.ctx.nextSession = session; h.run('S.session=nextSession');
+    assert.equal(h.run('libRead().length'), 0);
+  }
+  h.run(`S.session={account:{email:'one@example.test'}}`);
+  assert.equal(h.run('libRead().length'), 1);
+});
+
+test('pending account library changes are labelled as pending rather than synced', () => {
+  const h = harness();
+  h.run(`S.session={account:{email:'me@example.com'}}; globalThis.LibraryActions={hasPending:()=>true};`);
+  const html = h.run(`libraryHtml([{id:'a',term:'a',plain:'',seen:[]}])`);
+  assert.match(html, /仍有内容待同步/);
+  assert.doesNotMatch(html, /已同步到账号/);
 });

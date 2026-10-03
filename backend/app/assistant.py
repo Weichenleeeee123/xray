@@ -31,6 +31,7 @@ from app.case_memory.builder import tags as memory_topics
 from app.question_routing import definition_terms, needs_investment_clarification, current_terms
 from app.dialogue_routing import classify_dialogue
 from app.assistant_overview import build_overview_reply
+from app.library_actions import build_library_reply
 
 log = logging.getLogger("xray.assistant")
 
@@ -675,6 +676,9 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
     base = dict(role="assistant", version=v.no, created_at=now(), refs=refs)
     if GUARD.search(q.text):
         return ChatMessage(text=GUARD_ANSWER, mode="guard", suggest=suggest_add, **base)
+    library_reply = build_library_reply(case, v, q.text, refs)
+    if library_reply is not None:
+        return library_reply
     # A definition is not a company investigation: use only vetted, snapshotted
     # knowledge, without loading/truncating company evidence or changing rules.
     knowledge = definition_terms(q.text)
