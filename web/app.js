@@ -1658,7 +1658,7 @@ function msgHtml(m, prev, index = 0) {
     <div class="ans">${answerText(m.text)}</div>
     ${other.length ? `<ul class="chat-next">${other.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
-    <div class="msg-meta">${mode}${m.not_found ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${vNote}</div>
+    <div class="msg-meta">${mode}${m.error_code ? '<span>本次材料处理未完成，不是企业风险结论</span>' : m.not_found ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${m.context_mode === 'selective' ? '<span>按需核对相关材料</span>' : ''}${vNote}</div>
     ${answerCitations(m).length ? `<div class="msg-refs chat-source-footer"><button type="button" class="linkish" data-act="chat-sources" data-index="${index}" aria-label="查看这条回答的原文出处">原文出处 ↗</button></div>` : ''}
   </div>`;
 }

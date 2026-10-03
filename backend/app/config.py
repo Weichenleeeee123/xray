@@ -48,6 +48,11 @@ CHAT_TIMEOUT = float(os.getenv("XRAY_CHAT_TIMEOUT", "60"))
 # 可回退的模型辅助阶段：首个请求和 JSON 修复共用预算，不限制事实采集或 OCR。
 INTAKE_TIMEOUT = float(os.getenv("XRAY_INTAKE_TIMEOUT", "8"))
 PLAIN_TIMEOUT = float(os.getenv("XRAY_PLAIN_TIMEOUT", "12"))
+ASSISTANT_CONTEXT_MODE = os.getenv("XRAY_ASSISTANT_CONTEXT_MODE", "full")
+CASE_MEMORY_ENABLED = os.getenv("XRAY_CASE_MEMORY_ENABLED", "0") == "1"
+CASE_MEMORY_DIR = Path(os.getenv("XRAY_CASE_MEMORY_DIR", CASES_DIR.parent / "case_memory"))
+ASSISTANT_CONTEXT_CHARS = int(os.getenv("XRAY_ASSISTANT_CONTEXT_CHARS", "120000"))
+ASSISTANT_EVIDENCE_CHARS = int(os.getenv("XRAY_ASSISTANT_EVIDENCE_CHARS", "70000"))
 # live：调用网关并录下响应，失败时回放录音；replay：只回放；off：不调用
 LLM_MODE = os.getenv("XRAY_LLM_MODE", "live")
 
@@ -70,6 +75,10 @@ def validate_settings():
             errors.append(f"{name} 必须是有限正数")
     if LLM_MODE not in ("live", "replay", "off"):
         errors.append("XRAY_LLM_MODE 必须为 live/replay/off")
+    if ASSISTANT_CONTEXT_MODE not in ("full", "shadow", "selective"):
+        errors.append("XRAY_ASSISTANT_CONTEXT_MODE 必须为 full/shadow/selective")
+    if ASSISTANT_CONTEXT_CHARS < 2000 or not 1000 <= ASSISTANT_EVIDENCE_CHARS < ASSISTANT_CONTEXT_CHARS:
+        errors.append("问答上下文预算必须大于证据预算，且均为正整数")
     if os.getenv("XRAY_COMMERCIAL", "").strip().lower() not in ("", "qcc", "qcc_agent", "tianyancha"):
         errors.append("XRAY_COMMERCIAL 数据源名称无效")
     for name, default, minimum in (("XRAY_MAX_RUNS", "4", 1), ("XRAY_QCC_MAX_POINTS", "1500", 0),

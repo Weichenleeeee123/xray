@@ -82,6 +82,15 @@ test('uncited empathy has no fake source button; source highlight escapes markup
   assert.equal(h.run(`markText('原文原文',['原文','原文原文'])`), '<mark>原文原文</mark>');
 });
 
+test('selective context is disclosed and processing failure is not a company risk', () => {
+  const h = harness();
+  const html = h.run(`msgHtml({role:'assistant',version:1,text:'暂不能完整核对',context_mode:'selective',error_code:'evidence_coverage',not_found:true})`);
+  assert.match(html, /按需核对相关材料/);
+  assert.match(html, /本次材料处理未完成，不是企业风险结论/);
+  assert.doesNotMatch(html, /部分信息仍待核实|chat-sources/);
+  assert.doesNotMatch(h.run(`msgHtml({role:'assistant',version:1,text:'旧版回答'})`), /按需核对相关材料/);
+});
+
 test('source fallback uses a readable report label and keeps its versioned navigation', () => {
   const h = harness();
   h.run(`S.case.versions[0].signals=[{key:'risk',items:[{key:'promise',label:'收益承诺'}]}]`);
