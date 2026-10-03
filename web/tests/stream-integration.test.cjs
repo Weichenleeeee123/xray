@@ -18,11 +18,12 @@ function harness() {
   const ctx = vm.createContext({ console, FormData, AbortController, URLSearchParams, CSS: { escape: s => s },
     localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},crypto:{randomUUID:()=> 'test-key'},
     taskApi:(url,opts)=>{if(opts?.method==='POST'){sent.push({url,body:opts.body,headers:opts.headers});return new Promise((resolve,reject)=>{resolveRequest=resolve;rejectRequest=reject})}
-      return Promise.resolve(url.includes('/api/runs/')?{run_id:'a'.repeat(24),status:'complete',case_id:'c',version:2,events:[],next:0}:{id:'c',current:3,versions:[{no:1},{no:2},{no:3}]});},
+      return Promise.resolve(url.includes('/api/runs/')?{run_id:'a'.repeat(24),status:'complete',case_id:'c',version:2,events:[],next:0}:{id:'c',case:{company_name:'测试公司'},current:3,versions:[{no:1},{no:2},{no:3}],material_analyses:[{id:'MA2',report_version:2,title:'合同',summary:'需要核实',raw_ids:[],findings:[]}]});},
     location: { hash: '#/check', search: '' }, history: { replaceState() {} },
     setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
     window: { addEventListener() {}, matchMedia: () => ({ matches: false }) },
     document: { body: node('body'), querySelector: node, querySelectorAll: () => [], addEventListener() {}, createElement: () => node('progress') },
+    MaterialAnalysis: {...require('../material-analysis.js'), mount:()=>({onEvent(){},stop(){stops.push(true)},error(terminal){node('#material-status').textContent=terminal?'分析未完成':'连接中断，进度待确认'}})},
     ResearchProgress: {
       mount: () => ({ onEvent() {}, stop() { stops.push(true); } }),
       readCaseStream: (url, body) => { sent.push({ url, body }); return new Promise((resolve, reject) => { resolveRequest = resolve; rejectRequest = reject; }); },
@@ -90,13 +91,14 @@ test('stream failure restores the complete input and allows a deliberate retry',
   const pending = h.run(`createCase(${JSON.stringify(input)})`);
   assert.equal(h.sent.length, 1);
   h.reject(new Error('连接已结束')); await pending;
-  assert.equal(h.node('#caseForm').material_text.value, '合同原文');
+  assert.equal(h.node('#caseForm').company.value, input.company_name);
+  assert.equal(h.node('#caseForm').need.value, input.need);
   assert.match(h.node('#formErr').textContent, /连接已结束/);
   assert.equal(h.run('S.creating'), false);
   assert.equal(h.stops.length, 1);
 });
 
-test('supplement uses captured case id and opens the actual returned version', async () => {
+test('supplement saves its appendix and displays the result without changing the report route', async () => {
   const h = harness();
   h.run(`S.case={id:'c',case:{company_name:'测试公司'}}; location.hash='#/case/c';`);
   h.node('#supDlg').dataset.kind = 'material';
@@ -109,8 +111,10 @@ test('supplement uses captured case id and opens the actual returned version', a
   assert.equal(h.sent[0].body.text, '补充合同原文');
   assert.match(h.node('#supDlg').innerHTML, /supProgress/);
   h.resolve({run_id:'a'.repeat(24)}); await pending;
-  assert.equal(h.run('location.hash'), '#/case/c/v/2');
-  assert.equal(h.node('#supDlg').open, false);
+  assert.equal(h.run('location.hash'), '#/case/c');
+  assert.equal(h.node('#supDlg').open, true);
+  assert.match(h.node('#supDlg').innerHTML,/收起材料分析/);
+  assert.equal(h.run(`pendingSupplement('c')`),null);
   assert.equal(h.stops.length, 1);
 });
 
@@ -119,7 +123,7 @@ test('returning to a case automatically recovers its pending supplement',async()
  localStorage.setItem('qier.supplement.v1:c',JSON.stringify({caseId:'c',requestKey:'old',runId:'${'a'.repeat(24)}',body:{kind:'material',text:'原材料'}}));`);
  await h.run('openCase("c")');
  for(let i=0;i<10;i++)await Promise.resolve();
- assert.equal(h.sent.length,0);assert.equal(h.run('location.hash'),'#/case/c/v/2');
+ assert.equal(h.sent.length,0);assert.equal(h.run('location.hash'),'#/case/c');
 });
 test('a completed supplement does not hijack another case and stays recoverable',async()=>{
  const h=harness();h.run(`S.case={id:'c',case:{company_name:'测试公司'}};location.hash='#/case/c';`);
@@ -136,21 +140,23 @@ test('lost submission response exposes recovery and reuses the saved body',async
  const work=h.run(`submitSupplement({preventDefault(){},target:{text:{value:'原合同'},title:{value:''},querySelector(){return {append(){}}}}})`);
  h.reject(new Error('offline'));await work;
  assert.equal(h.node('#supResume').hidden,false);assert.match(h.node('#supErr').textContent,/offline/);
- assert.equal(h.node('#supProgress .research-current').textContent,'连接中断，进度待确认');
+ assert.equal(h.node('#material-status').textContent,'连接中断，进度待确认');
  const retry=h.run('resumeSupplement()');
  assert.equal(h.sent.length,2);assert.equal(h.sent[1].body.text,'原合同');
  assert.equal(h.sent[0].headers['Idempotency-Key'],h.sent[1].headers['Idempotency-Key']);
  h.resolve({run_id:'a'.repeat(24)});await retry;
- assert.equal(h.run('location.hash'),'#/case/c/v/2');
+ assert.equal(h.run('location.hash'),'#/case/c');
 });
 
-test('closing the dialog retains the completed task until the reader chooses to open its result',async()=>{
+test('completion while collapsed saves an entry without reopening the dialog or resubmitting',async()=>{
  const h=harness();h.run(`S.case={id:'c',case:{company_name:'测试公司'}};location.hash='#/case/c';`);
  h.node('#supDlg').dataset.kind='material';
  const work=h.run(`submitSupplement({preventDefault(){},target:{text:{value:'合同'},title:{value:''}}})`);
  h.node('#supDlg').close();h.resolve({run_id:'a'.repeat(24)});await work;
- assert.equal(h.run('location.hash'),'#/case/c');assert.ok(h.run(`pendingSupplement('c')`));
- await h.run('resumeSupplement()');assert.equal(h.sent.length,1);assert.equal(h.run('location.hash'),'#/case/c/v/2');
+ assert.equal(h.run('location.hash'),'#/case/c');assert.equal(h.run(`pendingSupplement('c')`),null);
+ assert.equal(h.node('#supDlg').open,false);
+ h.run(`openMaterialAnalysis('MA2')`);assert.equal(h.sent.length,1);assert.equal(h.node('#materialDlg').open,true);
+ assert.match(h.node('#materialDlg').innerHTML,/合同/);
 });
 test('aborting an old watcher cannot clear the busy state of its replacement',async()=>{
  const h=harness();h.run(`S.case={id:'c',case:{company_name:'测试公司'}};location.hash='#/case/c';`);

@@ -511,6 +511,23 @@ class ChatMessage(BaseModel):
     created_at: str
 
 
+class MaterialAnalysis(BaseModel):
+    """A saved material appendix, separate from the company report's presentation."""
+    id: str
+    created_at: str
+    kind: Literal["material", "reply"]
+    title: str
+    base_version: int
+    report_version: int
+    raw_ids: list[str]
+    need: str
+    summary: str
+    findings: list[Assertion] = Field(default_factory=list)
+    observations: list[Judgment] = Field(default_factory=list)
+    changes: list[JudgmentChange] = Field(default_factory=list)
+    questions: list[Question] = Field(default_factory=list)
+
+
 class Case(BaseModel):
     owner_id: str | None = None          # 服务端分配；旧案卷无归属，不开放公共访问
     revision: int = 0
@@ -521,6 +538,7 @@ class Case(BaseModel):
     focus: list[str]
     current: int                          # 当前版本号
     versions: list[Version]
+    material_analyses: list[MaterialAnalysis] = Field(default_factory=list)
     raw: list[RawRecord]
     chat: list[ChatMessage] = Field(default_factory=list)
     sources: dict[str, Source]

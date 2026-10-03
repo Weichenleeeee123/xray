@@ -38,8 +38,8 @@ def test_home_mount_does_not_expose_frontend_source_or_secrets():
 
 def test_dossier_report_assets_are_served_from_real_backend():
     page = client.get('/xray/').text
-    assets = re.findall(r'(?:src|href)="((?:dossier/|dossier-report\.js)[^\"]+)"', page)
-    assert len(assets) == 12
+    assets = re.findall(r'(?:src|href)="((?:dossier/|dossier-report\.js|material-analysis\.js)[^\"]+)"', page)
+    assert {'dossier-report.js', 'material-analysis.js', 'dossier/material-analysis.css'} <= {p.split('?')[0] for p in assets}
     for path in assets:
         response = client.get('/xray/' + path)
         assert response.status_code == 200, path

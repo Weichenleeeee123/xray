@@ -70,3 +70,10 @@ test('rejected input permits explicit editing while an ambiguous server error st
   assert.ok(c.pending('c'));
  }
 });
+
+test('quota rejection is terminal rather than pretending a disconnected analysis is running',async()=>{
+ const c=client(async()=>{throw Object.assign(new Error('今日配额已用完'),{status:429})});
+ const record=c.prepare('c',body);
+ await assert.rejects(c.follow(record),error=>error.terminal&&/配额/.test(error.message));
+ assert.ok(c.pending('c'),'retain submitted text for an explicit later retry');
+});

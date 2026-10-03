@@ -6,7 +6,7 @@ const vm = require('node:vm');
 function harness() {
   const ctx = vm.createContext({console, URLSearchParams, FormData, AbortController, setTimeout:()=>0, clearTimeout(){},
     location:{hash:'#/case/test',search:''}, document:{querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}}});
-  for (const file of ['case-design.js','dossier/artwork.js','dossier-report.js','app.js']) {
+  for (const file of ['case-design.js','dossier/artwork.js','dossier-report.js','material-analysis.js','app.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8').replace(/boot\(\);\s*$/,''),ctx);
   }
   const run = code=>vm.runInContext(code,ctx);
@@ -111,4 +111,13 @@ test('trust answer distinguishes missing evidence from a clear report and preser
   const html=h.run('dossierOverview(v)');
   assert.match(html,/这家公司是否值得你的信任/);
   assert.doesNotMatch(html,/结论仅限本版已查记录|id="verdict-scope"|这次合作，关键项有没有问题/);
+});
+
+test('saved material analyses are placed after inquiry features and before company details',()=>{
+ const h=harness();
+ h.run(`S.case.material_analyses=[{id:'MA2',report_version:2,title:'合同',summary:'待核实',raw_ids:[]}];`);
+ const html=h.run('dossierReport(S.case,v)');
+ assert.ok(html.indexOf('class="ma-archive"')>html.indexOf('class="recheck-grid"'));
+ assert.ok(html.indexOf('class="ma-archive"')<html.indexOf('id="research-details"'));
+ assert.match(html,/data-analysis="MA2"/);
 });

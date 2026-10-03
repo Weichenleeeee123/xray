@@ -689,11 +689,7 @@ function formHtml() {
       <textarea class="big-inp" id="fNeed" name="need" rows="2" placeholder="例如：我妈想在这家公司存 20 万理财，最怕急用时取不出来"></textarea>
       <div class="intake" id="intake">${intakeHtml()}</div></div>
     <div class="facts"><label>替 <input name="for_whom" placeholder="谁"> 看</label><label>金额 <input name="amount" class="mono" placeholder="可不填"></label><span class="muted small" id="amtHint"></span></div>
-    <details class="mat" id="matBox"><summary>有宣传单、合同或聊天记录？贴进来就能逐条对照它的说法</summary>
-      <div class="mat-tools"><span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="fFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="muted small" id="readNote"></span></div>
-      <input class="big-inp sm" name="material_title" placeholder="材料名称，例如：业务员发的宣传单">
-      <textarea class="big-inp sm" name="material_text" rows="5" placeholder="把材料上的文字贴在这里"></textarea>
-    </details>
+    <p class="small muted">先了解公司。报告生成后，可在「问询与复核」补充合同、宣传单或对方回复。</p>
     <div class="submit-row"><button class="btn" type="submit" id="fSubmit">生成报告</button>
       ${demos.length ? `<span class="muted small">或填入演示案例：${demos.map(d => `<button type="button" class="linkish" data-act="demo-fill" data-id="${esc(d.id)}">${esc(d.label)}</button>`).join('、')}</span>` : ''}</div>
     <div class="err" id="formErr" role="alert"></div>
@@ -742,20 +738,6 @@ function bindForm() {
   form.company.addEventListener('input', () => { $('#nameCands').hidden = true; });
   form.for_whom.addEventListener('input', () => { S.form.dirty.for_whom = true; });
   form.amount.addEventListener('input', () => { S.form.dirty.amount = true; amtHint(); });
-  $('#fFile').addEventListener('change', async e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const note = $('#readNote');
-    note.textContent = `正在读 ${file.name}…`;
-    try {
-      const r = await readFile(file);
-      if (r.method === 'failed') { note.innerHTML = `<span class="err">读不出来：${esc(r.note || '')}请把文字手动贴进下面。</span>`; return; }
-      form.material_text.value = r.text;
-      if (!form.material_title.value) form.material_title.value = file.name;
-      note.textContent = `已读出 ${r.text.length} 字（${{ text: '文本', pdf: 'PDF', vision: '看图识别' }[r.method] || r.method}），请核对一遍。`;
-    } catch (err) { note.innerHTML = `<span class="err">${esc(err.message)}</span>`; }
-    finally { e.target.value = ''; }
-  });
   form.addEventListener('submit', async e => {
     e.preventDefault();
     let company = form.company.value.trim();
@@ -770,8 +752,6 @@ function bindForm() {
       company_name: company, need: form.need.value.trim(),
       scenario: S.form.userScenario || null,
       for_whom: form.for_whom.value.trim() || null, amount,
-      material_text: form.material_text.value.trim() || null,
-      material_title: form.material_title.value.trim() || null,
     });
   });
 }
@@ -820,7 +800,6 @@ async function createCase(body) {
     const f = $('#caseForm');
     f.company.value = body.company_name; f.need.value = body.need;
     f.for_whom.value = body.for_whom || ''; f.amount.value = body.amount ? fmtMoney(body.amount).replace(/\s/g, '') : '';
-    f.material_text.value = body.material_text || ''; f.material_title.value = body.material_title || '';
     $('#intake').innerHTML = intakeHtml();
     $('#formErr').textContent = '没生成出来：' + e.message;
   } finally { waiting.stop(); S.creating = false; }
@@ -832,8 +811,6 @@ function fillDemo(id) {
   if (!d || !d.input || !f) return;
   f.company.value = d.input.company_name; f.need.value = d.input.need || '';
   f.for_whom.value = d.input.for_whom || ''; f.amount.value = d.input.amount ? fmtMoney(d.input.amount).replace(/\s/g, '') : '';
-  f.material_text.value = d.input.material_text || ''; f.material_title.value = d.input.material_title || '';
-  if (d.input.material_text) $('#matBox').open = true;
   S.form.userScenario = d.input.scenario || null;
   f.need.dispatchEvent(new Event('blur'));
   toast(`已填入演示案例 ${d.id}，点"生成报告"`);
@@ -1969,10 +1946,11 @@ function openSupplement(opt = {}) {
   const kind = opt.kind || 'material';
   const photo = !!opt.photo;                 // 拍合同进来：只收照片，手机直接开相机
   const dlg = $('#supDlg');
+  dlg.classList.remove('material-mode');
   const demo = demoForCase();
   const camOn = kind === 'material';
   dlg.innerHTML = `<form class="dlg-in" id="supForm" method="dialog">
-    <div class="dlg-head"><div><div class="kicker">二次分析 · 将生成第 ${S.case.versions.length + 1} 版</div><h3 id="supTitle">${photo ? '拍合同 · 二次审核' : '补充信息'}</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
+    <div class="dlg-head"><div><div class="kicker">补充核验 · 分析后保存在本案卷</div><h3 id="supTitle">${photo ? '拍合同 · 二次审核' : '补充信息'}</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
     <div class="dlg-body">
       <div class="seg sup-kinds" role="radiogroup" aria-label="补充什么">${Object.entries(SUP_KIND).map(([k, o]) => `<button type="button" data-act="sup-kind" data-kind="${k}" aria-pressed="${k === kind}">${o.label}</button>`).join('')}</div>
       <p class="sup-help" id="supHelp">${esc(photo ? '拍合同、补充协议、聊天里发的合同照片。合同有好几页就一次拍完，系统按张读成文字，读完你核对。' : SUP_KIND[kind].help)}</p>
@@ -1985,7 +1963,7 @@ function openSupplement(opt = {}) {
       ${demo && demo.supplements.length ? `<div class="sup-demo"><span class="muted">演示案例准备好的补充：</span><div class="chips">${demo.supplements.map((s, i) => `<button type="button" class="chip" data-act="sup-fill" data-i="${i}">${esc(SUP_KIND[s.kind].label)}：${esc(s.title || s.text.slice(0, 18))}</button>`).join('')}</div></div>` : ''}
       <div class="err" id="supErr" role="alert"></div>
     </div>
-    <div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">取消</button><button type="submit" class="btn sm" id="supGo">生成新版报告</button></div>
+    <div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">取消</button><button type="submit" class="btn sm" id="supGo">${kind === 'need' ? '更新公司报告' : '生成材料分析'}</button></div>
   </form>`;
   dlg.dataset.kind = kind; dlg.dataset.scen = opt.scenario || '';
   if (!dlg.open) dlg.showModal();
@@ -2026,6 +2004,7 @@ function setSupKind(kind) {
   dlg.dataset.kind = kind;
   $$('[data-act="sup-kind"]', dlg).forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === kind));
   $('#supHelp').textContent = SUP_KIND[kind].help;
+  $('#supGo').textContent = kind === 'need' ? '更新公司报告' : '生成材料分析';
   $('#supMat').hidden = kind !== 'material';
   $('#supScen').hidden = kind !== 'need';
   $('#supTitleIn').hidden = kind === 'need';
@@ -2069,7 +2048,9 @@ async function submitSupplement(e) {
 async function resumeSupplement() {
   const record = pendingSupplement(S.case?.id);
   if (!record) return;
+  if (record.body.kind !== 'need') return resumeMaterialSupplement(record);
   const dlg = $('#supDlg');
+  dlg.classList.remove('material-mode');
   if (S.supplementBusy && S.supplementWatchCase === record.caseId) {
     if (!dlg.open) dlg.showModal();
     return;
@@ -2119,6 +2100,58 @@ async function resumeSupplement() {
     }
   }
 }
+function openMaterialAnalysis(id) {
+  const analysis = S.case?.material_analyses?.find(a => a.id === id);
+  if (!analysis) { toast('暂未读到这份材料分析，请刷新案卷后重试'); return; }
+  const dlg = $('#materialDlg');
+  dlg.innerHTML = MaterialAnalysis.result(S.case, analysis);
+  if (!dlg.open) dlg.showModal();
+}
+async function resumeMaterialSupplement(record) {
+  const dlg = $('#supDlg');
+  if (S.supplementBusy && S.supplementWatchCase === record.caseId) {
+    if (!dlg.open) dlg.showModal();
+    return;
+  }
+  stopSupplementWatch();
+  const request = S.supplementRequest = new AbortController();
+  S.supplementBusy = true; S.supplementWatchCase = record.caseId; S.supplementTerminal = null;
+  const route = location.hash, caseId = record.caseId;
+  const stillHere = () => S.supplementRequest === request && !request.signal.aborted && S.case?.id === caseId && location.hash === route;
+  dlg.classList.add('material-mode');
+  dlg.innerHTML = MaterialAnalysis.progressShell(S.case, record);
+  if (!dlg.open) dlg.showModal();
+  refreshSupplementNotice();
+  const waiting = MaterialAnalysis.mount($('#supProgress'));
+  try {
+    const result = await supplementTasks().follow(record, {signal:request.signal, onEvent:event=>{if(stillHere())waiting.onEvent(event);}});
+    if (!stillHere()) return;
+    const analysis = result.case.material_analyses?.find(a => a.report_version === result.version);
+    if (!analysis) throw new Error('尚未读到已保存的材料分析，请恢复进度再次确认。');
+    // Clear recovery only after both the saved company snapshot and appendix were read.
+    supplementTasks().clear(record);
+    S.case = result.case; S.opCache = {}; S.selected.clear(); S.reviews = null;
+    renderCase();
+    if (dlg.open) {
+      dlg.innerHTML = MaterialAnalysis.result(S.case, analysis, 'supTitle');
+      dlg.scrollTop = 0;
+    } else toast('材料分析已完成，已保存到「问询与复核」底部');
+  } catch (err) {
+    if (!stillHere()) return;
+    waiting.error(err.terminal);
+    $('#supDlg .ma-context > span').textContent = err.terminal ? '分析未完成' : '进度待确认';
+    $('#supErr').textContent = err.terminal ? err.message : '暂时无法确认结果：' + err.message + '。恢复时会继续查看同一次任务。';
+    $('#supResume').hidden = false; $('#supEdit').hidden = !err.terminal;
+    if (err.terminal) S.supplementTerminal = record;
+  } finally {
+    waiting.stop();
+    if (S.supplementRequest === request) {
+      S.supplementRequest = null; S.supplementBusy = false;
+      if (S.case?.id === caseId) refreshSupplementNotice();
+    }
+  }
+}
+
 function editFailedSupplement() {
   const record = S.supplementTerminal;
   if (!record || record.caseId !== S.case?.id || S.supplementBusy) return;
@@ -2231,6 +2264,15 @@ document.addEventListener('click', e => {
     case 'open-assist': $('#assist').classList.add('open'); setTimeout(() => { const t = $('#asForm textarea'); if (t) t.focus(); }, 50); break;
     case 'close-assist': $('#assist').classList.remove('open'); break;
     case 'contract': openContract(); break;
+    case 'material-open': openMaterialAnalysis(d.analysis); break;
+    case 'material-raw': openRaw(d.ref, []); break;
+    case 'material-report': el.closest('dialog').close(); location.hash = `#/case/${S.case.id}/v/${d.version}`; break;
+    case 'material-collapse': {
+      el.closest('dialog').close();
+      const entry = [...document.querySelectorAll('[data-act="material-open"]')].find(b => b.dataset.analysis === d.analysis);
+      entry?.scrollIntoView({behavior:'smooth',block:'center'}); entry?.focus({preventScroll:true});
+      break;
+    }
     case 'sup-resume': void resumeSupplement(); break;
     case 'sup-edit': editFailedSupplement(); break;
     case 'supplement': openSupplement({ kind: d.kind, text: d.text, title: d.title }); break;
