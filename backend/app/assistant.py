@@ -23,12 +23,14 @@ from app.llm import LLM, LLMError, REQUEST_DEADLINE, REQUEST_CONTEXT_LIMIT
 from app import config
 from app.models import Case, ChatIn, ChatMessage, Quote, Term, Version
 from app.scenarios import get_scenario
-from app.conversation import GUIDES, complete_reply, money_from_user, safe_support, response_focus
+from app.conversation import GUIDES, complete_reply, money_from_user, safe_support, response_focus, clarify_scope
 from app import privacy
 from app.case_memory.store import MemoryStore
 from app.case_memory.retriever import retrieve, condition_excerpts
 from app.case_memory.builder import tags as memory_topics
 from app.question_routing import definition_terms, needs_investment_clarification, current_terms
+from app.dialogue_routing import classify_dialogue
+from app.assistant_overview import build_overview_reply
 
 log = logging.getLogger("xray.assistant")
 
@@ -693,6 +695,18 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
         clarification = _ModelAnswer(segments=[_Segment(kind="clarify", guide_id="investment.type")])
         text, cites, quotes, dropped = validate(clarification, {}, user_text=q.text)
         return ChatMessage(text=text, mode="template", answer_kind="clarification", **base)
+    dialogue = classify_dialogue(q.text, refs, case.case.company_name,
+        history=[m.text for m in case.chat if m.role == "user" and m.version == v.no][-HISTORY:])
+    if dialogue in {"overview", "impression"}:
+        # Reuse the already-created report with its original references and
+        # scope, not an incomplete new reading disguised as a complete audit.
+        return build_overview_reply(case, v, q.text, dialogue)
+    if dialogue == "other_company":
+        return ChatMessage(text=f"当前打开的是“{case.case.company_name}”的案卷，你提到的名称还不能对应到本案主体。"
+                                "你想继续了解当前这家公司，还是另外查询一家？我不会把两家的资料混在一起。",
+            mode="template", answer_kind="clarification", **base)
+    if dialogue == "clarification":
+        return ChatMessage(text=clarify_scope(v.scenario), mode="template", answer_kind="clarification", **base)
     valid = citable(case, v)
     data = evidence_text(case, valid)  # Only company records, never glossary definitions or user reviews.
     # 报告生成时已经整理好这一版的名词（含模型补的）；旧案卷没有，就现场从词表里找
@@ -715,6 +729,8 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
             raise  # Never fall back across an ownership boundary.
         except Exception as error:
             log.warning("assistant_memory_fallback error_type=%s", type(error).__name__)
+        if selection and config.ASSISTANT_CONTEXT_MODE == "selective" and selection.intent == "clarification":
+            return ChatMessage(text=clarify_scope(v.scenario), mode="template", answer_kind="clarification", **base)
         if selection and config.ASSISTANT_CONTEXT_MODE == "selective" and selection.complete:
             context_mode, context_value = "selective", selection.context
             term_query = q.text + " " + " ".join(valid[r] for r in selection.provided_refs if not r.startswith("R"))

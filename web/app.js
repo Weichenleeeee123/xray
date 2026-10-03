@@ -1797,14 +1797,18 @@ function msgHtml(m, prev, index = 0) {
   const add = (m.suggest || []).filter(s => s.includes('加入案卷'));
   const other = (m.suggest || []).filter(s => !s.includes('加入案卷'));
   const vNote = S.case && m.version !== ver().no ? `<span>基于第 ${m.version} 版</span>` : '';
-  const answerKind = m.answer_kind === 'glossary' ? '<span>名词解释</span>' : m.answer_kind === 'clarification' ? '<span>先确认需求</span>' : '';
+  const answerKind = m.answer_kind === 'glossary' ? '<span>名词解释</span>' : m.answer_kind === 'clarification' ? '<span>先确认需求</span>' : m.answer_kind === 'overview' ? '<span>本版报告概览</span>' : '';
   const mode = answerKind + (m.mode === 'replay' ? `<span>离线回放${m.recorded_at ? ` · ${esc(fmtTime(m.recorded_at))}` : ''}</span>` : m.mode === 'template' && !answerKind ? '<span>当前为基础答复</span>' : '');
+  // A report overview reuses an already generated, version-bound report. Do not
+  // describe it as a fresh selective read of the underlying case materials.
+  const scope = m.answer_kind === 'overview' && m.answer_scope === 'report_snapshot'
+    ? '<span>依据已生成报告</span>' : m.context_mode === 'selective' ? '<span>按需核对相关材料</span>' : '';
   const filtered = m.has_omitted_claims === true;
   return `<div class="msg ai${m.not_found ? ' nf' : ''}${m.mode === 'guard' ? ' guard' : ''}">
     <div class="ans">${answerText(m.text)}</div>
     ${other.length ? `<ul class="chat-next">${other.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
-    <div class="msg-meta">${mode}${m.error_code ? '<span>本次材料处理未完成，不是企业风险结论</span>' : m.not_found ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${m.context_mode === 'selective' ? '<span>按需核对相关材料</span>' : ''}${vNote}</div>
+    <div class="msg-meta">${mode}${m.error_code ? '<span>本次材料处理未完成，不是企业风险结论</span>' : m.not_found ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${scope}${vNote}</div>
     ${answerCitations(m).length ? `<div class="msg-refs chat-source-footer"><button type="button" class="linkish" data-act="chat-sources" data-index="${index}" aria-label="查看这条回答的原文出处">原文出处 ↗</button></div>` : ''}
   </div>`;
 }
@@ -1866,11 +1870,14 @@ async function ask(q) {
   S.chatAbort = controller;
   S.busy = true;
   S.busyCaseId = id;
-  const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version, created_at: new Date().toISOString() };
+  const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version, request_id: key, created_at: new Date().toISOString() };
   caseData.chat.push(message);
   // 切走再回来可能重新加载了同一案卷；同步当前对象，但不触碰别的案卷。
   const targets = () => S.case && S.case.id === id && S.case !== caseData ? [caseData, S.case] : [caseData];
-  const sameMessage = (a, b) => a === b || (a.role === b.role && a.version === b.version && a.text === b.text && a.created_at === b.created_at);
+  // Fast, deterministic answers may have the same text and second-resolution
+  // timestamp. Their request identities, not their wording, distinguish turns.
+  const sameMessage = (a, b) => a === b || (a.role === b.role && a.version === b.version &&
+    (a.request_id && b.request_id ? a.request_id === b.request_id : a.text === b.text && a.created_at === b.created_at));
   S.selected.clear(); refreshSel(); refreshChat();
   $('#assist')?.classList.add('open');
   try {
