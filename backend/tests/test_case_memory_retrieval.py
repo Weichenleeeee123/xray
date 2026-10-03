@@ -36,6 +36,17 @@ def test_support_for_large_case_has_no_unrelated_facts():
     assert len(json.dumps(result.context, ensure_ascii=False)) < 5000
 
 
+def test_default_capacity_covers_large_overview_without_full_fallback(selective, tmp_path):
+    case = owned(400)
+    before = case.model_dump_json()
+    gateway = FakeLLM(['{"segments":[{"kind":"fact","fact_id":"credit.status"}]}'], tmp_path / "llm")
+    result = answer(case, ChatIn(text="整体有哪些风险"), gateway)
+    assert result.context_mode == "selective" and result.error_code is None
+    assert len(gateway.calls) == 1
+    assert "仅用于规模测试的无关活动记录" in json.dumps(gateway.calls[0], ensure_ascii=False)
+    assert before == case.model_dump_json()
+
+
 def test_transaction_bundle_preserves_exception_in_other_material():
     case = owned(400)
     case = add(case, "material", "另页条款：退款需扣除服务费；超过合同期限不能退款。")
@@ -120,14 +131,14 @@ def test_selective_large_case_calls_existing_model_and_preserves_raw(selective, 
 def test_shadow_performs_no_extra_model_call(selective, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ASSISTANT_CONTEXT_MODE", "shadow")
     gateway = FakeLLM([], tmp_path / "llm")
-    result = answer(owned(400), ChatIn(text="我想存20w但害怕"), gateway)
+    result = answer(owned(400), ChatIn(text="我想存20w但害怕"), gateway, max_context_chars=240000)
     assert result.context_mode == "full" and result.error_code == "context_budget" and not gateway.calls
 
 
 def test_incomplete_retrieval_falls_back_to_full_only_when_it_fits(selective, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ASSISTANT_EVIDENCE_CHARS", 1000)
     gateway = FakeLLM([], tmp_path / "llm")
-    result = answer(owned(400), ChatIn(text="整体有哪些风险"), gateway)
+    result = answer(owned(400), ChatIn(text="整体有哪些风险"), gateway, max_context_chars=240000)
     assert result.error_code == "evidence_coverage" and not gateway.calls
     result = answer(owned(), ChatIn(text="整体有哪些风险"), gateway)
     assert result.context_mode == "full" and result.error_code is None

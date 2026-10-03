@@ -29,7 +29,7 @@ def test_baseline_size_and_model_call_boundary(rows, tmp_path):
     llm = FakeLLM([json.dumps({"segments":[{"kind":"support","text":"你会担心是可以理解的。"}]})], tmp_path)
     size = len(json.dumps(context(case, case.versions[-1]), ensure_ascii=False))
     start = time.perf_counter()
-    result = answer(case, ChatIn(text="我想存20w但好害怕怎么办"), llm)
+    result = answer(case, ChatIn(text="我想存20w但好害怕怎么办"), llm, max_context_chars=240000)
     print(json.dumps({"rows":rows,"full_chars":size,"seconds":round(time.perf_counter()-start,3),
                       "calls":len(llm.calls),"mode":result.mode}, ensure_ascii=False))
     if rows == 400:

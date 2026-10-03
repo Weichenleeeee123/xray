@@ -148,7 +148,7 @@ def test_rewrite_context_keeps_version_terms_and_uses_compact_complete_json(pack
 
 @pytest.mark.parametrize("selected", [[], ["A2"]])
 def test_genuinely_oversized_context_remains_guarded_even_with_selected_refs(packed_case, tmp_path, selected):
-    packed_case.raw[-1].content = "不可截断的完整材料" * 20_000 + "末尾相反证据：不允许退款。"
+    packed_case.raw[-1].content = "不可截断的完整材料" * 80_000 + "末尾相反证据：不允许退款。"
     llm = FakeLLM(['{"segments":[]}'], tmp_path)
     result = answer(packed_case, ChatIn(text="请解释这条", refs=selected), llm)
     assert result.mode == "guard" and result.not_found and not llm.calls
@@ -245,3 +245,12 @@ def test_explicit_smaller_budget_still_guards_complete_evidence(packed_case, tmp
     llm = FakeLLM(['{"segments":[]}'], tmp_path)
     result = answer(packed_case, ChatIn(text="请解释登记状态"), llm, max_context_chars=120_000)
     assert result.error_code == "context_budget" and not llm.calls
+
+
+def test_default_capacity_accepts_400k_material_without_truncation(packed_case, tmp_path):
+    material = "完整保留的原始材料。" * 40_000 + "末尾否定：不允许退款。"
+    packed_case.raw[-1].content = material
+    llm = FakeLLM(['{"segments":[{"kind":"fact","fact_id":"credit.status"}]}'], tmp_path)
+    result = answer(packed_case, ChatIn(text="请解释登记状态"), llm)
+    assert result.error_code is None and len(llm.calls) == 1
+    assert material in sent_case(llm)

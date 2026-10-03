@@ -20,6 +20,15 @@ def test_health_reports_real_license_list_and_llm_status():
     assert body["llm"]["mode"] == "off" and "key" not in str(body["llm"]).lower()
 
 
+def test_health_exposes_effective_assistant_capacity(monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, "ASSISTANT_CONTEXT_CHARS", 550000)
+    monkeypatch.setattr(config, "ASSISTANT_EVIDENCE_CHARS", 350000)
+    status = client.get("/api/health").json()["assistant_context"]
+    assert status["context_chars"] == 550000
+    assert status["evidence_chars"] == 350000
+
+
 def test_license_check_real_bank_and_unknown_name():
     # 验收 3：真实银行命中；不在名单里的显示"未收录"，不说"非法"
     hit = client.get("/api/licenses/check", params={"name": "杭州银行股份有限公司"}).json()
