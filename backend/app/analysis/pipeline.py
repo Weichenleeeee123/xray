@@ -1,4 +1,4 @@
-"""主线：建案卷 → 汇集数据 → 生成一版报告；补充信息 → 全量重跑 → 和上一版逐条比对。
+"""主线：建案卷 → 汇集数据 → 生成一版报告；补充材料 → 沿用企业快照、更新材料分析。
 
 结论全部来自 verify.py / signals.py 的确定性规则；这里只负责把数据、材料、场景接起来，
 并把每条检查指回它依据的原始数据（RawRecord）。
@@ -16,6 +16,7 @@ from app.analysis.extract import ClaimExtractor, RuleExtractor
 from app.analysis.followup import build_questions
 from app.analysis.judgments import attach_disputes, build as build_judgments, update as update_judgments
 from app.analysis.report import onepager
+from app.analysis.snapshot import SavedLicenses, saved_registry_hits
 from app.analysis.gaps import explain_gaps
 from app.analysis.signals import add_pack_items, build_signals, official_pack_items
 from app.analysis.verify import verify
@@ -169,7 +170,7 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
     attach_disputes(judges, inp.company_name, assertions, texts, company)
     page = onepager(company_name=inp.company_name, for_whom=for_whom, amount=amount, scenario=scenario,
                     assertions=assertions, missing=missing, signals=signals, questions=questions,
-                    sources=collected.sources)
+                    sources=collected.sources, judgments=judges)
     ver = Version(no=no, created_at=now(), trigger=trigger, trigger_label=TRIGGER_LABELS[trigger], need=inp.need,
                   for_whom=for_whom, amount=amount, scenario=scenario.id, scenario_label=scenario.label,
                   focus=intake.focus, raw_ids=collected_ids + [t.id for t in texts], company=company, license=lic,
@@ -206,6 +207,8 @@ def new_case(body: CaseIn, intake: Intake, svc: Services) -> Case:
 
 def supplement(case: Case, body: SupplementIn, intake: Intake | None, svc: Services) -> Case:
     """补充信息后重新判断。intake 只在改需求时需要（重新识别场景和关注点）。"""
+    if body.kind in ("material", "reply") and not body.refresh_sources:
+        return supplement_material(case, body, svc)
     prev = case.versions[-1]
     inp, new_texts = case.case, {}
     if body.kind == "need":
@@ -231,6 +234,46 @@ def supplement(case: Case, body: SupplementIn, intake: Intake | None, svc: Servi
     case.versions.append(cur)
     case.case, case.scenario, case.focus, case.current = inp, cur.scenario, cur.focus, cur.no
     case.sources = collected.sources
+    return case
+
+
+def supplement_material(case: Case, body: SupplementIn, svc: Services) -> Case:
+    """Append document analysis; never recollect or rebuild the enterprise report."""
+    prev = case.versions[-1]
+    cur = prev.model_copy(deep=True)
+    cur.no, cur.created_at = prev.no + 1, now()
+    cur.trigger, cur.trigger_label = body.kind, TRIGGER_LABELS[body.kind]
+    cur.prebuilt = None
+    rid = attach(case.raw, material_record(body.text, body.title, body.kind))
+    cur.raw_ids = list(dict.fromkeys([*prev.raw_ids, rid]))
+    texts = [r for r in case.raw if r.id in cur.raw_ids and r.source_id in TEXT_SOURCES and isinstance(r.content, str)]
+    progress.start("rules")
+    ext = svc.extractor.extract("\n".join(r.content for r in texts))
+    scenario = get_scenario(cur.scenario)
+    cur.assertions, cur.missing = verify(ext, cur.company, cur.license, cur.amac, SavedLicenses(cur.license),
+                                          case.case.company_name, saved_registry_hits(case.raw, prev))
+    cur.assertions.sort(key=lambda a: claim_rank(scenario)(a.kind))
+    by_source = {r.source_id: r.id for r in case.raw if r.id in prev.raw_ids and r.source_id not in TEXT_SOURCES}
+    link_refs(cur.assertions, cur.missing, [], by_source, texts)
+    cur.questions = build_questions(cur.assertions, cur.missing, cur.signals, scenario, cur.focus)
+    cur.judgments = build_judgments(case.case.company_name, scenario, cur.no, cur.assertions,
+                                    cur.missing, cur.signals, cur.questions, texts, cur.company)
+    # Saved public evidence and its human dispositions have not changed.
+    cur.judgments = [j for j in cur.judgments if not j.id.startswith("record.")]
+    cur.judgments.extend(j.model_copy(deep=True) for j in prev.judgments if j.id.startswith("record."))
+    attach_disputes(cur.judgments, case.case.company_name, cur.assertions, texts, cur.company)
+    cur.judgments, cur.judgment_changes, cur.judgment_summary = update_judgments(
+        prev.judgments, cur.judgments, {rid: body.text}, cur.no)
+    project_resolutions(case, cur, preserve_signals=True)
+    cur.changes, cur.change_summary = diff(prev, cur, {rid: body.text})
+    cur.notes = [n for n in cur.notes if not n.startswith(("还没有这家公司的说法", "材料里没有识别", "企业资料沿用第"))]
+    cur.notes = [f"所依据快照的说明：{n}" if n.startswith("预制示例") else n for n in cur.notes]
+    cur.notes.append(f"企业资料沿用第 {prev.no} 版（{prev.created_at[:10]}）；本版分析补充材料，未重新查询企业数据。")
+    if body.kind == "reply" and DODGE.search(body.text) and not CHECKABLE.search(body.text):
+        cur.notes.append("对方的回复没有给出任何可以核对的信息（编号、合同、户名），只是让你放心。这不算回答。")
+    progress.done("rules", text=f"读取 {sum(r.source_id == 'material' for r in texts)} 份材料，沿用第 {prev.no} 版企业资料")
+    case.versions.append(cur)
+    case.current = cur.no
     return case
 
 
@@ -272,7 +315,7 @@ VERB = {"clarified": "已澄清", "withdrawn": "已撤回", "recheck": "需要�
 RELATED_SIGNAL = {"A2": "risk.promise", "A7": "risk.payee", "A8": "risk.refund", "A9": "risk.upfront_fee"}
 
 
-def project_resolutions(case: Case, cur: Version):
+def project_resolutions(case: Case, cur: Version, *, preserve_signals: bool = False):
     """Keep effective cards, counts and exports consistent with human dispositions."""
     resolved = {j.target: j for j in cur.judgments if j.id.startswith(("check.", "record."))
                 and j.state in ("clarified", "withdrawn") and j.target}
@@ -284,7 +327,7 @@ def project_resolutions(case: Case, cur: Version):
             a.plain = f"{j.plain}原来的核验结论是：{j.text}"
             for check in a.checks:
                 check.status = Status.none
-    for signal in cur.signals:
+    for signal in ([] if preserve_signals else cur.signals):
         for item in signal.items:
             j = resolved.get(f"{signal.key}.{item.key}")
             if j:
@@ -297,7 +340,8 @@ def project_resolutions(case: Case, cur: Version):
             cur.glance.short.pop(target, None)
     cur.onepager = onepager(company_name=case.case.company_name, for_whom=cur.for_whom, amount=cur.amount,
                             scenario=get_scenario(cur.scenario), assertions=cur.assertions, missing=cur.missing,
-                            signals=cur.signals, questions=cur.questions, sources=cur.sources or case.sources)
+                            signals=cur.signals, questions=cur.questions, sources=cur.sources or case.sources,
+                            judgments=cur.judgments)
 
 
 def resolve(case: Case, body: ResolveIn) -> Case:

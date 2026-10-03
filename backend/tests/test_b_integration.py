@@ -31,11 +31,12 @@ def test_http_old_version_reference_after_supplement(tmp_path, monkeypatch):
     cid = case["id"]
     updated = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][0]).json()
     assert updated["current"] == 2
+    updated = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][1]).json()
     monkeypatch.setattr(main, "llm", FakeLLM([], tmp_path))
     reply = client.post(f"/api/cases/{cid}/chat", json={
-        "text": "这一条什么意思", "refs": ["v:1:assertion:A2"]}).json()
-    assert reply["version"] == 1 and "A2" in reply["citations"]
-    assert client.get(f"/api/cases/{cid}").json()["current"] == 2
+        "text": "这一条什么意思", "refs": ["v:2:assertion:A2"]}).json()
+    assert reply["version"] == 2 and "A2" in reply["citations"]
+    assert client.get(f"/api/cases/{cid}").json()["current"] == 3
 
 
 def test_http_explicit_old_version_without_selected_items(tmp_path, monkeypatch):

@@ -550,7 +550,7 @@ def supplement_run(case_id: str, body: SupplementIn, idempotency_key: str | None
     case = _case(case_id)
     demo = demo_prebuilt.for_supplement(case, body) is not None
     return _idempotent_run(idempotency_key, f"supplement:{case_id}", body, lambda rid: _metered(demo, lambda:
-                          _start_run(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
+                          _start_run(progress.begin("supplement", case.case.company_name, intake=body.kind == "need", refresh_sources=body.refresh_sources),
                                      lambda: _supplement(case, body), rid,
                                      original_input={"kind": "supplement", "case_id": case_id, "body": body.model_dump(mode="json")})))
 
@@ -618,7 +618,7 @@ def add_supplement_stream(case_id: str, body: SupplementIn) -> StreamingResponse
     """同 /supplements，但边查边发进度。案卷不存在照常回 404，不开流。"""
     case = _case(case_id)
     return _metered(demo_prebuilt.for_supplement(case, body) is not None,
-                    lambda: _stream(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
+                    lambda: _stream(progress.begin("supplement", case.case.company_name, intake=body.kind == "need", refresh_sources=body.refresh_sources),
                                     lambda: _supplement(case, body)))
 
 
@@ -721,7 +721,7 @@ def get_onepager(case_id: str, audience: str = Query("family", pattern="^(family
         raise HTTPException(status_code=404, detail="没有这个版本")
     return onepager(company_name=case.case.company_name, for_whom=v.for_whom, amount=v.amount,
                     scenario=get_scenario(v.scenario), assertions=v.assertions, missing=v.missing, signals=v.signals,
-                    questions=v.questions, sources=v.sources or case.sources, audience=audience)
+                    questions=v.questions, sources=v.sources or case.sources, audience=audience, judgments=v.judgments)
 
 
 # ---------- 演示案例 ----------

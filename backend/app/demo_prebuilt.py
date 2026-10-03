@@ -21,6 +21,7 @@ from app.sources.licenses import normalize
 
 DIR = Path(os.getenv("XRAY_DEMO_PREBUILT_DIR", config.DATA_DIR / "demo_prebuilt"))
 REPLAY_CAP = 20.0   # 回放研究过程最长多少秒；生成时更久就按比例压缩
+MATERIAL_PIPELINE = 2  # Saved company snapshots plus expanded contract checks.
 
 
 def enabled() -> bool:
@@ -73,6 +74,8 @@ def for_supplement(case: Case, body: SupplementIn) -> tuple[dict, int] | None:
         return None
     k = len(case.versions)
     for bundle in _bundles():
+        if body.kind in ("material", "reply") and bundle.get("material_pipeline") != MATERIAL_PIPELINE:
+            continue  # Keep old reports readable; analyze supplements with the current rules.
         if case.versions[-1].prebuilt.demo_id != bundle.get("demo_id"):
             continue
         stages = bundle["stages"]

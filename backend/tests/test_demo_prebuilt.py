@@ -32,7 +32,7 @@ def bundle(tmp_path, monkeypatch):
     add(case, "reply", REPLY)
     events = [{"type": "step", "id": "lists", "label": "持牌名单", "phase": "start", "t": 0.0},
               {"type": "step", "id": "lists", "label": "持牌名单", "phase": "done", "t": 0.05}]
-    data = {"demo_id": "T", "built_at": BUILT_AT, "stages": [
+    data = {"demo_id": "T", "built_at": BUILT_AT, "material_pipeline": demo_prebuilt.MATERIAL_PIPELINE, "stages": [
         {"supplement": None, "events": events, "case": first.model_dump(mode="json")},
         {"supplement": {"kind": "reply", "text": REPLY, "title": None}, "events": events,
          "case": case.model_dump(mode="json")}]}
@@ -65,6 +65,14 @@ def test_the_next_prepared_supplement_gets_the_prebuilt_version(bundle):
     assert hit is not None and hit[1] == 1
     nxt = demo_prebuilt.next_case(case, *hit)
     assert nxt.id == case.id and nxt.owner_id == "browser-1" and len(nxt.versions) == 2
+
+
+def test_old_material_pipeline_bundle_is_not_replayed_as_current_analysis(bundle, monkeypatch):
+    case = demo_prebuilt.start_case(bundle, "browser-1")
+    legacy = deepcopy(bundle)
+    legacy.pop("material_pipeline", None)
+    monkeypatch.setattr(demo_prebuilt, "_bundles", lambda: [legacy])
+    assert demo_prebuilt.for_supplement(case, SupplementIn(kind="reply", text=REPLY)) is None
 
 
 def test_later_prebuilt_supplement_keeps_its_own_build_date_and_old_snapshot(bundle):

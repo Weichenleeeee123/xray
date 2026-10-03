@@ -4,7 +4,7 @@
 不打安全分，不下"诈骗"之类的定性。三栏合计最多 5 条，A4 一页放得下。
 """
 from app.analysis.fmt import wan
-from app.models import (Assertion, MissingItem, OnePager, OnePagerLine, Question, Scenario, Signal, SignalItem, Source,
+from app.models import (Assertion, Judgment, MissingItem, OnePager, OnePagerLine, Question, Scenario, Signal, SignalItem, Source,
                         Status)
 
 LIMIT = 5
@@ -124,13 +124,25 @@ def _as_of(sources: dict[str, Source], used: set[str]) -> str:
 
 def onepager(*, company_name: str, for_whom: str | None, amount: float | None, scenario: Scenario,
              assertions: list[Assertion], missing: list[MissingItem], signals: list[Signal],
-             questions: list[Question], sources: dict[str, Source], audience: str = "family") -> OnePager:
+             questions: list[Question], sources: dict[str, Source], audience: str = "family",
+             judgments: list[Judgment] = ()) -> OnePager:
     mismatch, found, unknown = _columns(assertions, missing, signals)
+    priorities = {"refund": 0, "breach": 1, "prepay": 2, "party": 3, "payment": 4}
+    contracts = sorted((j for j in judgments if j.id.startswith("contract.") and j.state in ("needs_check", "revised", "unconfirmed")),
+                       key=lambda j: (j.state == "unconfirmed", priorities.get(j.id.split(".")[1], 5)))
+    def document_line(j: Judgment) -> OnePagerLine:
+        return OnePagerLine(text=f"材料需核对：{j.text}", refs=list(dict.fromkeys([j.id, *[b.ref for b in j.basis if b.ref]])))
+    mismatch = [document_line(j) for j in contracts if j.state != "unconfirmed"][:2] + mismatch
+    unknown = [document_line(j) for j in contracts if j.state == "unconfirmed"][:1] + unknown
     m, f, u = _fit(mismatch, found, unknown)
     used = {i.source for s in signals for i in s.items if i.status is not Status.none}
     money = f" · {scenario.hand_over} {wan(amount)}" if amount else ""
     headline = _headline(assertions, missing, signals, len(unknown), sources)
+    if contracts:
+        headline += f"合同分析另有 {len(contracts)} 项条款或文本缺项需要核对。"
     next_steps = [OnePagerLine(text=f"{q.ask}（{q.check_where}）", refs=[q.id, *q.linked]) for q in questions[:3]]
+    if contracts:
+        next_steps = [OnePagerLine(text=f"请对照完整原件核对：{contracts[0].text}", refs=document_line(contracts[0]).refs), *next_steps][:3]
     footer = " ".join(filter(None, [FOOTER, _as_of(sources, used)]))
     pack_note = "项数为核查条目数；同一文书可在多个来源出现，不代表处罚次数。人工采集非全量，后续整改未核验。" if any(
         i.key.startswith("official_pack_") for s in signals for i in s.items) else ""

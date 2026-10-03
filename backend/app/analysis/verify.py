@@ -217,6 +217,10 @@ def partner_review(claim: RawClaim, licenses: LicenseIndex) -> Review:
         checks.append(Check(label="存管银行", result="材料没写明是哪家银行", status=Status.miss, source="material"))
     for bank in named:
         hit = licenses.lookup(bank)
+        if hit is None:
+            checks.append(Check(label="存管银行", result=f"本版沿用企业资料，未另行核对材料中的「{bank}」；需补充该银行及存管关系的依据",
+                                status=Status.none, source="material", gap="not_covered"))
+            continue
         record = hit.record or (hit.suggestions[0] if hit.suggestions else None)
         if record:
             checks.append(Check(label="存管银行", result=f"{record.name}是持牌机构；但存管关系要看协议",

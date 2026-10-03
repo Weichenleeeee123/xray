@@ -183,11 +183,11 @@ def _material_basis(quote: str, texts: list[RawRecord]) -> Basis:
 # 就会漏掉"这份材料根本没有任何判断碰过它"。
 
 CONTRACT_WORDS = ("合同", "协议", "条款", "甲方")
-PARTY_RE = re.compile(r"(?:甲方|用人单位|委托方|出租方|收购方|发包方)\s*[：:]\s*([^\n，,。；;、]{2,40})")
+PARTY_RE = re.compile(r"(?:甲方|乙方|丙方|用人单位|委托方|受托方|出租方|承租方|收购方|发包方|承包方|服务方|供应商)\s*[：:]\s*([^\n，,。；;、]{2,80})")
 MONEY_RE = re.compile(r"\d[\d,]*(?:\.\d+)?\s*万?元")
 PREPAY_WORDS = ("保证金", "押金", "定金", "培训费", "服装费", "工装费", "材料费", "预付款", "诚意金", "服务费", "手续费")
 PREPAY_VERBS = ("支付", "缴纳", "交纳", "交付", "交", "付", "汇")
-DATE_RE = re.compile(r"(签订日期|签署日期|签约日期|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{0,2}\s*日)")
+DATE_RE = re.compile(r"(?:签订日期|签署日期|签约日期|日期)\s*[:：]?\s*\d{4}\s*[-/.年]\s*\d{1,2}\s*[-/.月]\s*\d{1,2}|\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日")
 SIGN_WORDS = ("签字", "盖章", "签章", "捺印", "签署")
 
 
@@ -200,6 +200,13 @@ def is_contract(r: RawRecord) -> bool:
     named = any(w in (r.title or "") for w in ("合同", "协议", "合约"))
     clauses = len(re.findall(r"第\s*[0-9一二三四五六七八九十百]{1,4}\s*条", t)) >= 2
     return bool(PARTY_RE.search(t)) or named or clauses
+
+
+def _party_entity(value: str) -> str:
+    # Drafting aliases are not part of a legal name. Keep other parenthetical
+    # text (for example a city in the registered name) for exact comparison.
+    value = re.sub(r"[（(]\s*(?:以下简称|下称|简称)\s*[^）)]*[）)]", "", value)
+    return re.sub(r"[\s（）()]", "", value)
 
 
 def contract_judgments(company_name: str, version_no: int, texts: list[RawRecord],
@@ -215,29 +222,33 @@ def contract_judgments(company_name: str, version_no: int, texts: list[RawRecord
         scope = f"{company_name}｜{r.title}"
 
         # 1. 在跟谁签。合同上的甲方和查的这家公司不是同一个名字，是首先要说清的事。
-        parties = [n.strip() for n in PARTY_RE.findall(t) if n.strip()][:3]
+        parties = list(dict.fromkeys(n.strip() for n in PARTY_RE.findall(t) if n.strip()))[:6]
+        entity = _party_entity
+        company_present = any(entity(n) == entity(company_name) for n in parties)
         if not parties:
             out.append(Judgment(
-                id=f"contract.party.{_stable(r.title + '没写')}", layer="inferred", layer_label=LAYER_LABEL["inferred"],
-                text=f"这份材料（{r.title}）里没写甲方是谁",
+                id=f"contract.party.{_stable(r.id + '没写')}", layer="inferred", layer_label=LAYER_LABEL["inferred"],
+                text=f"所提供材料（{r.title}）里没写甲方、乙方的具体名称",
                 scope=scope, basis=[Basis(ref=r.id, label=r.title, grade="material")],
                 unknown=["签这份东西的到底是哪家公司", "它和查的这家公司是什么关系"],
                 cannot=["这份合同是假的", "对方是骗子"],
                 state="unconfirmed", state_label=STATE_LABEL["unconfirmed"], since=version_no,
                 plain="合同上没写当事人，就没法核对你在跟谁签。"))
         for n in parties:
-            same = _flat(n) in _flat(company_name) or _flat(company_name) in _flat(n)
+            same = entity(n) == entity(company_name)
+            other_party = company_present and not same
             line = next((l for l in t.splitlines() if _flat(n) in _flat(l)), n)
             out.append(Judgment(
-                id=f"contract.party.{_stable(n)}", layer="said", layer_label=LAYER_LABEL["said"],
+                id=f"contract.party.{_stable(r.id + n)}", layer="said", layer_label=LAYER_LABEL["said"],
                 text=f"合同上写的当事人是「{n}」",
                 scope=scope, basis=[_material_basis(line, one)],
                 premise=["这份是对方给你的、准备照它办的那一份"],
                 unknown=list(MATERIAL_UNKNOWN) + ["这份合同是谁起草的", "对方有没有资格签这份"],
                 cannot=["这份合同有法律效力", "签了就必须照办"],
-                state="holds" if same else "needs_check",
-                state_label=STATE_LABEL["holds" if same else "needs_check"], since=version_no,
+                state="holds" if same else "unconfirmed" if other_party else "needs_check",
+                state_label=STATE_LABEL["holds" if same else "unconfirmed" if other_party else "needs_check"], since=version_no,
                 plain=(f"和查的「{company_name}」是同一个名字。" if same else
+                       "这是材料中列出的另一方；被查询企业已在另一方出现，这一方的身份和签约资格仍需核实。" if other_party else
                        f"合同上写的是「{n}」，查的这家叫「{company_name}」，不是同一个名字。"
                        "要么签的是另一家公司，要么这份合同的甲方写错了——先弄清在跟谁签，再谈钱。")))
 
@@ -246,12 +257,14 @@ def contract_judgments(company_name: str, version_no: int, texts: list[RawRecord
         for line in t.splitlines():
             if not any(w in line for w in PREPAY_WORDS) or not any(v in line for v in PREPAY_VERBS):
                 continue
+            if re.search(r"无需(?:支付|缴纳|交纳|交付)?|不(?:用|必|需)(?:支付|缴纳|交纳|交付)?|不收取|不得收取|禁止收取|免收", line):
+                continue
             key = _stable(line)
             if key in seen or (_flat(line) and _flat(line)[:24] in claimed):
                 continue     # 规则已经拎过这一句了，不重复开卡
             seen.add(key)
             out.append(Judgment(
-                id=f"contract.prepay.{key}", layer="said", layer_label=LAYER_LABEL["said"],
+                id=f"contract.prepay.{_stable(r.id + key)}", layer="said", layer_label=LAYER_LABEL["said"],
                 text=f"合同里有一条要你先付钱：{_short(line.strip(), 46)}",
                 scope=scope, basis=[_material_basis(line, one)],
                 premise=["对方确实照这份合同办"],
@@ -259,16 +272,55 @@ def contract_judgments(company_name: str, version_no: int, texts: list[RawRecord
                 cannot=["这是诈骗", "这笔钱一定追不回来", "合同上写了就一定合法"],
                 state="needs_check", state_label=STATE_LABEL["needs_check"], since=version_no,
                 plain="合同里白纸黑字写着要先付钱。这只说明材料上这么写，不代表这笔钱该交，也不代表对方是骗子；"
-                      "但正规的入职、放款，钱的方向是反过来的，先问清楚再动。"))
+                       "先确认付款条件、收款主体、交付安排和能否退还。"))
+
+        # 退款/退出与违约责任，即使没有“随时可退”的宣传承诺，也要读合同本身。
+        for category, label, pattern, explanation in (
+            ("refund", "退款与退出", r"退款|退还|退费|不予退|不可退|不得退|退出|赎回|封闭期|锁定期|解除合同",
+             "核对允许退出的条件、申请流程、到账期限与扣费，尤其要和宣传及对方回复对照。"),
+            ("breach", "违约责任", r"违约|赔偿|滞纳金|单方(?:变更|修改)|自动续(?:费|约)",
+             "确认责任由谁承担、触发条件和金额如何计算；这里仅整理条款，不判断其法律效力。"),
+            ("payment", "付款安排", r"付款|支付|收款|账户|户名|分期|尾款|交付|履行期限",
+             "确认付款时点、收款户名与交付条件。材料中的账户文字不等于账户归属已经核实。"),
+        ):
+            lines = [line.strip() for line in t.splitlines() if re.search(pattern, line)]
+            if not lines:
+                out.append(Judgment(
+                    id=f"contract.{category}.{_stable(r.id + '未见')}", layer="inferred", layer_label=LAYER_LABEL["inferred"],
+                    text=f"所提供文本未见明确的{label}约定", scope=scope,
+                    basis=[Basis(ref=r.id, label=r.title, grade="material")],
+                    unknown=[f"完整合同或附件中是否写明{label}"], cannot=["合同没有这些约定", "这份合同无效"],
+                    state="unconfirmed", state_label=STATE_LABEL["unconfirmed"], since=version_no,
+                    plain="当前可能只是节选或部分页面；需要补充完整文本后核对。"))
+                continue
+            quote = "\n".join(lines)
+            out.append(Judgment(
+                id=f"contract.{category}.{_stable(r.id + quote)}", layer="said", layer_label=LAYER_LABEL["said"],
+                text=f"{label}：{_short(quote, 100)}", scope=scope,
+                basis=[_material_basis(line, one) for line in lines],
+                unknown=["所提供文本是否完整，是否为最终约定"],
+                cannot=["这份合同无效", "条款一定可以执行"], state="needs_check",
+                state_label=STATE_LABEL["needs_check"], since=version_no, plain=explanation))
+
+        sign_lines = [line for line in t.splitlines() if any(w in line for w in SIGN_WORDS)]
+        if sign_lines:
+            out.append(Judgment(
+                id=f"contract.signature.{_stable(r.id)}", layer="inferred", layer_label=LAYER_LABEL["inferred"],
+                text="文本中的签字或盖章栏目不能确认实际签署状态", scope=scope,
+                basis=[_material_basis(sign_lines[0], one)],
+                unknown=["原件是否有双方实际签名或印章", "是否为最终签署版本"],
+                cannot=["双方已经签署", "这份合同已生效"], state="unconfirmed",
+                state_label=STATE_LABEL["unconfirmed"], since=version_no,
+                plain="出现签字、盖章字样可能只是空白栏目或生效条款，需要核对原件；不能仅凭识别文字确认已签署。"))
 
         # 3. 该写的没写。这是材料本身的问题，不是公司的定性。
         lacks = [w for w, ok in (("签订日期", bool(DATE_RE.search(t))),
                                  ("双方的签字或盖章", any(w in t for w in SIGN_WORDS))) if not ok]
         if lacks:
             out.append(Judgment(
-                id=f"contract.blank.{_stable(r.title + '｜'.join(lacks))}", layer="inferred",
+                id=f"contract.blank.{_stable(r.id + '｜'.join(lacks))}", layer="inferred",
                 layer_label=LAYER_LABEL["inferred"],
-                text=f"这份材料上没有{'，也没有'.join(lacks)}",
+                text=f"所提供文本未见{'，也未见'.join(lacks)}",
                 scope=scope,
                 basis=[Basis(ref=r.id, label=r.title, grade="material"), Basis(label="规定", grade="regulation")],
                 unknown=[f"完整的那一份上有没有{'，'.join(lacks)}", "拍的这一页是不是全部"],
@@ -461,7 +513,10 @@ def attach_disputes(judges: list[Judgment], company_name: str, assertions: list[
 
 def _core(j: Judgment) -> tuple:
     """一条判断到底在说什么。不含状态，用来判断"内容有没有变"。"""
-    return (j.text, tuple(b.quote or "" for b in j.basis), tuple(j.dispute))
+    text = j.text
+    if j.id.startswith("contract.blank."):
+        text = text.replace("这份材料上没有", "所提供文本未见").replace("，也没有", "，也未见")
+    return (text, tuple(b.quote or "" for b in j.basis), tuple(j.dispute))
 
 
 def _fingerprint(j: Judgment) -> tuple:
@@ -485,10 +540,12 @@ def _change(cur: Judgment, prev: Judgment | None, version_no: int) -> JudgmentCh
                               after=cur.text, plain=plain, basis=cur.basis)
 
     cur.since = prev.since
+    cur.history, cur.changed_at = list(prev.history), prev.changed_at
     # 人已经下过结论的（已澄清 / 已撤回），后面的版本不能悄悄把它推翻回去。
     if prev.state in ("clarified", "withdrawn") and _core(cur) == _core(prev):
         cur.state, cur.state_label, cur.plain = prev.state, prev.state_label, prev.plain
         cur.history, cur.changed_at = list(prev.history), prev.changed_at
+        cur.unknown = list(prev.unknown)
         return JudgmentChange(target=cur.id, label=label, kind="same", text=cur.text,
                               before=prev.text, after=cur.text,
                               plain=f"{cur.state_label}过的，这一版还是这个结论：{_short(cur.text, 50)}")
@@ -530,7 +587,22 @@ def _change(cur: Judgment, prev: Judgment | None, version_no: int) -> JudgmentCh
 def update(prev: list[Judgment], cur: list[Judgment], new_texts: dict[str, str],
            version_no: int) -> tuple[list[Judgment], list[JudgmentChange], str]:
     """把新版这堆判断和上一版逐条对上，算出判断级的变化。"""
+    # Older saved contracts used name/title hashes. Reuse an existing identity
+    # only for the same document, category and quoted evidence; a second copy
+    # of a contract must still get its own ID. Never mutate the saved version.
     by_id = {j.id: j for j in prev}
+    used = {j.id for j in cur if j.id in by_id}
+    def evidence(j: Judgment) -> tuple:
+        return tuple((b.ref, b.quote or "") for b in j.basis if b.ref)
+    for j in cur:
+        if not j.id.startswith("contract.") or j.id in by_id or not evidence(j):
+            continue
+        family = j.id.rsplit(".", 1)[0]
+        candidates = [old for old in prev if old.id not in used
+                      and old.id.rsplit(".", 1)[0] == family and evidence(old) == evidence(j)]
+        if len(candidates) == 1:
+            j.id = candidates[0].id
+            used.add(j.id)
     because = list(new_texts.keys())
     changes: list[JudgmentChange] = []
     for j in cur:

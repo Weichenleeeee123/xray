@@ -196,9 +196,10 @@ def active() -> bool:
     return _sink.get() is not None
 
 
-def begin(kind: str, company: str, *, intake: bool) -> dict:
+def begin(kind: str, company: str, *, intake: bool, refresh_sources: bool = False) -> dict:
     """第一条事件：这次要走哪些步骤。kind 是 create（建案卷）或 supplement（补充信息）。"""
-    steps = [s for s in STEPS if intake or s != "intake"]
+    steps = (["rules", "plain"] if kind == "supplement" and not intake and not refresh_sources
+             else [s for s in STEPS if intake or s != "intake"])
     return {"type": "begin", "kind": kind, "company": company,
             "steps": [{"id": s, "label": STEPS[s], "lookup": s in LOOKUPS} for s in steps]}
 

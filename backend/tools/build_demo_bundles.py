@@ -10,6 +10,7 @@
 """
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -63,6 +64,7 @@ def build(demo) -> dict:
     finally:
         privacy.OWNER.reset(token)
     return {"demo_id": demo.id, "label": demo.label, "built_at": when,
+            "material_pipeline": demo_prebuilt.MATERIAL_PIPELINE,
             "input": demo.input.model_dump(mode="json"), "stages": stages, "problems": problems}
 
 
@@ -75,6 +77,10 @@ def run(ids: list[str]) -> int:
         t = time.monotonic()
         bundle = build(demo)
         path = demo_prebuilt.DIR / f"{demo.id}.json"
+        if path.exists():
+            backup = demo_prebuilt.DIR / "backups" / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            backup.mkdir(parents=True, exist_ok=False)
+            shutil.copy2(path, backup / path.name)
         path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
         versions = len(bundle["stages"])
         print(f"{demo.id} {demo.label}：{versions} 版，{time.monotonic() - t:.0f} 秒 → {path}")

@@ -69,7 +69,7 @@ def test_api_case_carries_glance_and_terms():
     client = TestClient(app)
     demo = client.get("/api/demo", params={"case": "C"}).json()
     v = client.post("/api/cases", json=demo["input"]).json()["versions"][-1]
-    assert v["glance"]["first"][0] == "A1" and v["glance"]["mode"] == "template"   # 测试里不接模型
+    assert v["glance"]["first"][0] == "risk.bank_list" and v["glance"]["mode"] == "template"   # 首次只研究企业
     assert any(t["term"] == "实缴资本" for t in v["terms"])
 
 

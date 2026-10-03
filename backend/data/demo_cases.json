@@ -7,12 +7,25 @@
       "real": true,
       "ready": true,
       "note": "真实公司，全部用公开记录：持牌名单、中基协公示（含详情页的诚信信息、处罚、管理规模）、浙江证监局文件。材料是它自己的公开介绍原文，出处见 data/materials/README.md。不给真实公司编对方回复。",
-      "input": {"company_name": "杭州巨鲸财富管理有限公司", "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来"},
-      "material_file": "../materials/jujing_boss.txt",
-      "material_title": "巨鲸财富招聘主页上的公司介绍（BOSS直聘，搜索引擎摘录，2026-10-02）",
+      "input": {
+        "company_name": "杭州巨鲸财富管理有限公司",
+        "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来"
+      },
       "supplements": [
-        {"kind": "material", "title": "投资界机构库里的巨鲸财富简介（数据来自清科私募通，2026-10-02 摘录）", "file": "../materials/jujing_pedaily.txt"},
-        {"kind": "need", "text": "其实我妈能拿出 120 万，想在这家公司买理财，最怕急用时取不出来"}
+        {
+          "kind": "material",
+          "title": "巨鲸财富招聘主页上的公司介绍（BOSS直聘，搜索引擎摘录，2026-10-02）",
+          "file": "../materials/jujing_boss.txt"
+        },
+        {
+          "kind": "material",
+          "title": "投资界机构库里的巨鲸财富简介（数据来自清科私募通，2026-10-02 摘录）",
+          "file": "../materials/jujing_pedaily.txt"
+        },
+        {
+          "kind": "need",
+          "text": "其实我妈能拿出 120 万，想在这家公司买理财，最怕急用时取不出来"
+        }
       ]
     },
     {
@@ -21,11 +34,21 @@
       "real": true,
       "ready": true,
       "note": "真实公司，证明它不只会吓人：持牌名单里有它；浙江证监局 2023-07-21 的责令改正决定也会如实列出。登记信息（实缴、股东、参保人数）要人工到公示系统查好放进证据包。",
-      "input": {"company_name": "杭州银行股份有限公司", "need": "我收到杭州银行的 offer，想知道这家单位靠不靠谱"},
-      "material_file": "../materials/hzbank_campus2022.txt",
-      "material_title": "杭州银行 2022 校园招聘公告里的银行介绍（2026-10-02 摘录）",
+      "input": {
+        "company_name": "杭州银行股份有限公司",
+        "need": "我收到杭州银行的 offer，想知道这家单位靠不靠谱"
+      },
       "supplements": [
-        {"kind": "material", "title": "杭州银行2025年年度报告第78—79页：员工统计口径与薪酬政策（历史公开原文，2026-10-03摘录；不是个人offer或劳动合同）", "file": "../materials/hzbank_annual2025_staff.txt"}
+        {
+          "kind": "material",
+          "title": "杭州银行 2022 校园招聘公告里的银行介绍（2026-10-02 摘录）",
+          "file": "../materials/hzbank_campus2022.txt"
+        },
+        {
+          "kind": "material",
+          "title": "杭州银行2025年年度报告第78—79页：员工统计口径与薪酬政策（历史公开原文，2026-10-03摘录；不是个人offer或劳动合同）",
+          "file": "../materials/hzbank_annual2025_staff.txt"
+        }
       ]
     },
     {
@@ -34,14 +57,35 @@
       "real": false,
       "ready": true,
       "note": "演示数据 · 公司为虚构。用来演示二次分析和断网兜底",
-      "input": {"company_name": "杭州满盈禾康养健康咨询有限公司", "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来"},
-      "material_file": "flyers/manyinghe.txt",
-      "material_title": "满盈禾宣传单（虚构）",
+      "input": {
+        "company_name": "杭州满盈禾康养健康咨询有限公司",
+        "need": "我妈想在这家公司存 20 万理财，最怕急用时取不出来"
+      },
       "supplements": [
-        {"kind": "reply", "title": "对方业务员的微信回复（虚构）", "file": "flyers/manyinghe_reply.txt"},
-        {"kind": "material", "title": "认购协议节选（虚构）", "file": "flyers/manyinghe_contract.txt"},
-        {"kind": "material", "title": "无关材料：小区停水通知（虚构）", "file": "flyers/unrelated_notice.txt"},
-        {"kind": "need", "text": "我收到这家公司的 offer，让我去做理财顾问"}
+        {
+          "kind": "material",
+          "title": "满盈禾宣传单（虚构）",
+          "file": "flyers/manyinghe.txt"
+        },
+        {
+          "kind": "reply",
+          "title": "对方业务员的微信回复（虚构）",
+          "file": "flyers/manyinghe_reply.txt"
+        },
+        {
+          "kind": "material",
+          "title": "认购协议节选（虚构）",
+          "file": "flyers/manyinghe_contract.txt"
+        },
+        {
+          "kind": "material",
+          "title": "无关材料：小区停水通知（虚构）",
+          "file": "flyers/unrelated_notice.txt"
+        },
+        {
+          "kind": "need",
+          "text": "我收到这家公司的 offer，让我去做理财顾问"
+        }
       ]
     }
   ]

@@ -59,47 +59,51 @@ def test_unknown_real_company_shows_not_checked_instead_of_guessing():
 
 def test_demo_case_c_full_flow():
     demo = client.get("/api/demo", params={"case": "C"}).json()
-    assert demo["real"] is False and len(demo["supplements"]) == 4
+    assert demo["real"] is False and len(demo["supplements"]) == 5
     case = post_case(**demo["input"])
     cid = case["id"]
     v1 = case["versions"][0]
-    assert len(v1["assertions"]) == 6
+    assert not v1["assertions"] and not case["material_analyses"]
+    case = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][0]).json()
+    v2 = case["versions"][-1]
+    assert v2["no"] == 2 and v2["signals"] == v1["signals"]
+    assert len(v2["assertions"]) == 6
     # 验收 2、4：每条说法都能点到原文，检查能点到原始数据
     raw_ids = {r["id"] for r in case["raw"]}
-    for a in v1["assertions"]:
+    for a in v2["assertions"]:
         assert set(a["refs"]) <= raw_ids and a["refs"]
 
-    # 验收 8：补对方回复 → v2，有变化也有没变的，都有原因
-    reply = demo["supplements"][0]
-    v2 = client.post(f"/api/cases/{cid}/supplements", json=reply).json()["versions"][-1]
-    kinds = {c["target"]: c["kind"] for c in v2["changes"]}
+    # 验收 8：补对方回复 → v3，有变化也有没变的，都有原因
+    reply = demo["supplements"][1]
+    v3 = client.post(f"/api/cases/{cid}/supplements", json=reply).json()["versions"][-1]
+    kinds = {c["target"]: c["kind"] for c in v3["changes"]}
     assert kinds["A7"] == "new_concern" and kinds["A1"] == "unchanged"
-    a7 = next(c for c in v2["changes"] if c["target"] == "A7")
+    a7 = next(c for c in v3["changes"] if c["target"] == "A7")
     assert a7["because"] and a7["quote"] and a7["quote"] in reply["text"]
-    a7_now = next(a for a in v2["assertions"] if a["id"] == "A7")
+    a7_now = next(a for a in v3["assertions"] if a["id"] == "A7")
     assert a7_now["verdict"] == "mismatch" and "张某明" in a7_now["plain"]
 
     # 补合同：说"随时可以取出"，合同写封闭期和违约金 → 退款承诺变严重
-    v3 = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][1]).json()["versions"][-1]
-    a8 = next(c for c in v3["changes"] if c["target"] == "A8")
+    v4 = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][2]).json()["versions"][-1]
+    a8 = next(c for c in v4["changes"] if c["target"] == "A8")
     assert a8["kind"] == "worse" and a8["after"] == "与记录不符"
 
     # 验收 9：无关材料 → 没有影响判断的变化
-    v4 = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][2]).json()["versions"][-1]
-    assert v4["change_summary"].startswith("没有影响判断的变化")
+    v5 = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][3]).json()["versions"][-1]
+    assert v5["change_summary"].startswith("没有影响判断的变化")
 
     # 验收 10：改成求职 → 事实没变，重点变了
-    full = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][3]).json()
-    v5 = full["versions"][-1]
-    assert full["scenario"] == "job" and v5["scenario"] == "job"
-    assert "同时重新查询数据" in v5["change_summary"]
-    assert v5["signals"][0]["key"] == "reputation"
-    assert not [c for c in v5["changes"] if c["kind"] in ("worse", "new_concern", "clarified")]
-    assert v5["amount"] is None and v5["for_whom"] != "妈妈"   # 换了场景，存钱的金额和对象不沿用
+    full = client.post(f"/api/cases/{cid}/supplements", json=demo["supplements"][4]).json()
+    v6 = full["versions"][-1]
+    assert full["scenario"] == "job" and v6["scenario"] == "job"
+    assert "同时重新查询数据" in v6["change_summary"]
+    assert v6["signals"][0]["key"] == "reputation"
+    assert not [c for c in v6["changes"] if c["target"].startswith("A") and c["kind"] in ("worse", "new_concern", "clarified")]
+    assert v6["amount"] is None and v6["for_whom"] != "妈妈"   # 换了场景，存钱的金额和对象不沿用
 
     # 案卷存在文件里，取回来是同一份
     again = client.get(f"/api/cases/{cid}").json()
-    assert len(again["versions"]) == 5 and again["current"] == 5
+    assert len(again["versions"]) == 6 and again["current"] == 6
     assert any(s["id"] == cid for s in client.get("/api/cases").json())
 
 
@@ -121,6 +125,7 @@ def test_onepager_family_and_teller_have_no_score_or_fraud_word():
 def test_chat_template_mode_cites_and_says_not_found():
     demo = client.get("/api/demo", params={"case": "C"}).json()
     case = post_case(**demo["input"])
+    case = client.post(f"/api/cases/{case['id']}/supplements", json=demo["supplements"][0]).json()
     cid, valid = case["id"], {r["id"] for r in case["raw"]} | {"A1"}
     # 验收 5：选中资格那条再问
     r = client.post(f"/api/cases/{cid}/chat", json={"text": "为什么这条对我妈很重要", "refs": ["A1"]}).json()

@@ -282,9 +282,14 @@ def test_discovery_enters_sources_and_version_without_changing_risk_rules(tmp_pa
     assert old == new  # No new complaint counts/risk rules from loose discovery records.
     previous = case.versions[0].raw_ids[:]
     old_id = raw[0].id
-    monkeypatch.setattr(web, 'discover', lambda name: findings(Search(lambda q, p: [page(text=f'{NAME}更新产品说明。')])))
+    def unexpected_discovery(name):
+        pytest.fail("material supplements must reuse saved discovery evidence")
+    monkeypatch.setattr(web, 'discover', unexpected_discovery)
     supplement(case, SupplementIn(kind='material', text='新合同 private-upload'), None, svc)
-    assert case.versions[0].raw_ids == previous and old_id not in case.versions[1].raw_ids
+    assert case.versions[0].raw_ids == previous and old_id in case.versions[1].raw_ids
+    monkeypatch.setattr(web, 'discover', lambda name: findings(Search(lambda q, p: [page(text=f'{NAME}更新产品说明。')])))
+    supplement(case, SupplementIn(kind='material', text='再次核对合同', refresh_sources=True), None, svc)
+    assert case.versions[0].raw_ids == previous and old_id not in case.versions[2].raw_ids
     assert old_id in citable(case, case.versions[0])
 
 
