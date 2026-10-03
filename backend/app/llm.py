@@ -27,6 +27,7 @@ from app.models import ClaimKind
 
 T = TypeVar("T", bound=BaseModel)
 REQUEST_DEADLINE: ContextVar[float | None] = ContextVar("llm_request_deadline", default=None)
+REQUEST_CONTEXT_LIMIT: ContextVar[int | None] = ContextVar("llm_context_limit", default=None)
 
 
 @contextmanager
@@ -169,6 +170,9 @@ class LLM:
                 Path(name).unlink()
 
     def _call(self, model: str, messages: list, json_out: bool, temperature: float) -> str:
+        limit = REQUEST_CONTEXT_LIMIT.get()
+        if limit is not None and sum(len(str(m.get("content", ""))) for m in messages) > limit:
+            raise LLMError("问答输入与修复内容超过本次字符预算", code="context_budget")
         payload = {"model": model, "messages": messages, "temperature": temperature}
         if self.enable_thinking is not None:
             payload["enable_thinking"] = self.enable_thinking

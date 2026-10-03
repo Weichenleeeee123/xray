@@ -199,3 +199,26 @@ def test_real_prebuilt_metadata_and_notes_remain_in_both_layouts(limit):
     data = json.loads(assistant._context_json(case, version, max_chars=limit))
     assert data["报告"]["prebuilt"] == version.prebuilt.model_dump()
     assert data["报告"]["notes"] == version.notes
+
+
+@pytest.mark.parametrize("mode", ["full", "shadow"])
+def test_memory_integration_retains_lossless_packing_and_full_fallback(packed_case, tmp_path, monkeypatch, mode):
+    from app import config, privacy
+    monkeypatch.setattr(config, "CASE_MEMORY_ENABLED", True)
+    monkeypatch.setattr(config, "ASSISTANT_CONTEXT_MODE", mode)
+    monkeypatch.setattr(config, "CASE_MEMORY_DIR", tmp_path / "private_memory")
+    packed_case.owner_id = "packing-owner"
+    before = packed_case.model_dump_json()
+    token = privacy.OWNER.set(packed_case.owner_id)
+    llm = FakeLLM(['{"segments":[{"kind":"fact","fact_id":"credit.status"}]}'], tmp_path / "llm")
+    try:
+        reply = answer(packed_case, ChatIn(text="请解释登记状态"), llm)
+    finally:
+        privacy.OWNER.reset(token)
+    assert reply.context_mode == "full" and reply.error_code is None
+    assert reply.mode == "model" and len(llm.calls) == 1
+    data = json.loads(sent_case(llm))
+    assert len(data["原始数据"]) == 60
+    assert data["原始数据"] == [r.model_dump(mode="json", exclude={"retrieved_at"}) for r in packed_case.raw]
+    assert "sources" not in data["报告"] and "terms" not in data["报告"]
+    assert packed_case.model_dump_json() == before

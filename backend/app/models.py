@@ -485,6 +485,8 @@ class Quote(BaseModel):
 
 
 class ChatMessage(BaseModel):
+    context_mode: Literal["full", "selective"] | None = None
+    error_code: Literal["context_budget", "evidence_coverage"] | None = None
     request_id: str | None = None
     role: Literal["user", "assistant"]
     text: str

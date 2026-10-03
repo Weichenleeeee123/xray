@@ -41,6 +41,7 @@ from app.scenarios import get_scenario, load_scenarios
 from app.sources.collect import collect
 from app.store import CaseStore, ConflictError
 from app.persistence import locked, atomic_json
+from app.case_memory.store import MemoryStore
 from app.sources.cache import FORCE_REFRESH
 from app.sources.resolve import resolve as resolve_name
 
@@ -82,6 +83,44 @@ def _launch(work):
     with _workers_lock:
         _workers.add(worker)
     worker.start()
+
+
+_memory_slots = threading.BoundedSemaphore(2)
+_memory_pending: set[tuple[str, str, int]] = set()
+_memory_lock = threading.Lock()
+
+
+def _persist_case(case: Case) -> Case:
+    """One post-persistence hook for every new version, including demo copies."""
+    saved = store.save(case)
+    if not config.CASE_MEMORY_ENABLED or _stopping.is_set() or not saved.owner_id:
+        return saved
+    owner = privacy.identity()
+    if saved.owner_id != owner:
+        raise PermissionError("Cannot build another guest's memory")
+    key = (owner, saved.id, saved.current)
+    with _memory_lock:
+        if key in _memory_pending or not _memory_slots.acquire(blocking=False):
+            return saved  # Lazy read can safely rebuild if the bounded worker is busy.
+        _memory_pending.add(key)
+    snapshot = saved.model_copy(deep=True)
+    def work():
+        try:
+            MemoryStore().get_or_build(snapshot, snapshot.current, owner)
+        except Exception as error:
+            log.warning("case_memory_build_failed error_type=%s", type(error).__name__)
+        finally:
+            with _memory_lock:
+                _memory_pending.discard(key)
+            _memory_slots.release()
+    try:
+        _launch(work)
+    except Exception as error:
+        with _memory_lock:
+            _memory_pending.discard(key)
+        _memory_slots.release()
+        log.warning("case_memory_schedule_failed error_type=%s", type(error).__name__)
+    return saved
 
 
 app = FastAPI(title="X-Ray 透视·真相", version="0.2.0", lifespan=lifespan)
@@ -134,6 +173,8 @@ def health() -> dict:
     return {"ok": True, "licensed_count": len(svc.licenses), "licensed_as_of": svc.licenses.meta["as_of"],
             "registry_as_of": svc.registry.as_of, "official_lists": lists, "evidence_packs": svc.packs.names(),
             "commercial": svc.commercial.status() if svc.commercial else {"configured": False},
+            "assistant_context": {"mode": config.ASSISTANT_CONTEXT_MODE,
+                                  "memory_enabled": config.CASE_MEMORY_ENABLED},
             "llm": llm.status(), "deployment": deployment.status()}
 
 
@@ -337,24 +378,24 @@ def _intake(text: str, scenario: str | None, company: str) -> Intake:
 
 def _create(body: CaseIn) -> Case:
     if (bundle := demo_prebuilt.for_create(body)) is not None:   # 示例：交出预制好的案卷，不联网
-        return store.save(demo_prebuilt.start_case(bundle, privacy.identity()))
+        return _persist_case(demo_prebuilt.start_case(bundle, privacy.identity()))
     info = _intake(body.need, body.scenario, body.company_name)
     token = FORCE_REFRESH.set(body.refresh_sources)
     try:
         case = finish_version(new_case(body, info, svc), llm)
         case.owner_id = privacy.identity()
-        return store.save(case)
+        return _persist_case(case)
     finally:
         FORCE_REFRESH.reset(token)
 
 
 def _supplement(case: Case, body: SupplementIn) -> Case:
     if (hit := demo_prebuilt.for_supplement(case, body)) is not None:   # 示例按顺序补充：交出预制的下一版
-        return store.save(demo_prebuilt.next_case(case, *hit))
+        return _persist_case(demo_prebuilt.next_case(case, *hit))
     info = _intake(body.text, body.scenario, case.case.company_name) if body.kind == "need" else None
     token = FORCE_REFRESH.set(body.refresh_sources)
     try:
-        return store.save(finish_version(supplement(case, body, info, svc), llm))
+        return _persist_case(finish_version(supplement(case, body, info, svc), llm))
     finally:
         FORCE_REFRESH.reset(token)
 
@@ -579,7 +620,7 @@ def resolve_judgment(case_id: str, body: ResolveIn) -> Case:
     """人对某条判断下结论（已澄清 / 已撤回 / 继续查）。出一版新案卷，旧版留着。"""
     case = _case(case_id)
     try:
-        return store.save(resolve(case, body))
+        return _persist_case(resolve(case, body))
     except KeyError:
         raise HTTPException(status_code=404, detail=f"案卷里没有这条判断：{body.judgment_id}") from None
 
@@ -589,7 +630,7 @@ def refresh_case_reviews(case_id: str) -> Case:
     """把这家公司最新的用户评价放进案卷，出一版新报告。评价没变就不出。"""
     case = _case(case_id)
     try:
-        return store.save(finish_version(refresh_reviews(case, svc), llm))
+        return _persist_case(finish_version(refresh_reviews(case, svc), llm))
     except NoNewReviews:
         raise HTTPException(status_code=409, detail="没有新评价：这一版报告里已经是最新的评价") from None
 
