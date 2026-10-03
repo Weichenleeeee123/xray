@@ -6,7 +6,7 @@ const vm = require('node:vm');
 function harness() {
   const ctx = vm.createContext({console, URL, URLSearchParams, FormData, AbortController, setTimeout:()=>0, clearTimeout(){},
     location:{hash:'#/case/test',search:''}, document:{querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}}});
-  for (const file of ['case-design.js','dossier/artwork.js','dossier-report.js','material-analysis.js','app.js']) {
+  for (const file of ['case-design.js','dossier/artwork.js','dossier-report.js','material-analysis.js','source-records.js','app.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8').replace(/boot\(\);\s*$/,''),ctx);
   }
   const run = code=>vm.runInContext(code,ctx);

@@ -1598,7 +1598,7 @@ function openRaw(rid, quotes) {
       </dl>
       ${kind === 'demo' ? '<div class="raw-note">演示数据：这家公司和这条记录都是编的，只用来演示。</div>' : ''}
       ${r.note ? `<div class="raw-note">${esc(r.note)}</div>` : ''}
-      <div class="raw-content">${contentHtml(r.content, quotes)}</div>
+      <div class="raw-content">${kind === 'commercial' && typeof SourceRecords !== 'undefined' ? SourceRecords.render(r, quotes || []) : contentHtml(r.content, quotes)}</div>
       ${back.length ? `<div class="backrefs"><h4>报告里用到这条数据的地方</h4><div class="chips">${back.map(([id, label]) => `<button type="button" class="chip" data-act="goto" data-id="${esc(id)}">${esc(label)}</button>`).join('')}</div></div>` : ''}
     </div></div>`;
   if (!dlg.open) dlg.showModal();
