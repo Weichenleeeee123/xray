@@ -34,7 +34,7 @@ CATEGORY = {Status.ok: "normal", Status.warn: "attention", Status.bad: "abnormal
 DEDUP_PRIORITY = {Status.ok: 0, Status.none: 1, Status.miss: 2, Status.warn: 3, Status.bad: 4}
 
 
-def build_overview(version: Version) -> ReportOverview:
+def build_overview(version: Version, raw_records=()) -> ReportOverview:
     by_id: dict[str, OverviewItem] = {}
     excluded_ids: set[str] = set()
     for signal in version.signals:
@@ -83,7 +83,7 @@ def build_overview(version: Version) -> ReportOverview:
         status = "none"
 
     core_gaps = [key for key in TRUST_CORE_KEYS if key not in by_id or by_id[key].category == "unknown"]
-    headline, summary = build_company_summary(version, items)
+    headline, summary = build_company_summary(version, items, raw_records)
     detail = (f"本版适用公司核查 {len(items)} 项：{counts.normal} 项已核验正常，"
               f"{counts.attention} 项需了解，{counts.abnormal} 项异常记录，{counts.unknown} 项待核实。")
     if missing_keys:
@@ -103,5 +103,5 @@ def build_overview(version: Version) -> ReportOverview:
 def refresh_overviews(case: Case) -> Case:
     """Refresh derived projections for every saved version, without changing evidence."""
     for version in case.versions:
-        version.overview = build_overview(version)
+        version.overview = build_overview(version, case.raw)
     return case

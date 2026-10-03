@@ -296,3 +296,13 @@ test('all additional priority findings stay visible and unsafe labels or purpose
   assert.match(html,/核查 &lt;目的&gt;/);assert.match(html,/失信 &lt;记录&gt;/);
   assert.match(html,/data-id="credit.penalties"/);assert.doesNotMatch(html,/<目的>|<记录>/);
 });
+
+test('record counts use a factual label without changing classification or coverage',()=>{
+  const h=harness();
+  assert.equal(h.run(`stLabel({status:'ok',value:'劳动仲裁 2 条，当被告的劳动官司 0 条'})`),'已查到记录');
+  assert.equal(h.run(`stLabel({status:'ok',value:'近两年当被告 1 条'})`),'已查到记录');
+  assert.equal(h.run(`stLabel({status:'ok',value:'1448 条'})`),'已查到记录');
+  assert.equal(h.run(`stLabel({status:'ok',value:'无'})`),'暂未见异常');
+  assert.equal(h.run(`stLabel({status:'none',gap:'failed',value:'2 条'})`),'没查成');
+  assert.equal(h.run(`stLabel({status:'bad',value:'2 条'})`),'需重点核实');
+});

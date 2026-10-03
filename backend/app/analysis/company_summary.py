@@ -7,6 +7,7 @@ status are not automatically evidence of absence (notably labour disputes).
 import re
 
 from app.models import CompanyFindingSummary, OverviewItem, Status, Version
+from app.analysis.summary_context import record_context, supporting_keys
 
 
 CORE_KEYS = ("credit.status", "credit.penalties", "credit.abnormal",
@@ -94,7 +95,7 @@ def finding(item: OverviewItem) -> tuple[str, str]:
     return KNOWN_FINDINGS.get(item.id, (f"{item.label}：{item.text}", "该项记录需要结合具体事项、来源日期和后续处理阅读。"))
 
 
-def build_company_summary(version: Version, items: list[OverviewItem]) -> tuple[str, CompanyFindingSummary]:
+def build_company_summary(version: Version, items: list[OverviewItem], raw_records=()) -> tuple[str, CompanyFindingSummary]:
     by_id = {item.id: item for item in items}
     purpose = perspective(version)
     focus = FOCUS_KEYS[purpose]
@@ -111,6 +112,33 @@ def build_company_summary(version: Version, items: list[OverviewItem]) -> tuple[
         scope = "围绕你的需求 · 企业公开信息核查"
 
     def result(headline: str, explanation: str, basis: list[str], tone: str, rule: str):
+        basis = list(basis)
+        main = next((by_id[key] for key in basis if key in by_id and concerning(by_id[key])), None)
+        if main:
+            historical, timing = record_context(version, main, raw_records)
+            if historical and main.id == 'credit.labor':
+                headline = '查到历史劳动争议记录，后续处理仍需了解'
+                explanation = '记录不等于企业已败诉或目前仍在欠薪，后续处理仍需核实。'
+            explanation = f'本版记录：{main.label}：{main.text}。' + timing + explanation
+        # Keep the headline focused. Add at most one fact to a one-basis
+        # finding; existing two-basis summaries already carry their complement.
+        if len(basis) == 1 and rule not in {'critical_record', 'insufficient_company_coverage'}:
+            extra = next((by_id[key] for key in supporting_keys(purpose, version.need)
+                          if key not in basis and covered(by_id.get(key)) and by_id[key].ref
+                          and len(by_id[key].text) <= 120), None)
+            if extra:
+                explanation += f'同时，本版记录的{extra.label}：{extra.text}。'
+                if extra.id.startswith('finance.') and extra.id in {'finance.revenue', 'finance.latest_period', 'finance.net_profit'}:
+                    explanation += '单期数字不足以判断持续经营能力。'
+                elif extra.id == 'finance.jobs':
+                    explanation += '招聘记录不代表具体岗位仍在招或承诺的用工条件。'
+                elif extra.id in {'credit.lawsuits', 'finance.executions'}:
+                    explanation += '需结合企业角色和后续处理阅读。'
+                elif extra.id.startswith('reputation.'):
+                    explanation += '相关说法尚待核实。'
+                elif extra.id.startswith('risk.'):
+                    explanation += '名单记录仅限所列机构类别与来源范围。'
+                basis.append(extra.id)
         remaining = [item for item in flags if item.id not in basis]
         if remaining:
             explanation += f"另有 {len(remaining)} 项记录需要了解，完整依据保留在下方。"
