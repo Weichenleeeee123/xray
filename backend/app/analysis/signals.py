@@ -212,7 +212,7 @@ def risk_signal(ext: Extraction, company: CompanyProfile | None, lic: LicenseHit
                 web: WebFindings | None = None, refs: dict[str, str] | None = None,
                 amount: float | None = None) -> Signal:
     items: list[SignalItem] = []
-    warnings = [h for h in (web.official if web else []) if h.category == "warning"]
+    warnings = [h for h in (web.official if web else []) if h.category == "warning" and h.subject]
     if warnings:
         items.append(_hit_item("regulator_warning", "监管风险提示", f"{len(warnings)} 份风险提示或非法金融通报点名了它",
                                warnings[0], Status.bad, refs or {}, "web_official"))
@@ -502,7 +502,7 @@ def change_item(x: "qcc_more.QccExtras", today: date) -> SignalItem | None:
     kinds = list(dict.fromkeys(re.sub(r"（.*?）|\(.*?\)", "", r.get("项目") or "") for r in last))
     detail = (f"近一年 {len(last)} 次：" + "、".join(kinds[:5])) if last else "近一年没有变更"
     if flagged:
-        detail = "近一年改过名称或法定代表人。跑路前常见改名、换人，但正常经营也会改，要问清原因。" + detail
+        detail = "近一年有名称或法定代表人变更。变更本身不代表经营异常，可核实变更原因及当前签约主体。" + detail
     return SignalItem(key="changes", label="工商变更", value=f"共 {p.total} 次", detail=detail,
                       status=Status.warn if flagged else Status.ok, source="qcc_changes")
 
@@ -610,18 +610,28 @@ def news_items(news: NewsFindings, today: date) -> list[SignalItem]:
         return [SignalItem(key="news", label="新闻舆情", value="没查成" if failed else "没有新闻",
                            detail=news.error if failed else "平台没有收录这家公司的新闻；没有不等于没人说过",
                            status=Status.none, source="qcc_news", gap="failed" if failed else "not_found")]
-    recent = news.recent_negatives(today)
+    undated = []
+    for item in news.negatives:
+        try:
+            date.fromisoformat(item.date or "")
+        except ValueError:
+            undated.append(item)
+    recent = [item for item in news.recent_negatives(today) if item not in undated]
     shown = len(news.items)
     items = [SignalItem(key="news", label="新闻舆情", value=f"共 {news.total} 条",
                         detail=f"看的是最近 {shown} 条：负面 {news.counts().get('消极', 0)}、中立 {news.counts().get('中立', 0)}、"
                                f"正面 {news.counts().get('积极', 0)}（企查查标的倾向）",
                         status=Status.ok, source="qcc_news")]
     if news.negatives:
-        top = (recent or news.negatives)[0]
-        items.append(SignalItem(key="news_negative", label="近一年企查查标为负面的新闻" if recent else "负面新闻（一年以前）",
-                                value=f"{len(recent)} 条" if recent else f"{len(news.negatives)} 条",
-                                detail=f"最近一条：{top.date or '日期不详'} {top.source}《{top.title}》",
-                                status=Status.warn if recent else Status.ok, source="qcc_news"))
+        top = (recent or undated or news.negatives)[0]
+        label = ("近一年企查查标为负面的新闻" if recent else
+                 "企查查标为负面的新闻（时间待核实）" if undated else "负面新闻（一年以前）")
+        detail = f"{'参考一条' if undated else '最近一条'}：{top.date or '日期不详'} {top.source}《{top.title}》"
+        if undated:
+            detail += f"；{'另有 ' if recent else ''}{len(undated)} 条发布日期待核实，不能判断是否属于历史记录"
+        items.append(SignalItem(key="news_negative", label=label,
+                                value=f"{len(recent or undated or news.negatives)} 条", detail=detail,
+                                status=Status.warn if recent or undated else Status.ok, source="qcc_news"))
     return items
 
 

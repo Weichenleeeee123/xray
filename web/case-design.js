@@ -46,10 +46,12 @@ const RADAR_SIGNAL_AXIS = {risk:'qualify',finance:'funds',credit:'stability',rep
 // Unknown items keep their reason (没查成 / 待补材料 …); listed, reference-only and not-applicable items are not gaps.
 function researchRadarAxes(v) {
   const axes=Object.fromEntries(RADAR_AXES.map(([id,label])=>[id,{id,label,status:'none',checked:0,unchecked:0,quiet:0,open:[]}]));
-  for(const sig of v.signals || []) for(const it of sig.items || []){
-    const axis=axes[RADAR_ITEM_AXIS[`${sig.key}.${it.key}`] || RADAR_SIGNAL_AXIS[sig.key]];
+  const summaryItems = v.overview?.schema_version === 1 ? v.overview.items : null;
+  const records = summaryItems || (v.signals || []).flatMap(sig => (sig.items || []).map(it => ({...it,axis:RADAR_ITEM_AXIS[`${sig.key}.${it.key}`] || RADAR_SIGNAL_AXIS[sig.key]})));
+  for(const it of records){
+    const axis=axes[it.axis];
     if(!axis) continue;
-    if(it.status==='none'){ if(isOpen(it)){axis.unchecked++;axis.open.push(it);} else axis.quiet++; continue; }
+    if(it.status==='none' || (summaryItems && it.category==='unknown')){ if(summaryItems || isOpen(it)){axis.unchecked++;axis.open.push({...it,status:'none'});} else axis.quiet++; continue; }
     axis.checked++;
     if(axis.status==='none' || (SEV[it.status]||0)>(SEV[axis.status]||0)) axis.status=it.status;
   }
@@ -72,7 +74,7 @@ function researchRadar(v) {
   const label = d => d.failed ? '没查成' : titles[d.status];
   const count = d => d.status==='none' ? (d.open.length ? pendingNote(d.open) : '这一维没有查到数据') : `查了 ${d.checked} 项${d.unchecked?`，另有 ${pendingNote(d.open)}`:''}`;
   const tone = d => d.failed?'#e3a76f':d.status==='none'?'#ac9781':d.status==='bad'?'#ed9b89':'#d4b38b';
-  return `<div class="research-radar"><div class="radar-caption"><span>企业五维轮廓</span><span>定性示意</span></div><svg viewBox="0 0 460 400" role="img" aria-label="五维雷达：${dimensions.map(d=>`${d.label}${label(d)}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="${cx}" y1="${cy}" x2="${pt(i,132)[0].toFixed(1)}" y2="${pt(i,132)[1].toFixed(1)}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${shape}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.failed?'failed':d.status}"><title>${d.label}：${label(d)}，${count(d)}</title><text x="${p[0].toFixed(1)}" y="${(p[1]-3).toFixed(1)}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0].toFixed(1)}" y="${(p[1]+17).toFixed(1)}" text-anchor="middle" fill="${tone(d)}" font-size="12">${label(d)}</text>${dots[i]?`<circle cx="${dots[i][0].toFixed(1)}" cy="${dots[i][1].toFixed(1)}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>依据现有记录作定性展示，取各维度最需关注的一项；位置不表示问题数量或企业优劣。虚线表示这一维暂无记录，不等于没有问题；不用于比较投资表现。</p></div>`;
+  return `<div class="research-radar"><div class="radar-caption"><span>企业五维轮廓</span><span>定性示意</span></div><svg viewBox="0 0 460 400" role="img" aria-label="五维雷达：${dimensions.map(d=>`${d.label}${label(d)}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="${cx}" y1="${cy}" x2="${pt(i,132)[0].toFixed(1)}" y2="${pt(i,132)[1].toFixed(1)}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${shape}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.failed?'failed':d.status}"><title>${d.label}：${label(d)}，${count(d)}</title><text x="${p[0].toFixed(1)}" y="${(p[1]-3).toFixed(1)}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0].toFixed(1)}" y="${(p[1]+17).toFixed(1)}" text-anchor="middle" fill="${tone(d)}" font-size="12">${label(d)}</text>${dots[i]?`<circle cx="${dots[i][0].toFixed(1)}" cy="${dots[i][1].toFixed(1)}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>与左侧公司记录使用相同范围，展示各维度的核查状态；一般关注不等于异常，位置不表示企业优劣。虚线表示这一维暂无记录，不等于没有问题；不用于比较投资表现。</p></div>`;
 }
 // Use the saved version's deterministic one-pager, keeping every selected line and reference.
 // This is a reading layer only: all signal items and source records remain below.

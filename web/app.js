@@ -39,7 +39,7 @@ function pendingNote(list) {   // "2 项没查成、1 项待补材料"，没查�
   for (const i of list) if (isOpen(i)) n[gapOf(i)] = (n[gapOf(i)] || 0) + 1;
   return Object.entries(n).sort(([a], [b]) => (b === 'failed') - (a === 'failed')).map(([g, c]) => `${c} 项${GAP[g]}`).join('、');
 }
-const stLabel = i => (isRef(i) ? '只作参考' : (i.status === 'none' && GAP[i.gap]) || STATUS[i.status] || '');
+const stLabel = i => (isRef(i) ? '只作参考' : (i.status === 'ok' && i.gap === 'not_applicable' ? GAP.not_applicable : (i.status === 'none' && GAP[i.gap]) || STATUS[i.status] || ''));
 // 与研究室首页的功能列表保持相同顺序。
 const NAV = [['check', '企业', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['library', '知识库', '收藏的名词，回头复习'], ['me', '我的', '个人主页'], ['guide', '使用说明', '使用方法、服务与资料覆盖']];
 const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];

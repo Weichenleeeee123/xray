@@ -28,22 +28,32 @@ test('live questions keep arbitrary counts, full wording, escaping and original 
     if(n) {assert.match(html,/&lt;条款&gt; 的完整条件及对应合同位置/);assert.doesNotMatch(html,/<条款>/);}
   }
 });
-test('overview uses current version evidence, excludes reviews and separates pending work',()=>{
+test('overview uses the server snapshot for the verdict, all four counts and evidence links',()=>{
   const h=harness();
-  h.run(`v.signals=[{key:'risk',items:[{key:'license',label:'许可',value:'待提供',status:'none',gap:'needs_input'},
-    {key:'contract',label:'合同',value:'有差异',status:'bad'}]},
-    {key:'credit',items:[{key:'status',label:'登记',value:'存续',status:'ok'}]},
-    {key:'reputation',items:[{key:'user_reviews',status:'warn',value:'仅供参考'}]}];`);
-  assert.deepEqual(JSON.parse(h.run('JSON.stringify(Object.fromEntries(Object.entries(dossierGroups(v)).map(([k,a])=>[k,a.length])))')),{problem:1,clear:1,open:1});
-  let html=h.run('dossierOverview(v)');assert.match(html,/有异常，<\/span><span class="verdict-phrase">需注意风险/);assert.doesNotMatch(html,/仅供参考/);
-  h.run(`v.glance.first=['risk.license']`);html=h.run('dossierOverview(v)');
-  assert.match(html,/有异常，<\/span><span class="verdict-phrase">需注意风险/);assert.doesNotMatch(html,/id="verdict-title">可信度较高/);
-  h.run(`v.glance.first=['credit.status']`);assert.match(h.run('dossierOverview(v)'),/有异常，<\/span><span class="verdict-phrase">需注意风险/);
+  h.run(`v.glance.first=['credit.status'];
+    v.overview={schema_version:1,status:'warn',headline:'基础核查正常，另有事项需了解',detail:'2 项正常；1 项一般关注；1 项待核实。',
+      counts:{normal:2,attention:1,abnormal:0,unknown:1},items:[
+      {id:'credit.status',label:'登记状态',text:'存续',status:'ok',category:'normal',axis:'basics'},
+      {id:'credit.penalties',label:'处罚查询',text:'未见记录',status:'ok',category:'normal',axis:'stability'},
+      {id:'reputation.news_negative',label:'舆情关注',text:'时间待核实 <报道>',status:'warn',category:'attention',axis:'news'},
+      {id:'finance.annual',label:'年报',text:'本次未查成',status:'none',gap:'failed',category:'unknown',axis:'funds'}]};`);
+  const groups=JSON.parse(h.run('JSON.stringify(Object.fromEntries(Object.entries(dossierGroups(v)).map(([k,a])=>[k,a.length])))'));
+  assert.deepEqual(groups,{normal:2,attention:1,abnormal:0,unknown:1});
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/基础核查正常，/);assert.match(html,/另有事项需了解/);
+  assert.match(html,/4 项公司记录/);assert.doesNotMatch(html,/有异常，需注意风险|资料较少，需警惕/);
+  assert.match(html,/data-group="attention"/);assert.match(html,/data-id="reputation.news_negative"/);
+  assert.match(html,/时间待核实 &lt;报道&gt;/);
+  for(const [key,count] of Object.entries(groups)) assert.match(html,new RegExp('class="verdict-count '+key+'"[^>]*data-count="'+count+'"'));
+  const axes=JSON.parse(h.run('JSON.stringify(researchRadarAxes(v))'));
+  assert.equal(axes.find(a=>a.id==='news').status,'warn');
+  assert.equal(axes.find(a=>a.id==='funds').failed,true);
+  assert.equal(axes.reduce((n,a)=>n+a.checked+a.unchecked,0),4);
 });
 test('signal folder counts actual backend items and preserves its full details action',()=>{
   const h=harness();h.run(`v.signals=[{key:'finance',title:'财务',lede:'未提供财报 <说明>',items:[{key:'cash',label:'现金流',status:'none',gap:'failed'}]}]`);
   const html=h.run('dossierSignal(v.signals[0],0,v)');
-  assert.match(html,/内含 1 项核查记录/);assert.match(html,/没查成/);assert.match(html,/data-act="sigtile" data-key="finance"/);
+  assert.match(html,/内含 1 项核查记录/);assert.match(html,/未查成/);assert.match(html,/data-act="sigtile" data-key="finance"/);
   assert.match(html,/&lt;说明&gt;/);assert.doesNotMatch(html,/暂未见异常/);
 });
 test('live header binds every saved version and only flags demo evidence in the viewed version',()=>{
@@ -123,22 +133,30 @@ test('overview replaces the numeric headline with escaped version-specific compa
 });
 
 
-test('trust answer distinguishes missing evidence from a clear report and preserves issue priority',()=>{
+test('browser never substitutes an optimistic or alarming verdict for the backend snapshot',()=>{
   const h=harness();
-  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
   h.run(`v.signals=[{key:'credit',items:[{key:'status',status:'ok'}]}]`);
-  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'可信度较高');
-  h.run(`v.signals[0].items.push({key:'other',status:'none',gap:'not_covered'})`);
-  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
-  h.run(`v.signals[0].items[1]={key:'other',status:'none',gap:'failed'}`);
-  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
-  h.run(`v.signals[0].items[1]={key:'other',status:'warn'}`);
-  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'有异常，需注意风险');
-  h.run(`v.signals[0].items[1]={key:'other',status:'miss'}`);
-  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
-  const html=h.run('dossierOverview(v)');
-  assert.match(html,/这家公司是否值得你的信任/);
-  assert.doesNotMatch(html,/结论仅限本版已查记录|id="verdict-scope"|这次合作，关键项有没有问题/);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'概况待更新，请刷新报告');
+  for(const [status,headline] of [['ok','已核验信息整体正常'],['none','资料尚不完整，建议进一步核实'],['bad','发现异常记录，建议重点核实']]) {
+    h.ctx.snapshot={schema_version:1,status,headline,detail:'说明 <范围>',items:[],counts:{normal:0,attention:0,abnormal:0,unknown:0}};
+    h.run('v.overview=snapshot');
+    assert.equal(h.run('dossierTrustAnswer(v)[1]'),headline);
+    const html=h.run('dossierOverview(v)');
+    assert.match(html,/这家公司是否值得你的信任/);
+    assert.match(html,/说明 &lt;范围&gt;/);
+    assert.doesNotMatch(html,/结论仅限本版已查记录|可信度较高|资料较少，需警惕/);
+  }
+});
+
+test('materials and user opinions cannot overwrite a company overview or its radar',()=>{
+  const h=harness();h.run(`v.signals=[{key:'risk',items:[{key:'payee',status:'bad',source:'material'}]},
+    {key:'reputation',items:[{key:'user_reviews',status:'warn'}]}];
+    v.overview={schema_version:1,status:'ok',headline:'已核验信息整体正常',detail:'1 项正常',counts:{normal:1,attention:0,abnormal:0,unknown:0},
+      items:[{id:'credit.status',label:'登记',text:'存续',status:'ok',category:'normal',axis:'basics'}]};`);
+  assert.equal(h.run('dossierTrustAnswer(v)[0]'),'ok');
+  assert.equal(h.run("researchRadarAxes(v).find(a=>a.id==='qualify').checked"),0);
+  assert.equal(h.run("researchRadarAxes(v).find(a=>a.id==='news').checked"),0);
+  assert.equal(h.run('dossierFindings(v).length'),1);
 });
 
 test('saved material analyses are placed after inquiry features and before company details',()=>{
@@ -148,4 +166,13 @@ test('saved material analyses are placed after inquiry features and before compa
  assert.ok(html.indexOf('class="ma-archive"')>html.indexOf('class="recheck-grid"'));
  assert.ok(html.indexOf('class="ma-archive"')<html.indexOf('id="research-details"'));
  assert.match(html,/data-analysis="MA2"/);
+});
+
+test('an inapplicable licence is labelled explicitly and does not increase cleared signal counts',()=>{
+  const h=harness();
+  assert.equal(h.run("stLabel({status:'ok',gap:'not_applicable'})"),'不适用');
+  h.run(`v.signals=[{key:'risk',title:'风险',lede:'',items:[{key:'bank_list',status:'ok'},
+    {key:'amac',status:'ok',gap:'not_applicable'}]}]`);
+  assert.match(h.run('dossierSignal(v.signals[0],0,v)'),/1 项已核验/);
+  assert.doesNotMatch(h.run('dossierSignal(v.signals[0],0,v)'),/2 项已核验/);
 });
