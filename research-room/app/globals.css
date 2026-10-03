@@ -1018,7 +1018,7 @@ button {
   z-index: 9;
 }
 .xiaoqi-actor::before { opacity: calc(1 - var(--seated)); bottom: 3%; }
-.standing-body, .seated-body, .distance-walk, .planted-feet, .gesture-body {
+.standing-body, .seated-body, .distance-walk, .planted-feet, .gesture-body, .research-body {
   position: absolute;
   display: block;
   inset: 0;
@@ -1055,8 +1055,12 @@ button {
   transform: translateY(17%) rotate(var(--gesture));
   transform-origin: 50% 68%;
 }
-.research-feet, .research-body { background-position-y: 50%; transform: translateY(11%); }
-.research-body { transform: translateY(11%) rotate(var(--gesture)); }
+/* Read with one complete sprite: splitting animated poses at the waist leaves a seam. */
+.research-body {
+  background-image: var(--image-action, url('/research-assets/xiaoqi-action-cycles.q90.webp?v=e9c7687ccda8'));
+  background-position: var(--action-frame) 50%;
+  transform: translate(var(--reading-shift), 11%);
+}
 .action-stand .standing-body { transform: scaleX(-1); }
 .visitor-sprite {
   width: 181%; left: 48%; bottom: -13%;
