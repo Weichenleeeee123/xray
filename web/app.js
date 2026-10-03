@@ -1,8 +1,8 @@
 /* 企er 前端：原生 JS，不打包。契约以 backend/app/models.py 为准。
  *
- * 壳子分三个分区，顶栏一排按钮：查企（#/check）、案卷（#/cases）、我的（#/me）。
+ * 功能导航：查企（研究室首页 /）、案卷（#/cases）、资料库（#/library）、我的（#/me）、使用说明（#/guide）。
  * 报告不占分区，它属于案卷：#/case/<id> 最新版报告；#/case/<id>/v/<n> 第 n 版。
- * 右侧一栏是小企（AI）。三个分区里都在，没开案卷时它只说明自己能答什么、不能答什么，不假装能答。
+ * 右侧一栏是小企（AI）。没开案卷时它只说明自己能答什么、不能答什么，不假装能答。
  * 报告页：一页结论在最上面；四个信号、宣称 vs 记录、该问对方的、原始数据放在下面的标签页里，按需展开。
  * 页面里所有可点的东西都用 data-act 声明，统一在 onClick 里分发。
  * 条目 id：A1 说法、M1 缺项、risk.bank_list 信号条目、Q1 问题、R1 原始数据。R 开头的打开原始数据，其余跳到所在标签页里那一条。
@@ -40,8 +40,8 @@ function pendingNote(list) {   // "2 项没查成、1 项待补材料"，没查�
   return Object.entries(n).sort(([a], [b]) => (b === 'failed') - (a === 'failed')).map(([g, c]) => `${c} 项${GAP[g]}`).join('、');
 }
 const stLabel = i => (isRef(i) ? '只作参考' : (i.status === 'none' && GAP[i.gap]) || STATUS[i.status] || '');
-// 三个分区。顺序就是顶栏顺序，也是第一次用的人该走的顺序
-const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['library', '资料库', '收藏的名词，回头复习'], ['me', '我的', '使用说明、服务与资料覆盖']];
+// 与研究室首页的功能列表保持相同顺序。
+const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['library', '资料库', '收藏的名词，回头复习'], ['me', '我的', '个人主页'], ['guide', '使用说明', '使用方法、服务与资料覆盖']];
 const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
 const SUP_KIND = {
   material: { label: '新材料', help: '宣传单、合同、聊天记录的文字。可以上传图片、PDF、Word，读出来的文字会填进下面，你可以改。' },
@@ -326,7 +326,7 @@ const chgTag = (id, cm) => (cm[id] ? `<span class="chg-tag ${cm[id]}" title="和
 
 function renderTop() {
   const onCase = S.case && location.hash.startsWith('#/case/');
-  const sec = onCase ? 'cases' : /^#\/reset\b/.test(location.hash) ? 'me' : (location.hash.match(/^#\/(check|cases|library|me)/) || [])[1] || 'check';
+  const sec = onCase ? 'cases' : /^#\/reset\b/.test(location.hash) ? 'me' : (location.hash.match(/^#\/(check|cases|library|me|guide)\/?$/) || [])[1] || 'check';
   $('#shellNav').innerHTML = NAV.map(([k, label, hint]) =>
     `<button type="button" class="snav-b" data-act="go" data-sec="${k}" aria-current="${k === sec}" title="${esc(hint)}">${label}</button>`).join('');
   $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : sec === 'cases' ? '我的案卷' : '';
@@ -341,7 +341,7 @@ function renderTop() {
   $('#topBadges').innerHTML = b;
 }
 
-// ---------- 壳子：三个分区 + 小企栏 ----------
+// ---------- 壳子：功能分区 + 小企栏 ----------
 
 // 每个分区都长这样：左边是这一区的内容，右边一栏是小企。报告页用的也是这套结构（.case-layout），
 // 所以窄屏下小企栏会像报告页那样收成右下角一个球，不用另写一套。
@@ -386,34 +386,6 @@ function listLine(h) {
   }
   if (!lists.length) return '官方名单资料暂未读到，请刷新页面再试。';
   return `可按名称核对的官方名单：${lists.map(l => `${esc(l.title)} ${Number.isFinite(l.count) && l.count >= 0 ? `${l.count.toLocaleString('zh-CN')} 家` : '数量暂未读到'}（${l.as_of ? `截至 ${esc(l.as_of)}` : '资料日期未提供'}）`).join('、')}。名单只反映其收录范围和标注日期，不代表对公司或产品的完整核验。`;
-}
-
-// ---------- 分区一：查企 ----------
-
-async function renderCheck(request = routeRequest) {
-  $('#view').innerHTML = '<div class="home"><p class="muted">准备查询…</p></div>';
-  await startupReady;
-  if (!currentRoute(request)) return;
-  S.case = null; useTerms(S.terms); renderTop();
-  S.form = { userScenario: null, showScen: false, dirty: {}, intake: null };
-  $('#view').innerHTML = shellHtml(`
-  <div class="home">
-    <section class="home-hero">
-      <div class="kicker">查企</div>
-      <h1>把钱交给一家公司之前，先看清它。</h1>
-      <p>输入公司全称，说一句你要做什么。官方记录会汇到一起，对照它的说法，给你一份看得懂的报告。</p>
-    </section>
-    <div id="formWrap">${formHtml()}</div>
-    <p class="check-more" id="checkMore"></p>
-    <p class="lists-line">${listLine(S.health)}</p>
-  </div>`);
-  bindForm();
-  try {
-    const cases = await api('/api/cases', {signal: request?.signal});
-    if (!currentRoute(request)) return;
-    S.cases = cases;
-    if (S.cases.length && $('#checkMore')) $('#checkMore').innerHTML = `<a href="#/cases">你查过 ${S.cases.length} 家，都在「案卷」里 →</a>`;
-  } catch (e) { /* 列表读不到不影响新建 */ }
 }
 
 // ---------- 分区二：案卷 ----------
@@ -504,6 +476,13 @@ function renderLibrary() {
 // ---------- 分区四：我的 ----------
 
 async function renderMe(request = routeRequest) {
+  // Keep the account panel and its actions on the personal-home route.
+  await renderGuide(request, true);
+}
+
+// ---------- 使用说明：独立于个人主页 ----------
+
+async function renderGuide(request = routeRequest, showAccount = false) {
   S.case = null; useTerms(S.terms); renderTop();
   $('#view').innerHTML = '<div class="home"><p class="muted">读取服务状态…</p></div>';
   let cases = null;
@@ -538,12 +517,13 @@ async function renderMe(request = routeRequest) {
   $('#view').innerHTML = shellHtml(`
   <div class="home">
     <section class="home-hero">
-      <div class="kicker">我的</div>
-      <h1>使用说明</h1>
+      <div class="kicker">${showAccount ? '我的' : '使用说明'}</div>
+      <h1>${showAccount ? '我的' : '使用说明'}</h1>
       <p>了解当前可用的资料、案卷如何保存，以及阅读报告时需要留意的范围。</p>
     </section>
 
-    <section class="me-sec acct" id="acct">${acctHtml()}</section>
+    ${showAccount ? `<section class="me-sec acct" id="acct">${acctHtml()}</section>
+      <p class="me-p"><a href="#/guide">查看使用说明 →</a></p>` : ''}
 
     <section class="me-sec"><h2>服务与资料覆盖</h2>
       <dl class="kv-me">
@@ -2172,8 +2152,8 @@ async function route() {
   const request = routeRequest = new AbortController();
   researchCleanup();
   document.body.classList.remove('research-mode', 'cases-mode');
-  // The research room owns the homepage. The old full-material form remains at #/new.
-  if (!location.hash || /^#\/(?:check)?\/?$/.test(location.hash)) {
+  // The research room is the only query homepage, including old #/new bookmarks.
+  if (!location.hash || /^#\/(?:check|new)?\/?$/.test(location.hash)) {
     location.replace('/');
     return;
   }
@@ -2186,13 +2166,13 @@ async function route() {
     if (currentRoute(request) && !sameCase) window.scrollTo(0, 0);
     return;
   }
-  // 三个分区。#/check、#/cases、#/me，其余（含空 hash）都当查企
   if (/^#\/reset\b/.test(location.hash)) { renderReset(); return; }
-  const sec = (location.hash.match(/^#\/(check|cases|library|me)/) || [])[1] || 'check';
+  const sec = (location.hash.match(/^#\/(cases|library|me|guide)\/?$/) || [])[1];
   if (sec === 'cases') await renderCases(request);
   else if (sec === 'library') renderLibrary();
   else if (sec === 'me') await renderMe(request);
-  else await renderCheck(request);
+  else if (sec === 'guide') await renderGuide(request);
+  else { location.replace('/'); return; }
   if (currentRoute(request)) window.scrollTo(0, 0);
 }
 

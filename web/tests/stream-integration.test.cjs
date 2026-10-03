@@ -43,15 +43,17 @@ test('the mounted report returns to the research-room home in the same tab', asy
   assert.equal(h.run('returnedTo'),'/');
 });
 
-test('the full-material form stays available at /xray/#/new', async () => {
-  const h = harness();
-  h.run(`location.pathname='/xray/'; location.hash='#/new';
-    location.replace=()=>{throw new Error('Material form must not redirect')};
-    window.scrollTo=()=>{};
-    renderCheck=async()=>{globalThis.materialFormOpened=true};`);
-  await h.run('route()');
-  assert.equal(h.run('materialFormOpened'), true);
-});
+for (const hash of ['#/new', '#/new/', '#/new?old=1', '#/unknown', '#/', '']) {
+  test(`retired or unknown query link ${hash || '(empty)'} returns to the research room`, async () => {
+    const h = harness();
+    h.run(`location.pathname='/xray/'; location.hash=${JSON.stringify(hash)};
+      location.replace=path=>{globalThis.returnedTo=path};`);
+    await h.run('route()');
+    assert.equal(h.run('returnedTo'), '/');
+    assert.equal(h.node('#view').innerHTML, '');
+    assert.equal(h.run('typeof renderCheck'), 'undefined');
+  });
+}
 
 test('creation waits for a real streamed case, forwards all material and prevents duplicate submission', async () => {
   const h = harness();
