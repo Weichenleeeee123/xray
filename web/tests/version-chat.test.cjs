@@ -61,6 +61,15 @@ test('answers disclose omitted unsupported wording without exposing rejected con
  assert.match(missing,/部分信息仍待核实/);assert.doesNotMatch(missing,/已省略/);
 });
 
+test('selective evidence disclosure coexists with the upstream omitted-claim notice',()=>{
+  const h=harness();
+  const html=h.run(`msgHtml({role:'assistant',mode:'model',version:1,text:'已核对的答复',context_mode:'selective',has_omitted_claims:true,citations:['R1'],suggest:[]},null,4)`);
+  assert.match(html,/按需核对相关材料/);
+  assert.match(html,/部分表述未获依据支持，已省略/);
+  assert.equal((html.match(/原文出处 ↗/g)||[]).length,1);
+  assert.doesNotMatch(html,/原文（|程序拦下|重写|丢掉/);
+});
+
 test('source detail resolves report facts to original records from the answer version', () => {
   const h = harness();
   h.run(`S.case.raw=[{id:'R3',source_id:'registry',title:'旧版登记资料',kind:'official',content:'原文'}];
@@ -80,6 +89,15 @@ test('uncited empathy has no fake source button; source highlight escapes markup
   assert.match(html, /<mark>原文<\/mark>/);
   assert.doesNotMatch(html, /<script>/);
   assert.equal(h.run(`markText('原文原文',['原文','原文原文'])`), '<mark>原文原文</mark>');
+});
+
+test('selective context is disclosed and processing failure is not a company risk', () => {
+  const h = harness();
+  const html = h.run(`msgHtml({role:'assistant',version:1,text:'暂不能完整核对',context_mode:'selective',error_code:'evidence_coverage',not_found:true})`);
+  assert.match(html, /按需核对相关材料/);
+  assert.match(html, /本次材料处理未完成，不是企业风险结论/);
+  assert.doesNotMatch(html, /部分信息仍待核实|chat-sources/);
+  assert.doesNotMatch(h.run(`msgHtml({role:'assistant',version:1,text:'旧版回答'})`), /按需核对相关材料/);
 });
 
 test('source fallback uses a readable report label and keeps its versioned navigation', () => {

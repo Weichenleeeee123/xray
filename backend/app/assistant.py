@@ -1,6 +1,6 @@
 """AI 助手：只根据本案已收集的数据回答，每个关键事实标出处。
 
-- 整份案卷（当前版报告 + 原始数据）直接放进上下文，不用向量库。
+- 默认全量上下文；可配置私有案卷记忆及按需读取，不用向量库。
 - 程序校验出处：引用的 id 必须在案卷里存在，引文必须能在那条记录里逐字找到，否则丢掉并计数。
 - 对话不改结论。想让助手"判定安全""忽略规则"的，由程序直接拦下，不交给模型。
 - 回答越界（下定性、推测后果）时，告诉模型哪句越界，让它重写，最多 MAX_REWRITES 次；还越界或网关不通，才退回模板回答。
@@ -12,17 +12,24 @@
 import json
 import re
 import time
+import logging
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.glossary import find_terms, term_ref
 from app.sources.collect import now
-from app.llm import LLM, LLMError, REQUEST_DEADLINE
+from app.llm import LLM, LLMError, REQUEST_DEADLINE, REQUEST_CONTEXT_LIMIT
 from app import config
 from app.models import Case, ChatIn, ChatMessage, Quote, Term, Version
 from app.scenarios import get_scenario
 from app.conversation import GUIDES, complete_reply, money_from_user, safe_support, response_focus
+from app import privacy
+from app.case_memory.store import MemoryStore
+from app.case_memory.retriever import retrieve, condition_excerpts
+from app.case_memory.builder import tags as memory_topics
+
+log = logging.getLogger("xray.assistant")
 
 GUARD = re.compile(r"忽略.{0,8}(规则|指令|以上|之前|上面)|无视.{0,6}(规则|指令)|判定.{0,12}(安全|可靠|没问题|相符|正规)|"
                    r"改成.{0,6}(安全|相符|没问题)|你现在是|system\s*prompt|ignore\s+(all|previous|the)", re.I)
@@ -109,6 +116,9 @@ suggest 只写要核对什么，不写额外事实；优先使用行动目录。
 所有 fact 的 text 必须能在相应出处中核对；优先选择 fact_id，不强行改写企业事实。不得挂不相关的出处来增加新结论。
 只输出 JSON。例如回应担忧：{"segments":[{"kind":"support","text":"你会担心是可以理解的，我们可以慢慢把疑问弄清楚。"},{"kind":"user_context","guide_id":"user.amount"},{"kind":"clarify","guide_id":"savings.product"}],"not_found":false,"suggest":[]}。
 例如解释报告事实：{"segments":[{"kind":"fact","fact_id":"A2"},{"kind":"guidance","guide_id":"savings.terms"}],"not_found":false,"suggest":[]}。
+例如引用原材料：{"segments":[{"kind":"fact","text":"材料写明：“服务开始后不退。”","citations":["R10"],"quotes":[{"ref":"R10","text":"服务开始后不退。"}]}],"not_found":false,"suggest":[]}。
+两种事实格式不可混用：报告条目只填 fact_id；原材料填 text、citations、quotes，不填 fact_id。ref 只能放在 quotes 对象里，不能放在 segments 的段落对象上。
+退款、取用等问题优先读相关合同，连同限制、扣费、期限及相反条款一起回答，不能只引用“可以退款”或改为朗读无关企业资料。
 fact_id 必须来自本案可用条目，行动目录与用户自述都不是企业事实依据。"""
 
 UNKNOWN = "没查到：本案收集到的数据里没有可支持该回答的记录；不能据此认定有或没有问题。"
@@ -348,13 +358,24 @@ def validate(ans: _ModelAnswer, valid: dict[str, str], *,
              diagnostics: list[dict] | None = None,
              user_text: str = "", user_history: list[str] = (),
              fact_display: dict[str, str] | None = None,
-             quote_links: dict[str, list[str]] | None = None) -> tuple[str, list[str], list[Quote], int]:
+             quote_links: dict[str, list[str]] | None = None,
+             allowed_refs: set[str] | None = None,
+             read_leaves: dict[str, list[str]] | None = None) -> tuple[str, list[str], list[Quote], int]:
     """Reject unsupported fact segments, not only their invalid footnotes.
 
     Verbatim checks and limited verdict/numeric checks do NOT prove general
     semantic entailment. The response always remains an explanation, not evidence.
     """
-    leaves = quote_leaves or {ref: [text] for ref, text in valid.items()}
+    # Keep the full authoritative index at the caller. The model may only cite
+    # facts actually supplied this turn, and quote leaves actually read.
+    if allowed_refs is not None:
+        valid = {ref: text for ref, text in valid.items() if ref in allowed_refs}
+        for ref in list(valid):
+            if re.fullmatch(r"R\d+", ref):
+                valid[ref] = "\n".join((read_leaves or {}).get(ref, []))
+    leaves = dict(quote_leaves or {ref: [text] for ref, text in valid.items()})
+    if allowed_refs is not None:
+        leaves.update(read_leaves or {})
     dropped, cites, quotes, lines = 0, [], [], []
     fact_accepted = False
     bad_quote_refs = set()
@@ -572,14 +593,21 @@ def _select(case: Case, refs: list[str], version_no: int | None) -> tuple[Versio
 
 
 def answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
-           max_context_chars: int = 120_000) -> ChatMessage:
+           max_context_chars: int | None = None) -> ChatMessage:
+    started = time.monotonic()
+    max_context_chars = max_context_chars if max_context_chars is not None else config.ASSISTANT_CONTEXT_CHARS
     outer = REQUEST_DEADLINE.get()
     deadline = time.monotonic() + config.CHAT_TIMEOUT
     token = REQUEST_DEADLINE.set(min(outer, deadline) if outer is not None else deadline)
+    outer_limit = REQUEST_CONTEXT_LIMIT.get()
+    size_token = REQUEST_CONTEXT_LIMIT.set(min(outer_limit, max_context_chars) if outer_limit else max_context_chars)
     try:
         result = _answer(case, q, llm, version_no=version_no, max_context_chars=max_context_chars)
     finally:
         REQUEST_DEADLINE.reset(token)
+        REQUEST_CONTEXT_LIMIT.reset(size_token)
+        log.info("assistant_finished mode=%s elapsed_ms=%d", config.ASSISTANT_CONTEXT_MODE,
+                 (time.monotonic() - started) * 1000)
     if GUARD.search(q.text) or "超出本次模型上下文预算" in result.text or "没查到可用的引用" in result.text:
         return result
     version = next((v for v in case.versions if v.no == result.version), case.versions[-1])
@@ -605,28 +633,93 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
     terms = list(v.terms) or find_terms(" ".join(valid.values()))
     terms += [t for t in find_terms(q.text) if t.id not in {x.id for x in terms}]
     valid.update(glossary_entries(terms))
-    blob = _context_json(case, v, terms, max_chars=max_context_chars - len(q.text))
-    if len(blob) + len(q.text) > max_context_chars:
+    allowed_refs, read_leaves, selection = None, None, None
+    context_mode, context_value = "full", None
+    if config.CASE_MEMORY_ENABLED and config.ASSISTANT_CONTEXT_MODE in {"shadow", "selective"}:
+        started = time.monotonic()
+        owner = privacy.identity()
+        try:
+            memory = MemoryStore().get_or_build(case, v.no, owner)
+            selection = retrieve(case, v, owner, memory, q.text, refs,
+                                 evidence_budget=config.ASSISTANT_EVIDENCE_CHARS)
+            log.info("assistant_retrieval mode=%s elapsed_ms=%d cards=%d records=%d omitted=%d",
+                     config.ASSISTANT_CONTEXT_MODE, (time.monotonic()-started)*1000,
+                     len(selection.selected_cards), len(selection.raw_leaves), len(selection.omitted_units))
+        except PermissionError:
+            raise  # Never fall back across an ownership boundary.
+        except Exception as error:
+            log.warning("assistant_memory_fallback error_type=%s", type(error).__name__)
+        if selection and config.ASSISTANT_CONTEXT_MODE == "selective" and selection.complete:
+            context_mode, context_value = "selective", selection.context
+            term_query = q.text + " " + " ".join(valid[r] for r in selection.provided_refs if not r.startswith("R"))
+            terms = [t for t in terms if t.term in term_query or any(a in term_query for a in t.aliases)]
+            context_value["名词解释"] = [{"id":term_ref(t), "名词":t.term, "解释":t.plain, "对你意味着":t.why}
+                                        for t in terms]
+            allowed_refs = set(selection.provided_refs) | {term_ref(t) for t in terms}
+            context_value["允许引用的条目"] = sorted(allowed_refs)
+            read_leaves = selection.raw_leaves
+    overhead = len(SYSTEM) + len(json.dumps(_ModelAnswer.model_json_schema(), ensure_ascii=False)) + 8000
+    # Retain main's lossless packing for full/shadow and fallback. Selective
+    # retrieval is explicit; full mode must never silently discard evidence.
+    blob = (_context_json(case, v, terms, max_chars=max_context_chars - len(q.text) - overhead)
+            if context_value is None else json.dumps(context_value, ensure_ascii=False))
+    base["context_mode"] = context_mode
+    unknown_text = ("本次已读取的资料还不足以支持明确回答；未覆盖部分仍需核对，不能据此认定有或没有问题。"
+                    if context_mode == "selective" else UNKNOWN)
+    if len(blob) + len(q.text) + overhead > max_context_chars:
+        if selection and not selection.complete and config.ASSISTANT_CONTEXT_MODE == "selective":
+            return ChatMessage(text="这次问题涉及的相关材料仍有未覆盖部分，暂不能给出完整判断。材料已完整保存；请选中具体条目，或指定要核对的条款。",
+                error_code="evidence_coverage", not_found=True, mode="guard",
+                suggest=["请选中具体条目或指定核对范围"], **base)
         return ChatMessage(text="案卷超出本次模型上下文预算；没有截断材料后继续回答。你仍可查看报告和原始记录。"
                                 "选中条目便于明确问题，但完整案卷仍可能超出同一限制。",
-            not_found=True, mode="guard", suggest=["请查看报告条目及其原始记录"], **base)
-    messages = [{"role": "system", "content": SYSTEM + "\n本轮回答侧重点：" + response_focus(q.text, v.scenario, refs)},
+            error_code="context_budget", not_found=True, mode="guard", suggest=["请查看报告条目及其原始记录"], **base)
+    log.info("assistant_context mode=%s input_chars=%d overhead_reserve=%d", context_mode, len(blob), overhead)
+    context_rule = ("\n本轮为按需读取：仅可引用“允许引用的条目”和实际提供的原文；未检索到不等于不存在。"
+                    "概览及卡片编号不是独立证据，不声称已阅读整份案卷。"
+                    if context_mode == "selective" else "")
+    messages = [{"role": "system", "content": SYSTEM + context_rule + "\n本轮回答侧重点：" + response_focus(q.text, v.scenario, refs)},
                 {"role": "user", "content": "<案卷数据>\n" + blob + "\n</案卷数据>"},
                 {"role": "user", "content": (f"选中条目：{'、'.join(refs)}\n" if refs else "") + q.text}]
     blocked: list[str] = []
     total_dropped = 0
     safe_partial: ChatMessage | None = None
+    material_text, material_cites, material_quotes = "", [], []
+
+    def with_material(result: ChatMessage) -> ChatMessage:
+        # A verified positive excerpt alone is not a complete withdrawal answer.
+        # Retain the entire relevant leaf, including its conditions/negations.
+        if not material_text:
+            return result
+        body = result.text if not result.not_found else ""
+        if not all(quote.text in body for quote in material_quotes):
+            body = "\n\n".join(filter(None, [body, "相关材料记载（真实性与适用关系仍待核实）：\n" + material_text]))
+        elif "真实性与适用关系仍待核实" not in body:
+            body += "\n材料如此记载，真实性与适用关系仍待核实。"
+        return result.model_copy(update={"text": body, "not_found": False,
+            "citations": list(dict.fromkeys([*result.citations, *material_cites])),
+            "quotes": [*result.quotes, *(q for q in material_quotes if q not in result.quotes)],
+            "suggest": [GUIDES["savings.withdraw"]] if result.not_found else result.suggest})
 
     def fallback(rewrites: int) -> ChatMessage:
         if safe_partial is not None:
             # Keep only the previously validated answer and its original provenance.
             return safe_partial.model_copy(update={"dropped": total_dropped,
                                                    "rewrites": rewrites, "blocked": list(blocked)})
+        if material_text:
+            # Model/format failure is not "no records". This is a program-built,
+            # separately validated extract, never the rejected model candidate.
+            return with_material(ChatMessage(text="", mode="template", dropped=total_dropped,
+                rewrites=rewrites, blocked=blocked, suggest=[GUIDES["savings.withdraw"]], **base))
         if total_dropped:
             # A failed repair must not disguise rejected model facts as a success.
-            return ChatMessage(text=UNKNOWN, not_found=True, suggest=UNKNOWN_SUGGEST + suggest_add,
+            return ChatMessage(text=unknown_text, not_found=True, suggest=UNKNOWN_SUGGEST + suggest_add,
                                mode="guard", dropped=total_dropped, rewrites=rewrites, blocked=blocked, **base)
         text, cites, not_found, suggest = template_answer(case, v, q)
+        if allowed_refs is not None and (selection.intent == "support" or any(c not in allowed_refs for c in cites)):
+            text, cites, not_found, suggest = ("我们可以先把你关心的具体事项弄清楚。", [], False, []) if selection.intent == "support" else (unknown_text, [], True, UNKNOWN_SUGGEST)
+        if context_mode == "selective" and not_found:
+            text = unknown_text
         return ChatMessage(text=text, citations=cites, not_found=not_found, suggest=suggest + suggest_add,
                            mode="template", rewrites=rewrites, blocked=blocked, **base)
 
@@ -648,7 +741,46 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
     for raw in case.raw:
         if raw.id in valid:
             leaves[raw.id] = _leaves(raw.content)
+    if context_mode == "selective" and selection.intent != "support" and (
+        set(memory_topics(q.text)) & {"withdrawal", "fees", "term"}
+        or any(set(memory_topics(valid.get(ref, ""))) & {"withdrawal", "fees", "term"} for ref in refs)
+    ):
+        required = []
+        for raw in case.raw:
+            if raw.kind != "user_material" or raw.id not in selection.raw_leaves:
+                continue
+            for leaf in dict.fromkeys(selection.raw_leaves[raw.id]):
+                if set(memory_topics(leaf)) & {"withdrawal", "fees", "term"}:
+                    required.extend((raw.id, excerpt) for excerpt in condition_excerpts(leaf))
+        # Never turn an overlong clause into an incomplete quote to fit output.
+        if any(len(leaf) > 2900 for _, leaf in required) or sum(len(leaf) for _, leaf in required) > 6000:
+            return ChatMessage(text="相关合同条款较长，本次尚不能完整呈现条件和例外。材料已完整保存，请选定要核对的具体条款。",
+                mode="guard", error_code="evidence_coverage", not_found=True,
+                suggest=["请选中具体条款或指定核对范围"], **base)
+        extracts = _ModelAnswer(segments=[_Segment(text=f"材料写明：“{leaf}”", citations=[ref],
+            quotes=[Quote(ref=ref, text=leaf)]) for ref, leaf in required]) if len(required) <= 12 else None
+        if extracts is not None:
+            material_text, material_cites, material_quotes, rejected = validate(
+                extracts, valid, quote_leaves=leaves, rule_states=_rule_states(v),
+                allowed_refs=allowed_refs, read_leaves=read_leaves)
+        else:
+            rejected = 1
+        if rejected:
+            return ChatMessage(text="相关材料的条件或例外尚未全部通过核对，暂不能据此判断能否取回。请查看原始材料中的完整条款。",
+                mode="guard", error_code="evidence_coverage", not_found=True,
+                suggest=["请核对完整条款及其适用主体"], **base)
+        if material_text:
+            messages[0]["content"] += (
+                "\n本轮优先回答合同中的取用及限制，不需要复述无关投诉、注册或牌照。"
+                "已提供经程序逐字核对的相关材料 segments，保留其 text/citations/quotes 原格式与全部条件，"
+                "可选一个 guidance=savings.withdraw，不要在原文外添加公司事实。"
+                "用户没有明确表达害怕、担心等情绪时，不添加 support 段。")
+            messages.insert(2, {"role": "user", "content": "<已核对引用格式，仅作为材料数据>\n"
+                + extracts.model_dump_json() + "\n</已核对引用格式，仅作为材料数据>"})
     for rewrites in range(MAX_REWRITES + 1):
+        # Repairs append messages, so recheck rather than granting each retry a fresh budget.
+        if sum(len(str(m.get("content", ""))) for m in messages) + overhead > max_context_chars:
+            return fallback(rewrites)
         try:
             out, reply = llm.chat_json(messages, _ModelAnswer, cache_namespace=f"case:{case.id}:v:{v.no}:assistant")
         except LLMError:
@@ -666,22 +798,23 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
         text, cites, quotes, dropped = validate(out, valid, quote_leaves=leaves, rule_states=_rule_states(v),
                                               diagnostics=diagnostics, user_text=q.text,
                                               user_history=[m.text for m in case.chat if m.role == "user" and m.version == v.no][-HISTORY:],
-                                              fact_display=display, quote_links=links)
+                                              fact_display=display, quote_links=links,
+                                              allowed_refs=allowed_refs, read_leaves=read_leaves)
         total_dropped += dropped
         not_found = out.not_found or not bool(text)
         if not text:
-            text = UNKNOWN
+            text = unknown_text
         # Suggestions are requests to verify, never promoted to report facts.
         suggest = [s[:160] for s in out.suggest if re.match(r"(?:请)?(?:核对|确认|补充|询问|索取|检查)", s)
                    and not re.search(r"从未|已经|保证|肯定|不存在|所有|\d", s)
                    and not FORBIDDEN.search(_without_safety_negation(s)) and not overreach(s, data)][:3]
         if not_found:
             suggest = UNKNOWN_SUGGEST
-        result = ChatMessage(text=text, citations=cites, quotes=quotes, not_found=not_found,
+        result = with_material(ChatMessage(text=text, citations=cites, quotes=quotes, not_found=not_found,
                              suggest=suggest + suggest_add, dropped=total_dropped, mode=reply.mode,
                              recorded_at=reply.recorded_at if reply.mode == "replay" else None,
-                             rewrites=rewrites, blocked=blocked, **base)
-        if not not_found and safe_partial is None:
+                             rewrites=rewrites, blocked=blocked, **base))
+        if not result.not_found and safe_partial is None:
             safe_partial = result
         if dropped and not out.not_found and rewrites < MAX_REWRITES:
             feedback = GROUNDING_REWRITE + "\n上一版通过校验的回答：" + (text if not not_found else "（无）")

@@ -213,3 +213,13 @@ test('a historical report without a conclusion retains the radar, need and sourc
  assert.match(html,/现有记录尚不足以形成结论/);assert.match(html,/五维雷达/);
  assert.match(html,/核对原合同/);assert.match(html,/data-act="tab" data-tab="raw"/);
 });
+
+test('radar caption is concise without changing the five axes or evidence boundary',()=>{
+ const h=harness();h.ctx.v={signals:[]};
+ const html=h.run('researchRadar(v)');
+ assert.match(html,/<span>定性示意<\/span>/);
+ assert.doesNotMatch(html,/不设评分/);
+ assert.equal((html.match(/data-axis=/g)||[]).length,5);
+ assert.match(html,/虚线表示这一维暂无记录，不等于没有问题/);
+ assert.match(html,/不用于比较投资表现/);
+});

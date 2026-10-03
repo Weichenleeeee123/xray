@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>案卷工作空间 · 布局预览，未正式接入</title>
+  <link rel="stylesheet" href="/xray/style.css">
+  <link rel="stylesheet" href="/xray/xiaoqi-silhouettes.css">
+  <link rel="stylesheet" href="/xray/case-design.css">
+  <link rel="stylesheet" href="/xray/case-palette.css">
+  <link rel="stylesheet" href="/xray/report-workspace.css">
+  <link rel="stylesheet" href="preview.css">
+</head>
+<body class="research-mode report-workspace archive-preview">
+  <svg style="display:none" aria-hidden="true"><defs>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5V3ZM14 3v6h5M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v12H9l-5 4V5ZM8 9h8M8 13h5"/></symbol>
+  </defs></svg>
+  <header class="topbar">
+    <a class="brand" href="#" data-preview-action="首页"><img class="logo" src="/research-assets/qier-icon-96.webp" alt="" width="28" height="28"><span class="brand-text"><b>企er</b><span>透视·真相</span></span></a>
+    <div class="case-strip">我的案卷</div>
+    <div class="top-badges"><span class="preview-indicator">布局预览 · 示例数据</span></div>
+    <button class="workspace-assistant-toggle" type="button" id="toggle-assist" aria-controls="assist" aria-expanded="true"><svg><use href="#i-chat"/></svg><span>收起助手</span></button>
+  </header>
+
+  <aside class="workspace-sidebar" aria-label="功能导航">
+    <div class="workspace-nav-label">工作空间</div>
+    <nav class="shell-nav" aria-label="分区">
+      <button class="snav-b" type="button" data-sec="check" data-preview-action="查企">查企</button>
+      <button class="snav-b" type="button" data-sec="cases" aria-current="true">案卷</button>
+      <button class="snav-b" type="button" data-sec="me" data-preview-action="我的">我的</button>
+    </nav>
+    <div class="archive-sidebar-note"><svg><use href="#i-lock"/></svg><b>你的私人档案</b><p>上传的材料和对话<br>不会自动公开。</p></div>
+    <div class="workspace-sidebar-foot"><i></i><span>小企研究室</span></div>
+  </aside>
+
+  <div id="view" class="view">
+    <div class="case-layout">
+      <main class="report" id="report">
+        <section class="archive-heading">
+          <div class="archive-topline"><span class="archive-eyebrow"><i></i> 企业研究档案 / 案卷</span><button type="button" class="research-button" data-preview-action="查一家公司">＋ 查一家公司</button></div>
+          <h1>查过的公司</h1>
+          <p>从上次的疑问继续。报告、补充材料和每一次变化，都保留在同一份案卷里。</p>
+        </section>
+
+        <section aria-labelledby="archive-list-title">
+          <div class="archive-list-heading"><h2 id="archive-list-title">已保存的案卷 <span>03</span></h2><span>按新建时间排列</span></div>
+          <div class="archive-list">
+            <a href="#" class="archive-row" data-preview-action="云杉科技的报告">
+              <span class="archive-file"><svg><use href="#i-file"/></svg><small>01</small></span>
+              <div class="archive-row-body"><div class="archive-row-title"><h3>云杉科技服务（示例）</h3><span class="archive-versions">3 个版本</span></div><p class="archive-need"><span>本次关注</span>想长期发展，入职前有哪些信息要核实？</p><div class="archive-row-meta"><span class="archive-scenario">求职 / 入职</span><time datetime="2026-10-03T08:42">2026-10-03 08:42 新建</time></div></div>
+              <span class="archive-open">打开报告 <svg><use href="#i-arrow"/></svg></span>
+            </a>
+            <a href="#" class="archive-row" data-preview-action="青禾居住的报告">
+              <span class="archive-file"><svg><use href="#i-file"/></svg><small>02</small></span>
+              <div class="archive-row-body"><div class="archive-row-title"><h3>青禾居住服务（示例）</h3><span class="archive-versions">2 个版本</span></div><p class="archive-need"><span>本次关注</span>准备签租房合同，想核对合同和收款主体。</p><div class="archive-row-meta"><span class="archive-scenario">签约 / 合作</span><time datetime="2026-10-03T08:15">2026-10-03 08:15 新建</time></div></div>
+              <span class="archive-open">打开报告 <svg><use href="#i-arrow"/></svg></span>
+            </a>
+            <a href="#" class="archive-row" data-preview-action="星桥生活的报告">
+              <span class="archive-file"><svg><use href="#i-file"/></svg><small>03</small></span>
+              <div class="archive-row-body"><div class="archive-row-title"><h3>星桥生活服务（示例）</h3><span class="archive-versions">1 个版本</span></div><p class="archive-need"><span>本次关注</span>准备支付一笔预付款，想先了解退款条件。</p><div class="archive-row-meta"><span class="archive-scenario">消费 / 预付</span><time datetime="2026-10-03T07:50">2026-10-03 07:50 新建</time></div></div>
+              <span class="archive-open">打开报告 <svg><use href="#i-arrow"/></svg></span>
+            </a>
+          </div>
+        </section>
+
+        <footer class="archive-footer"><svg><use href="#i-file"/></svg><p>拿到新合同、付款信息或对方回复？<br><span>打开对应案卷，补充材料后继续核对；旧版报告仍可回看。</span></p><span class="preview-footnote">此页仅展示布局<br>不含真实查询结果</span></footer>
+      </main>
+
+      <aside class="assist open" id="assist" aria-label="小企助手">
+        <div class="as-head"><div class="as-heading"><h3>小企 <span class="qi-role">报告助手</span></h3><p>理解你的顾虑，结合案卷核对事实。</p></div><button class="as-x" type="button" id="close-assist" aria-label="收起小企">×</button></div>
+        <div class="as-body archive-assistant-body">
+          <div class="archive-qi-welcome"><span class="qi-sprite" role="img" aria-label="小企"></span><span>等你选一份案卷</span></div>
+          <h2>接着上次，<br>一起把疑问弄清楚。</h2>
+          <p class="archive-assistant-lede">打开左边的一份案卷，我就能结合对应报告，帮你理解记录、核对新材料。</p>
+          <div class="archive-prompt-label">你可以从这些问题开始</div>
+          <div class="chips archive-chips">
+            <button class="chip" type="button" data-preview-action="请先打开一份案卷">为什么这一条需要留意？ <span>↗</span></button>
+            <button class="chip" type="button" data-preview-action="请先打开一份案卷">新材料改变了哪些判断？ <span>↗</span></button>
+            <button class="chip" type="button" data-preview-action="请先打开一份案卷">下一步该向对方确认什么？ <span>↗</span></button>
+          </div>
+          <div class="archive-assistant-note"><svg><use href="#i-chat"/></svg><p>关键事实可以回看出处。<br>还没核实的，会和已知信息分开说。</p></div>
+        </div>
+        <div class="archive-assistant-bottom"><span class="archive-status-dot"></span>尚未选择案卷 · 暂不读取具体材料</div>
+      </aside>
+    </div>
+  </div>
+  <div class="preview-toast" role="status" hidden></div>
+  <script src="preview.js"></script>
+</body>
+</html>

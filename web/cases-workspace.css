@@ -1,0 +1,65 @@
+/* The approved cases list uses the report's workspace shell; no report data styling changes. */
+.archive-icon {width:20px;height:20px;flex-shrink:0}
+.cases-mode .archive-heading {padding:22px 0 30px}
+.archive-topline {display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:32px}
+.archive-eyebrow {display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.08em;color:#795c31}
+.archive-eyebrow i {width:5px;height:5px;border-radius:50%;background:#b88b4c}
+.cases-mode .archive-heading h1 {font-family:var(--sans);font-size:42px;font-weight:650;line-height:1.35;letter-spacing:-.025em;margin:0 0 13px;color:#222e39}
+.archive-heading>p {font-size:14px;line-height:1.9;margin:0;color:#6f675b;max-width:710px}
+.archive-list-heading {display:flex;align-items:baseline;justify-content:space-between;gap:15px;padding:16px 0 15px;border-top:1px solid #c9b89a}
+.archive-list-heading h2 {font-size:15px;font-weight:600;margin:0;color:#29333a}
+.archive-list-heading h2 span {font:11px var(--mono);margin-left:10px;color:#795c31}
+.archive-list-heading>span {font-size:11px;color:#6f675b}
+.archive-list {display:grid;gap:13px}
+.archive-row {display:flex;align-items:center;gap:20px;text-decoration:none;padding:24px 23px;border:1px solid #caba9e;border-radius:11px;background:linear-gradient(115deg,#fffcf5,#fbf6eb);box-shadow:0 5px 16px #222e3905,inset 0 1px #fffefa;transition:border-color .18s,background .18s,box-shadow .18s}
+.archive-row:hover {border-color:#947242;background:#fffcf6;box-shadow:0 7px 20px #222e3910}
+.archive-file {width:42px;display:grid;justify-items:center;align-content:center;gap:8px;color:#8a641f;flex-shrink:0}
+.archive-file>svg {width:29px;height:34px;stroke-width:1.1}
+.archive-file>small {font:10px var(--mono);color:#6f675b}
+.archive-row-body {flex:1;min-width:0}
+.archive-row-title {display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.archive-row-title h3 {font-size:21px;line-height:1.5;font-weight:600;margin:0;color:#222e39;overflow-wrap:anywhere}
+.archive-versions {font-size:10px;line-height:1.6;border:1px solid #ccbba0;padding:1px 7px;border-radius:4px;white-space:nowrap;color:#6f675b;background:#f7f0e055}
+.archive-need {margin:8px 0 13px;font-size:13px;line-height:1.8;color:#464d4b;overflow-wrap:anywhere}
+.archive-need>span {font-size:10px;color:#6f675b;margin-right:11px}
+.archive-row-meta {display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;font-size:10px;color:#6f675b}
+.archive-scenario {background:#eee6d7;padding:2px 7px;border-radius:3px;color:#625c50}
+.archive-open {display:flex;align-items:center;gap:8px;font-size:12px;color:#795c31;white-space:nowrap}
+.archive-open svg {width:16px;height:16px}
+.archive-footer {display:flex;align-items:flex-start;gap:12px;margin:25px 0 32px;padding-top:20px;border-top:1px solid #d9ccb4;color:#6f675b}
+.archive-footer>svg {margin-top:3px;width:17px;height:20px;color:#8a641f}
+.archive-footer p {font-size:12px;line-height:1.9;margin:0}
+.archive-footer p span {font-size:11px}
+.archive-state {padding:36px 25px;border:1px solid #caba9e;border-radius:11px;background:#fcf8ee;color:#6f675b;font-size:14px;line-height:1.9}
+.archive-state h3 {font:600 21px var(--sans);color:#222e39;margin:0}
+.archive-state p {margin:0 0 16px;overflow-wrap:anywhere}
+.archive-state h3+p {margin-top:12px}
+.archive-sidebar-note {display:none;margin:31px 12px 0;padding:22px 0 0;border-top:1px solid #d9ccb4;color:#6f675b}
+.cases-mode .archive-sidebar-note {display:block}
+.archive-sidebar-note svg {width:16px;height:16px;vertical-align:-3px;margin-right:6px;color:#8a641f}
+.archive-sidebar-note b {font-size:11px;font-weight:500}
+.archive-sidebar-note p {font-size:11px;line-height:1.9;margin:9px 0}
+.cases-mode .workspace-chapter-label,.cases-mode .workspace-chapters {display:none}
+.cases-mode .assist {flex-direction:column}
+.cases-mode .as-head {display:flex;align-items:start;justify-content:space-between}
+.cases-mode .as-heading h3 {font-family:var(--sans);font-weight:600}
+.cases-mode .as-heading p {font-size:11px;color:#6f675b}
+.archive-assistant-body {flex:1;overflow:auto}
+.archive-qi-welcome {display:flex;align-items:center;gap:8px;margin:14px 0 19px}
+.archive-qi-welcome .qi-sprite {width:88px;height:88px}
+.archive-qi-welcome>span:last-child {border:1px solid #d9ccb4;border-radius:8px 8px 8px 0;background:#f7f0e0;color:#6f675b;padding:7px 9px;font-size:11px}
+.archive-assistant-body h2 {font-size:22px;line-height:1.55;letter-spacing:-.015em;font-weight:550;color:#222e39;margin:0 0 14px}
+.archive-assistant-lede {font-size:13px;line-height:1.9;color:#6f675b;margin:0 0 26px}
+.archive-prompt-label {font-size:10px;color:#6f675b;margin-bottom:12px}
+.archive-chips {display:grid;gap:9px}
+.cases-mode .archive-chips .chip {display:flex;justify-content:space-between;align-items:center;gap:7px;text-align:left;border:1px solid #caba9e;border-radius:6px;background:#f7f0e0;color:#29333a;padding:12px 10px;font-size:12px;line-height:1.5}
+.archive-chips .chip>span {color:#8a641f}
+.cases-mode .archive-chips .chip:hover {border-color:#947242;background:#eee6d7;color:#222e39}
+.archive-assistant-note {display:flex;align-items:start;gap:8px;border-top:1px solid #d9ccb4;margin-top:25px;padding-top:16px}
+.archive-assistant-note>svg {width:14px;height:14px;color:#8a641f;margin-top:4px}
+.archive-assistant-note p {font-size:11px;color:#6f675b;line-height:1.85;margin:0}
+.archive-assistant-bottom {flex:none;display:flex;align-items:center;gap:7px;padding:16px;border-top:1px solid #d9ccb4;font-size:10px;color:#6f675b;background:#f7f0e066}
+.archive-status-dot {width:5px;height:5px;background:#a59780;border-radius:50%;flex-shrink:0}
+@container(max-width:800px) {.archive-row{padding:21px 17px;gap:14px}.archive-row-title h3{font-size:18px}.archive-open{font-size:11px;gap:4px}.archive-file{width:29px}.archive-need{font-size:12px}.archive-need>span{display:none}}
+@media(max-width:760px) {.cases-mode .archive-sidebar-note{display:none}.archive-topline{flex-wrap:wrap}.archive-row{flex-wrap:wrap}.archive-open{margin-left:auto}.cases-mode .archive-heading h1{font-size:32px}}
+@media(prefers-reduced-motion:reduce) {.archive-row{transition:none}}
