@@ -136,6 +136,8 @@ export default function Home() {
     '--seated': seated,
     '--seated-mix': seated > 0.85 ? (seated - 0.85) / 0.15 : 0,
     '--action-frame': (actionFrame * 100) / 3 + '%',
+    // Reading frames share a ground line; align their foot centers (184.5 / 168 px in a 362 px cell).
+    '--reading-shift': actionFrame === 2 ? '4.558011%' : '0%',
     '--gesture': Math.sin(local / 220) * 1.5 + 'deg',
   } as CSSProperties;
   const knownRecords = state.steps
@@ -385,14 +387,12 @@ export default function Home() {
                   style={{ opacity: direction === motion.facing ? 1 : 0 }}
                 />
               ))
+            ) : research ? (
+              <span className="research-body" />
             ) : (
               <>
-                <span
-                  className={`planted-feet ${research ? 'research-feet' : ''}`}
-                />
-                <span
-                  className={`gesture-body ${research ? 'research-body' : ''}`}
-                />
+                <span className="planted-feet" />
+                <span className="gesture-body" />
               </>
             )}
           </span>
