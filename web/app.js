@@ -1541,8 +1541,44 @@ function contentHtml(content, quotes) {
   return table(content);
 }
 function sourceUrl(url) {
-  try { const parsed = new URL(url); return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : null; }
+  try { const parsed = new URL(url); return ['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : null; }
   catch { return null; }
+}
+function sourceLinkInfo(url, r = {}) {
+  const href = sourceUrl(url);
+  if (!href) return null;
+  const parsed = new URL(href), host = parsed.hostname.toLowerCase();
+  const portal = /^\/(?:index\.(?:html?|shtml))?$/.test(parsed.pathname)
+    || ['agent.qcc.com', 'openapi.qcc.com', 'open.tianyancha.com'].includes(host);
+  if (portal) return {href, label: r.kind === 'commercial' ? '数据平台入口' : '来源网站入口',
+    note: '这是平台或网站入口，未提供这条记录的独立原文地址；本次取得的数据保留在下方。'};
+  if (r.source_id === 'amac' || /\/(?:search|query)(?:\/|\.|$)/i.test(parsed.pathname))
+    return {href, label:'来源查询入口', note:'需在来源网站内按主体或记录信息查询，不是这条记录的直达页面。'};
+  if ((host === 'qcc.com' || host.endsWith('.qcc.com')) && parsed.pathname.startsWith('/postnews/'))
+    return {href, label:'平台转载页面', note:'该地址由数据平台提供，不等于报道发布方的原文地址，可能需要登录。'};
+  if (/\.pdf$/i.test(parsed.pathname)) return {href, label:'来源文档', note:''};
+  if (['web_official','web_news','web_media'].includes(r.source_id) || r.discovery?.read_state === 'snippet_only')
+    return {href, label:'搜索命中页面', note:'本次依据包含搜索摘要，不代表已核验全文；请核对页面中的主体、内容和日期。'};
+  return {href, label:'来源页面', note:'请核对页面中的主体、内容和日期。'};
+}
+function rawSourceLinks(r) {
+  const render = (info, title) => `<a class="linkish" href="${esc(info.href)}" target="_blank" rel="noopener noreferrer">${esc(title ? `${title} · ${info.label}` : info.label)} ↗</a>${info.note ? `<p class="small muted">${esc(info.note)}</p>` : ''}`;
+  // These aggregate records have explicit per-document links. Do not present
+  // the annual report or provider homepage as the original for every item.
+  const entries = r.source_id === 'cninfo' ? [r.content?.['最新年度报告'], ...(Array.isArray(r.content?.['标题带处罚、诉讼、问询等字样的']) ? r.content['标题带处罚、诉讼、问询等字样的'] : [])]
+    : r.source_id === 'qcc_news' ? Object.values(r.content || {}).filter(Array.isArray).flat() : [];
+  const links = [], seen = new Set();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue;
+    const info = sourceLinkInfo(entry.url || entry['链接'], r);
+    const title = entry.title || entry['标题'];
+    if (!info || !title || seen.has(info.href)) continue;
+    seen.add(info.href); links.push(`<li>${render(info, title)}</li>`);
+  }
+  const primary = sourceLinkInfo(r.url, r);
+  const primaryHtml = primary && !(r.source_id === 'cninfo' && links.length && seen.has(primary.href)) ? render(primary) : '';
+  const documents = links.length ? `<details><summary>记录内文档与报道链接 · ${links.length} 条</summary><p class="small muted">每个链接只对应其标题，不能代表整组记录。</p><ul>${links.join('')}</ul></details>` : '';
+  return primaryHtml + documents || '<span class="small muted">本次未取得可直达的外部来源地址，可核对下方保存的记录。</span>';
 }
 function openRaw(rid, quotes) {
   const r = rawById(rid);
@@ -1550,14 +1586,14 @@ function openRaw(rid, quotes) {
   const s = srcOf(r.source_id), back = backRefs(rid), kind = rawKind(r);
   const dlg = $('#rawDlg');
   dlg.innerHTML = `<div class="dlg-in">
-    <div class="dlg-head"><div><div class="kicker">${hideRecordIds() ? '来源原文' : `原始数据 ${esc(r.id)}`} · <span class="k-${esc(kind)}">${esc(KIND[kind] || r.kind)}</span> · <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span></div>
+    <div class="dlg-head"><div><div class="kicker">${hideRecordIds() ? '已保存来源记录' : `原始数据 ${esc(r.id)}`} · <span class="k-${esc(kind)}">${esc(KIND[kind] || r.kind)}</span> · <span class="covl ${esc(r.coverage)}">${COVERAGE[r.coverage] || ''}</span></div>
       <h3 id="rawTitle">${esc(r.title)}</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
     <div class="dlg-body">
       <dl class="kv">
         <dt>来源</dt><dd>${esc(s ? s.name : r.source_id)}${s && s.note ? `<div class="small muted">${esc(s.note)}</div>` : ''}</dd>
         ${r.as_of ? `<dt>数据截至</dt><dd class="mono">${esc(r.as_of)}</dd>` : ''}
         <dt>采集时间</dt><dd class="mono">${esc(fmtTime(r.retrieved_at))}</dd>
-        ${sourceUrl(r.url) ? `<dt>原文链接</dt><dd><a href="${esc(sourceUrl(r.url))}" target="_blank" rel="noopener noreferrer">打开原文网站 ↗</a></dd>` : ''}
+        <dt>外部来源</dt><dd>${rawSourceLinks(r)}</dd>
         ${r.screenshot ? `<dt>截图</dt><dd>${esc(r.screenshot)}</dd>` : ''}
       </dl>
       ${kind === 'demo' ? '<div class="raw-note">演示数据：这家公司和这条记录都是编的，只用来演示。</div>' : ''}
@@ -1779,7 +1815,7 @@ function chatSourcesHtml(m) {
       <p class="small muted">采集：${esc(fmtTime(r.retrieved_at))}${r.as_of ? ` · 数据截至：${esc(r.as_of)}` : ''}</p>
       ${quotes.map(q => `<blockquote>${markText(q, [q])}</blockquote>`).join('')}
       <button type="button" class="linkish" data-act="raw" data-ref="${esc(r.id)}" data-version="${v.no}" data-hl="${esc(JSON.stringify(quotes))}">查看完整记录</button>
-      ${sourceUrl(r.url) ? `<a class="linkish" href="${esc(sourceUrl(r.url))}" target="_blank" rel="noopener noreferrer">原文网站 ↗</a>` : ''}</section>`;
+      ${rawSourceLinks(r)}</section>`;
   }).join('') + extras.join('');
 }
 function openChatSources(index) {
