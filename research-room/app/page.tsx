@@ -360,19 +360,14 @@ export default function Home() {
             <span className="visitor-sprite" />
           </figure>
         )}
-        {state.steps.some(
-          (s) =>
-            (s.id === 'reviews' || s.id === 'opinion') && s.phase === 'done' && s.coverage === 'found',
-        ) &&
-          !scene.socialHandled &&
-          door === 0 && (
-            <div className="knock-effect" aria-label="门外传来敲门声">
-              <span />
-              <span />
-              <span />
-              <strong>咚 · 咚</strong>
-            </div>
-          )}
+        {scene.knocking && (
+          <div className="knock-effect" aria-label="门外传来敲门声">
+            <span />
+            <span />
+            <span />
+            <strong>咚 · 咚</strong>
+          </div>
+        )}
         <figure
           className={`xiaoqi-actor ${walking ? 'walking' : 'stationary'} facing-${motion.facing} action-${phase.visual}`}
           style={actorStyle}

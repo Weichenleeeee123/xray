@@ -30,27 +30,77 @@ test('current activity exposes every parallel query and saved state takes preced
   assert.match(events.researchProgress(s).current,/lists.*web/);
   assert.equal(events.researchProgress({...s,connection:'saved'}).current,'研究已完成，可以查看报告');
 });
-test('a fast saved run does not replay historical source visits', () => {
-  const s = state(['lists','registry','pack','web','amac','reviews'].map(id=>step(id,'done','found')),'saved');
+test('fast saved results skip the source tour, including found social records', () => {
+  const s = { ...state(['lists','registry','pack','web','amac','reviews'].map(id=>step(id,'done','found')),'saved'),
+    result: { id:'saved', current:1, versions:[{no:1}] } };
   const d = new OfficeDirector();
-  for(let t=0;t<6000 && !d.finished;t+=20) {
+  for(let t=0;t<3000 && !d.finished;t+=20) {
     d.tick(20,s);
-    assert.notEqual(d.sample().phase.id,'research');
+    const scene = d.sample();
+    assert.equal(events.reportPresentation(s,scene.phase.id).canOpen,true);
+    assert.equal(scene.phase.station,undefined);
+    assert.notEqual(scene.phase.mode,'walk');
+    assert.equal(scene.knocking,false);
+    assert.equal(scene.door,0);
   }
-  assert.equal(d.finished,true,'saved report must be presented within six seconds');
+  assert.equal(d.finished,true);
 });
-test('completion while walking returns promptly without teleporting or crossing the desk', () => {
+test('live lookups retain the full page-turn cycle without replaying finished stations', () => {
+  const s = state([step('lists','done','found'), step('pack','done','not_found'),
+    step('web','start'),step('amac','done','failed'),step('registry','done','not_covered')]);
+  const d = new OfficeDirector();
+  const frames = new Set();
+  for(let t=0;t<8000;t+=20) {
+    d.tick(20,s);
+    if(d.action.station) {
+      assert.equal(d.action.station,'news');
+      frames.add(Math.floor(d.local/400));
+    }
+  }
+  assert.deepEqual([...frames],[0,1,2,3]);
+});
+test('completion while walking cancels unstarted research and returns continuously', () => {
   const d = new OfficeDirector();
   let s = state([step('web','start'),step('lists','waiting')]);
-  for(let t=0;t<1200;t+=20) d.tick(20,s);
+  for(let t=0;t<1400;t+=20) d.tick(20,s);
+  assert.equal(d.action.mode,'walk');
   s = {...s, connection:'saved',steps:s.steps.map(s=>({...s,phase:'done',coverage:'found'}))};
   let prior = d.sample().motion.position;
-  for(let t=0;t<7000 && !d.finished;t+=20) {
+  for(let t=0;t<8000 && !d.finished;t+=20) {
     d.tick(20,s);
+    assert.equal(d.action.station,undefined,'no lookup may start after completion');
     const p = d.sample().motion.position;
     assert.ok(Math.hypot((p.x-prior.x)*16.72,(p.y-prior.y)*9.41)<15,'movement must stay continuous');
     assert.ok(!(p.x>28 && p.x<72 && p.y>70 && p.y<95),'must route around desk');
     prior=p;
   }
-  assert.equal(d.finished,true,'should catch up within seven seconds even mid-route');
+  assert.equal(d.finished,true);
+});
+test('a source finishing en route is not consulted while other tasks remain pending', () => {
+  const d = new OfficeDirector();
+  let s = state([step('web','start'),step('lists','waiting')]);
+  for(let t=0;t<1400;t+=20) d.tick(20,s);
+  s = state([step('web','done','found'),step('lists','start')]);
+  let reachedEnterprise = false;
+  for(let t=0;t<10000;t+=20) {
+    d.tick(20,s);
+    assert.notEqual(d.action.station,'news');
+    if(d.action.station==='enterprise') reachedEnterprise=true;
+  }
+  assert.equal(reachedEnterprise,true);
+});
+
+test('completion during standing cancels the trip and settles back into the chair', () => {
+  const d=new OfficeDirector();
+  let s=state([step('web','start'),step('lists','waiting')]);
+  d.tick(900,s);
+  assert.equal(d.action.id,'stand');
+  s=state([step('web','done','found'),step('lists','waiting')]);
+  for(let t=0;t<3000;t+=20) {
+    d.tick(20,s);
+    assert.notEqual(d.action.mode,'walk');
+    assert.equal(d.action.station,undefined);
+  }
+  assert.equal(d.sample().seated,1);
+  assert.equal(d.action.id,'idle');
 });

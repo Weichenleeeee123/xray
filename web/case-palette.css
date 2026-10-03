@@ -78,12 +78,25 @@ body.research-mode .flow-label b,
 body.research-mode .flow-label>span {color:var(--amber)}
 body.research-mode .flow-primary .flow-label b,
 body.research-mode .flow-primary .flow-label>span {color:var(--qier-light)}
-/* Compensate the paper mask for the existing brightness pulse so it stays paper-colored. */
-body.research-mode .research-flow .flow-label {--mask-brightness:calc(1 + var(--pass)*.18);box-shadow:0 0 0 7px rgb(calc(247 / var(--mask-brightness)) calc(240 / var(--mask-brightness)) calc(224 / var(--mask-brightness))),0 0 calc(var(--pass)*26px) rgb(184 139 76 / calc(var(--pass)*.28));border-color:rgb(184 139 76 / calc(.55 + var(--pass)*.45))}
+/* The opaque label itself covers the wire. A separate soft halo has no paper mask. */
+body.research-mode .research-flow .flow-label {
+  isolation:isolate;filter:none;
+  box-shadow:0 2px 6px #222e390d,inset 0 0 calc(var(--pass)*16px) rgb(255 217 130 / calc(var(--pass)*.22));
+  border-color:rgb(184 139 76 / calc(.55 + var(--pass)*.45));
+}
+body.research-mode .research-flow .flow-label:before {
+  content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;z-index:-1;
+  background:transparent;opacity:var(--pass);filter:blur(2px);
+  transform:scale(calc(1 + var(--pass)*.03));
+  box-shadow:0 0 9px 3px #ffca68cc,0 0 24px 9px #dea0397a,0 0 42px 14px #e2bc783d;
+}
 body.research-mode .research-flow .flow-primary .flow-label {border-color:rgb(184 139 76 / calc(.7 + var(--pass)*.3))}
 body.research-mode .research-flow .flow-preview {border-left-color:rgb(184 139 76 / calc(.22 + var(--pass)*.5))}
 body.research-mode .research-flow .flow-stop:hover .flow-label,
-body.research-mode .research-flow .flow-stop:focus-visible .flow-label {--mask-brightness:1.2;border-color:var(--qier-brass)}
+body.research-mode .research-flow .flow-stop:focus-visible .flow-label {filter:none;border-color:var(--qier-brass)}
+/* Paper labels glow at the edge without bleaching their surface or text. */
+body.research-mode .research-flow .flow-secondary .flow-label,
+body.research-mode .research-flow .flow-secondary:is(:hover,:focus-visible) .flow-label {filter:none;color:var(--qier-navy)}
 body.research-mode .mini-trace i {background:var(--qier-brass)}
 body.research-mode .mini-trace i:nth-child(4n) {background:var(--qier-navy)}
 body.research-mode .flow-stop[data-section=inquiry] .flow-preview strong svg {color:var(--amber)}

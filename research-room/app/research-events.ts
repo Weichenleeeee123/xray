@@ -305,7 +305,6 @@ export function reportPresentation(state: ResearchState, scenePhase?: string) {
     visible:
       collectionFinished(state) &&
       [
-        'sit',
         'report',
         'bind-report',
         'push-report',

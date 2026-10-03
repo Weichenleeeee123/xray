@@ -89,6 +89,7 @@ export class OfficeDirector {
   paperStage = 0;
   reportStage = 0;
   socialHandled = false;
+  socialStarted = false;
   action: Action = this.make('idle', '等待研究任务', 'desk', 900, SEAT);
   make(
     id: string,
@@ -157,11 +158,21 @@ export class OfficeDirector {
     if (a.id === 'push-report') this.reportStage = 2;
     if (a.id === 'present-report') this.reportStage = 3;
     if (a.id === 'close-door') this.socialHandled = true;
-    // Finish the current movement continuously, then discard obsolete station visits.
-    // position normally points to the end of the queued route, so restore the actual endpoint.
-    if (collectionFinished(state) && !this.returning) {
-      this.returning = true;
+    const collectionDone = collectionFinished(state);
+    const hasVisitor = state.steps.some(
+      (s) => (s.id === 'reviews' || s.id === 'opinion') &&
+        s.phase === 'done' && s.coverage === 'found',
+    );
+    const receivingVisitor = this.socialStarted && !this.socialHandled;
+    const shouldReceive = hasVisitor && !this.socialStarted && !this.socialHandled &&
+      !this.returning && state.connection !== 'saved';
+
+    // Completion cancels unstarted source actions. Finish the current movement and
+    // any committed reception, then return directly; never replay completed lookups.
+    if ((collectionDone || state.connection === 'saved') && !this.returning &&
+        !receivingVisitor && !shouldReceive) {
       this.queue = [];
+      this.returning = true;
       this.position = a.to;
       this.socialHandled = true;
       if (!same(this.position, SEAT)) {
@@ -174,53 +185,51 @@ export class OfficeDirector {
       this.setNext();
       return;
     }
+    if (shouldReceive) {
+      // Knocking and the journey share this one committed sequence. Arrival at
+      // the door always opens it; a generic social lookup never sends us there.
+      for (const task of [a, ...this.queue])
+        for (const id of task.tasks ?? [])
+          if (state.steps.some((s) => s.id === id && s.phase === 'start'))
+            this.visited.delete(id);
+      this.queue = [];
+      this.socialStarted = true;
+      this.position = a.to;
+      if (a.visual === 'desk')
+        this.queue.push(this.make('stand', '放下资料，起身', 'stand', 250, SEAT));
+      if (!same(this.position, locations.social))
+        this.queue.push(this.walk(locations.social, '门外传来敲门声，前往接待访客'));
+      this.queue.push(
+        this.make('open-door', '开门接待访客', 'door', 900, this.position),
+        this.make('talk-visitor', '听访客讲新闻和投诉（未经核实）', 'talk', 1200, this.position),
+        this.make('close-door', '告别访客，关门', 'door', 900, this.position),
+      );
+      this.setNext();
+      return;
+    }
     if (
       a.id === 'research' &&
       a.tasks?.some(
         (id) => state.steps.find((s) => s.id === id)?.phase === 'start',
       )
     ) {
-      // Stop waiting only on actual terminal events; a disconnected task is still unknown.
       this.local %= a.end;
       return;
     }
-    if (a.station === 'social' && a.visual === 'listen') {
-      // 访客只在真查到东西时来：新闻舆情、网上投诉或本站评价
-      const hasReviews = state.steps.some(
-        (s) =>
-          (s.id === 'reviews' || s.id === 'opinion') &&
-          s.phase === 'done' &&
-          s.coverage === 'found',
-      );
-      if (hasReviews) {
-        this.queue.push(
-          this.make('open-door', '开门接待访客', 'door', 900, this.position),
-        );
-        this.queue.push(
-          this.make(
-            'research',
-            '听访客讲新闻和投诉（未经核实）',
-            'talk',
-            1200,
-            this.position,
-          ),
-        );
-        this.queue.push(
-          this.make('close-door', '告别访客，关门', 'door', 900, this.position),
-        );
-      } else this.socialHandled = true;
+    if (!receivingVisitor && this.queue.some((task) => task.id === 'research' &&
+        !task.tasks?.some((id) => state.steps.some((s) => s.id === id && s.phase === 'start')))) {
+      this.queue = [];
+      this.position = a.to;
     }
     if (this.queue.length) {
       this.setNext();
       return;
     }
-    for (const s of state.steps)
-      if (s.lookup && s.phase === 'done' && s.coverage === 'not_covered')
-        this.visited.add(s.id);
     const pending = state.steps.filter(
-      (s) => s.lookup && s.phase === 'start' && !this.visited.has(s.id),
+      (s) => s.lookup && s.phase === 'start' && !this.visited.has(s.id) &&
+        s.id !== 'reviews' && s.id !== 'opinion',
     );
-    const first = pending.find((s) => s.phase === 'start') ?? pending[0];
+    const first = pending[0];
     if (first && !this.returning) {
       const station = stations.find((s) =>
         (s.steps as readonly string[]).includes(first.id),
@@ -234,21 +243,12 @@ export class OfficeDirector {
         .map((s) => s.id);
       tasks.forEach((id) => this.visited.add(id));
       if (a.visual === 'desk')
-        this.queue.push(
-          this.make('stand', '放下资料，起身', 'stand', 250, SEAT),
-        );
+        this.queue.push(this.make('stand', '放下资料，起身', 'stand', 250, SEAT));
       this.queue.push(this.walk(locations[station.id], `前往${station.title}`));
-      const social = station.id === 'social';
-      this.queue.push(
-        this.make(
-          'research',
-          social ? '查新闻舆情和用户评价' : `查阅${station.title}`,
-          social ? 'listen' : 'research',
-          400,
-          this.position,
-          { station: station.id, tasks },
-        ),
-      );
+      this.queue.push(this.make(
+        'research', `查阅${station.title}`, 'research', 1600,
+        this.position, { station: station.id, tasks },
+      ));
       this.setNext();
       return;
     }
@@ -287,8 +287,17 @@ export class OfficeDirector {
       this.local = 0;
       return;
     }
-    // Wait at a stable location, not on a walking cel.
-    if (a.mode === 'walk')
+    // A canceled lookup can leave us just standing up. Settle back into the
+    // chair instead of looping the stand-up transition while waiting for work.
+    if (a.visual === 'stand' || a.visual === 'sit') {
+      this.action = a.visual === 'stand'
+        ? this.make('sit', '等待后续资料任务', 'sit', 200, SEAT)
+        : this.make('idle', '等待后续资料任务', 'desk', 900, SEAT);
+      this.local = 0;
+      return;
+    }
+    // Wait at a stable location, not on a walking cel or a completed lookup.
+    if (a.mode === 'walk' || a.id === 'research')
       this.action = this.make(
         'wait',
         '等待后续资料任务',
@@ -345,6 +354,8 @@ export class OfficeDirector {
       local: this.local,
       clock: this.clock,
       socialHandled: this.socialHandled,
+      knocking: this.socialStarted && !this.socialHandled && door === 0 &&
+        a.id !== 'close-door',
       gathering,
       gatheringRight,
       sorting,

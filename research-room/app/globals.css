@@ -370,7 +370,8 @@ button {
   height: 33.2%;
   margin: 0;
   overflow: hidden;
-  filter: drop-shadow(0 0.3vw 0.15vw rgb(15 10 7 / 26%));
+  /* Only the corridor is visible: exclude the jambs, threshold and painted open leaf. */
+  clip-path: polygon(14.5% 7%, 82% 7%, 62% 15.4%, 62% 81%, 86% 91.5%, 14.5% 91.5%);
   animation: visitor-enter 430ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
   pointer-events: none;
 }
@@ -1065,7 +1066,11 @@ button {
 .research-feet, .research-body { background-position-y: 50%; transform: translateY(11%); }
 .research-body { transform: translateY(11%) rotate(var(--gesture)); }
 .action-stand .standing-body { transform: scaleX(-1); }
-.visitor-sprite { width: 244%; left: 63%; bottom: -34%; animation: none; transform: translateX(-50%) scaleX(-1); }
+.visitor-sprite {
+  width: 181%; left: 48%; bottom: -13%;
+  animation: none; transform: translateX(-50%) scaleX(-1);
+  filter: drop-shadow(0 0.2vw 0.1vw rgb(15 10 7 / 26%));
+}
 .visitor-goose { animation: none; }
 @media (min-width: 641px) {
   .source-enterprise { left: 13%; }

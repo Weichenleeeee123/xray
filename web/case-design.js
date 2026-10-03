@@ -271,7 +271,7 @@ function researchDisclaimer() {
 
 function researchFlowPulse(progress, entry, exit) {
   const ease=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
-  // Start at first contact, ease in for ~300 ms, then follow the trailing light out.
+  // Start at first contact, ease in for ~300 ms, then ease out after the head leaves.
   return ease((progress-entry)/3.2)*(1-ease((progress-exit)/12));
 }
 // A single clock drives both the travelling light and each node's response.
@@ -280,6 +280,8 @@ function initResearchFlow() {
   const flow=$('.research-flow'), svg=$('.flow-wire'), light=$('.wire-light');
   if(!flow || !svg || !light) return () => {};
   const base=$('.wire-base',svg), gradient=$('#flowGradient',svg);
+  const trailLength=parseFloat(getComputedStyle(light).strokeDasharray)||20;
+  const cycleLength=100+trailLength+4;
   const stops=$$('.flow-stop',flow), labels=stops.map(s=>$('.flow-label',s));
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   let positions=[],length=0,frame=0,elapsed=0,last=0,visible=true,disposed=false;
@@ -305,15 +307,16 @@ function initResearchFlow() {
       for(let i=0;i<20;i++){const mid=(lo+hi)/2;if(light.getPointAtLength(mid).x<x)lo=mid;else hi=mid;}
       return (lo+hi)/2/length*100;
     };
-    // Include the 7 px outline that masks the wire around each label.
-    positions=points.map(point=>({entry:progressAtX(point.x-point.half-7),exit:progressAtX(point.x+point.half+7)}));
+    // The label surface covers the wire; the soft halo does not mask its path.
+    positions=points.map(point=>({entry:progressAtX(point.x-point.half),exit:progressAtX(point.x+point.half)}));
     gradient.setAttribute('gradientUnits','userSpaceOnUse');
   }
   function draw() {
-    const progress=(elapsed%11000)/11000*116;
-    light.style.strokeDashoffset=String(12-progress);
+    // Keep the original travel speed; let the longer tail clear before restarting.
+    const progress=(elapsed*116/11000)%cycleLength;
+    light.style.strokeDashoffset=String(trailLength-progress);
     const head=light.getPointAtLength(Math.min(length,length*progress/100));
-    const tail=light.getPointAtLength(Math.max(0,length*(progress-12)/100));
+    const tail=light.getPointAtLength(Math.max(0,length*(progress-trailLength)/100));
     gradient.setAttribute('x1',String(tail.x));gradient.setAttribute('x2',String(Math.max(tail.x+1,head.x)));
     stops.forEach((stop,i)=>{
       const {entry,exit}=positions[i];
