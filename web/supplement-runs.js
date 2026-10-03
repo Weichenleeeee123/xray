@@ -56,7 +56,7 @@
         } catch(e) {
           // Validation/access rejection happens before starting a job. 5xx/timeout
           // may have lost the response after creation, so retain the same key.
-          if([400,401,403,404,413,422].includes(e.status)) throw terminal(e.message);
+          if([400,401,403,404,413,422,429].includes(e.status)) throw terminal(e.message);
           throw e;
         }
         if(!/^[0-9a-f]{24}$/.test(started?.run_id)) throw new Error('任务编号校验不一致');

@@ -6,7 +6,7 @@ const vm = require('node:vm');
 function harness() {
   const ctx = vm.createContext({console, URLSearchParams, FormData, AbortController, setTimeout:()=>0, clearTimeout(){},
     location:{hash:'#/case/test',search:''}, document:{querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){}},window:{addEventListener(){}}});
-  for (const file of ['case-design.js','dossier/artwork.js','dossier-report.js','app.js']) {
+  for (const file of ['case-design.js','dossier/artwork.js','dossier-report.js','material-analysis.js','app.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8').replace(/boot\(\);\s*$/,''),ctx);
   }
   const run = code=>vm.runInContext(code,ctx);
@@ -35,10 +35,10 @@ test('overview uses current version evidence, excludes reviews and separates pen
     {key:'credit',items:[{key:'status',label:'登记',value:'存续',status:'ok'}]},
     {key:'reputation',items:[{key:'user_reviews',status:'warn',value:'仅供参考'}]}];`);
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(Object.fromEntries(Object.entries(dossierGroups(v)).map(([k,a])=>[k,a.length])))')),{problem:1,clear:1,open:1});
-  let html=h.run('dossierOverview(v)');assert.match(html,/有问题/);assert.doesNotMatch(html,/仅供参考/);
+  let html=h.run('dossierOverview(v)');assert.match(html,/有异常，<\/span><span class="verdict-phrase">需注意风险/);assert.doesNotMatch(html,/仅供参考/);
   h.run(`v.glance.first=['risk.license']`);html=h.run('dossierOverview(v)');
-  assert.match(html,/没查到数据/);assert.doesNotMatch(html,/id="verdict-title">有问题/);
-  h.run(`v.glance.first=['credit.status']`);assert.match(h.run('dossierOverview(v)'),/已查项暂未见异常/);
+  assert.match(html,/有异常，<\/span><span class="verdict-phrase">需注意风险/);assert.doesNotMatch(html,/id="verdict-title">可信度较高/);
+  h.run(`v.glance.first=['credit.status']`);assert.match(h.run('dossierOverview(v)'),/有异常，<\/span><span class="verdict-phrase">需注意风险/);
 });
 test('signal folder counts actual backend items and preserves its full details action',()=>{
   const h=harness();h.run(`v.signals=[{key:'finance',title:'财务',lede:'未提供财报 <说明>',items:[{key:'cash',label:'现金流',status:'none',gap:'failed'}]}]`);
@@ -105,4 +105,47 @@ test('production dossier assets contain no preview company or preview print foot
   for(const filename of fs.readdirSync(root).filter(name=>/\.(css|js)$/.test(name))) {
     assert.doesNotMatch(fs.readFileSync(path.join(root,filename),'utf8'),/远山科技|独立设计预览|127\.0\.0\.1:8010/,filename);
   }
+});
+
+test('overview replaces the numeric headline with escaped version-specific company keywords',()=>{
+  const h=harness();
+  h.run(`v.raw_ids=['R1'];v.onepager={headline:'材料核对：4项需重点核实'};
+    v.company_keywords=[{label:'软件开发 <标签>',ref:'R1',basis:'登记范围'},
+      {label:'不属于本版的资质',ref:'R2',basis:'其他版本'}]`);
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/公司关键词：/);
+  assert.match(html,/软件开发 &lt;标签&gt;/);
+  assert.match(html,/data-act="raw" data-ref="R1"/);
+  assert.doesNotMatch(html,/材料核对：4项|不属于本版的资质/);
+  h.run('v.company_keywords=[]');
+  assert.match(h.run('dossierCompanyKeywords(v)'),/资料不足/);
+  assert.doesNotMatch(h.run('dossierCompanyKeywords(v)'),/高新技术|天使轮/);
+});
+
+
+test('trust answer distinguishes missing evidence from a clear report and preserves issue priority',()=>{
+  const h=harness();
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
+  h.run(`v.signals=[{key:'credit',items:[{key:'status',status:'ok'}]}]`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'可信度较高');
+  h.run(`v.signals[0].items.push({key:'other',status:'none',gap:'not_covered'})`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
+  h.run(`v.signals[0].items[1]={key:'other',status:'none',gap:'failed'}`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
+  h.run(`v.signals[0].items[1]={key:'other',status:'warn'}`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'有异常，需注意风险');
+  h.run(`v.signals[0].items[1]={key:'other',status:'miss'}`);
+  assert.equal(h.run('dossierTrustAnswer(v)[1]'),'资料较少，需警惕');
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/这家公司是否值得你的信任/);
+  assert.doesNotMatch(html,/结论仅限本版已查记录|id="verdict-scope"|这次合作，关键项有没有问题/);
+});
+
+test('saved material analyses are placed after inquiry features and before company details',()=>{
+ const h=harness();
+ h.run(`S.case.material_analyses=[{id:'MA2',report_version:2,title:'合同',summary:'待核实',raw_ids:[]}];`);
+ const html=h.run('dossierReport(S.case,v)');
+ assert.ok(html.indexOf('class="ma-archive"')>html.indexOf('class="recheck-grid"'));
+ assert.ok(html.indexOf('class="ma-archive"')<html.indexOf('id="research-details"'));
+ assert.match(html,/data-analysis="MA2"/);
 });

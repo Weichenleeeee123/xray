@@ -49,8 +49,26 @@ body.research-mode.report-workspace.dossier-live #verdict-title { font-size:clam
 body.research-mode.report-workspace.dossier-live .verdict-answer.s-bad { color:#a05240; }
 body.research-mode.report-workspace.dossier-live .verdict-answer:is(.s-warn,.s-miss,.s-none) { color:#9b7034; }
 body.research-mode.report-workspace.dossier-live .verdict-answer.s-ok { color:#41715f; }
+body.research-mode.report-workspace.dossier-live .decision-grid { align-items:stretch; }
+body.research-mode.report-workspace.dossier-live .decision-dossier { display:flex; flex-direction:column; align-self:stretch; min-width:0; }
+body.research-mode.report-workspace.dossier-live .decision-sheet { display:flex; flex-direction:column; flex:1; min-width:0; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .decision-next { margin-top:auto; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .decision-eyebrow { font-size:14px; line-height:1.7; color:#727663; gap:12px; align-items:baseline; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .decision-state { flex:none; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-answer { align-items:center; }
+body.research-mode.report-workspace.dossier-live .decision-dossier #verdict-title { font-size:clamp(24px,2.35vw,32px); line-height:1.4; letter-spacing:0; text-wrap:balance; }
+body.research-mode.report-workspace.dossier-live .verdict-phrase { display:inline-block; white-space:nowrap; }
 body.research-mode.report-workspace.dossier-live .decision-headline { font-size:15px; font-weight:500; line-height:1.8; margin:10px 0; }
 body.research-mode.report-workspace.dossier-live .decision-headline .term { font:inherit; }
+body.research-mode.report-workspace.dossier-live .company-keywords { margin:16px 0 5px; display:flex; flex-wrap:wrap; align-items:baseline; gap:9px 4px; }
+body.research-mode.report-workspace.dossier-live .company-keywords-label { color:#7e7058; font-size:12px; white-space:nowrap; }
+body.research-mode.report-workspace.dossier-live .company-keyword-list { display:flex; flex-wrap:wrap; gap:7px; min-width:0; }
+body.research-mode.report-workspace.dossier-live .company-keyword { display:inline-flex; align-items:center; gap:9px; border:1px solid #c4b28e; background:#eee5d1; color:#655233; padding:5px 10px; font:500 12px/1.6 var(--sans); border-radius:0; cursor:pointer; transition:background .2s,transform .2s,border-color .2s; overflow-wrap:anywhere; text-align:left; }
+body.research-mode.report-workspace.dossier-live .company-keyword:nth-child(even) { background:#e5e9e9; border-color:#b7c2c4; color:#3b5561; }
+body.research-mode.report-workspace.dossier-live .company-keyword>span { color:#998661; font-size:10px; }
+body.research-mode.report-workspace.dossier-live .company-keyword:hover,body.research-mode.report-workspace.dossier-live .company-keyword:focus-visible { background:#e2d1ad; border-color:#a58650; transform:translateY(-2px); }
+body.research-mode.report-workspace.dossier-live .company-keywords-empty { color:#999181; font-size:12px; }
+@media(prefers-reduced-motion:reduce) { body.research-mode.report-workspace.dossier-live .company-keyword { transition:none; transform:none!important; } }
 .inspection-disclosure>summary { display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-size:11px; color:#858371; list-style:none; }
 .inspection-disclosure>summary::-webkit-details-marker { display:none; }
 .dossier-evidence-row { display:flex; align-items:baseline; gap:10px; padding:10px 0; font-size:12px; }

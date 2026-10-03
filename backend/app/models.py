@@ -463,6 +463,12 @@ class PrebuiltProvenance(BaseModel):
     built_at: str | None = None          # 预制包生成时间，不是各来源的数据截止时间
 
 
+class CompanyKeyword(BaseModel):
+    label: str
+    ref: str                            # 本版原始资料；前端可直接查看出处
+    basis: str
+
+
 class Version(BaseModel):
     no: int
     created_at: str
@@ -478,6 +484,7 @@ class Version(BaseModel):
     raw_ids: list[str]                    # 本版用到的原始数据
     sources: dict[str, Source] = Field(default_factory=dict)
     company: CompanyProfile | None
+    company_keywords: list[CompanyKeyword] = Field(default_factory=list)
     license: LicenseHit
     amac: AmacHit
     assertions: list[Assertion]
@@ -522,6 +529,23 @@ class ChatMessage(BaseModel):
     created_at: str
 
 
+class MaterialAnalysis(BaseModel):
+    """A saved material appendix, separate from the company report's presentation."""
+    id: str
+    created_at: str
+    kind: Literal["material", "reply"]
+    title: str
+    base_version: int
+    report_version: int
+    raw_ids: list[str]
+    need: str
+    summary: str
+    findings: list[Assertion] = Field(default_factory=list)
+    observations: list[Judgment] = Field(default_factory=list)
+    changes: list[JudgmentChange] = Field(default_factory=list)
+    questions: list[Question] = Field(default_factory=list)
+
+
 class Case(BaseModel):
     owner_id: str | None = None          # 服务端分配；旧案卷无归属，不开放公共访问
     revision: int = 0
@@ -532,6 +556,7 @@ class Case(BaseModel):
     focus: list[str]
     current: int                          # 当前版本号
     versions: list[Version]
+    material_analyses: list[MaterialAnalysis] = Field(default_factory=list)
     raw: list[RawRecord]
     chat: list[ChatMessage] = Field(default_factory=list)
     sources: dict[str, Source]
