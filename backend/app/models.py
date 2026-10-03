@@ -6,7 +6,7 @@
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class Coverage(StrEnum):
@@ -531,6 +531,12 @@ class PublicChatMessage(ChatMessage):
     dropped: int = Field(0, exclude=True)
     rewrites: int = Field(0, exclude=True)
     blocked: list[str] = Field(default_factory=list, exclude=True)
+
+    @computed_field
+    @property
+    def has_omitted_claims(self) -> bool:
+        """Public notice only; rejected content and audit counts remain private."""
+        return self.mode in ("model", "replay") and not self.not_found and self.dropped > 0
 
 
 class PublicCase(Case):

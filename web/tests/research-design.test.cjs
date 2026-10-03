@@ -21,7 +21,7 @@ test('snapshot notice uses version provenance, escapes source metadata and suppo
  h.ctx.v={prebuilt:{demo_id:'B',built_at:'2026-10-02 <script>x</script>'},notes:[]};
  const html=h.run('prebuiltNoticeHtml(v)');
  assert.match(html,/预制示例快照/);assert.match(html,/本次未重新联网查询/);assert.match(html,/预制包生成时间/);assert.doesNotMatch(html,/<script>/);
- h.ctx.v={notes:['预制示例：之前生成，不重新联网查询。']};assert.match(h.run('prebuiltNoticeHtml(v)'),/生成时间未记录/);
+ h.ctx.v={notes:['预制示例：之前生成，不重新联网查询。']};assert.match(h.run('prebuiltNoticeHtml(v)'),/预制示例快照/);assert.doesNotMatch(h.run('prebuiltNoticeHtml(v)'),/预制包生成时间|生成时间未记录/);
  h.ctx.v={notes:['基于预制快照的人工复核：沿用第 1 版资料。']};assert.equal(h.run('prebuiltNoticeHtml(v)'),'');
  h.ctx.v={notes:[]};assert.equal(h.run('prebuiltNoticeHtml(v)'),'');
 });
@@ -155,6 +155,18 @@ test('version one has no changes shortcut even when a later version exists',()=>
  assert.doesNotMatch(h.run('researchHero(c,v)'),/查看本版变化/);
  h.ctx.v.no=2;
  assert.match(h.run('researchHero(c,v)'),/查看本版变化/);
+});
+test('the report header offers all saved versions with the viewed and latest versions distinguished',()=>{
+ const h=harness();h.ctx.c={id:'case',current:3,case:{company_name:'测试公司'},raw:[],versions:[{no:1,created_at:'2026-10-01',trigger_label:'初次查询'},{no:2,created_at:'2026-10-02',trigger_label:'补充 <合同>'},{no:3,created_at:'2026-10-03',trigger_label:'改需求'}]};
+ h.ctx.v={no:2,created_at:'2026-10-02',raw_ids:[],need:'核对资料'};
+ const html=h.run('researchHero(c,v)');
+ assert.match(html,/<summary[^>]*>第 2 版 · 切换版本/);
+ for(const n of [1,2,3]) assert.ok(html.includes(`data-act="ver" data-no="${n}"`));
+ assert.match(html,/data-no="2" aria-current="true"/);
+ assert.match(html,/第 3 版 · 最新/);
+ assert.match(html,/补充 &lt;合同&gt;/);assert.doesNotMatch(html,/<合同>/);
+ h.ctx.c.versions=[h.ctx.c.versions[0]];h.ctx.v.no=1;
+ assert.doesNotMatch(h.run('researchHero(c,v)'),/切换版本/);
 });
 
 test('a historical report without a one-pager still offers its own next question',()=>{

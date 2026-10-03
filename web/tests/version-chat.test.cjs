@@ -48,6 +48,18 @@ test('answer has one source entry without raw quotes or internal diagnostics', (
   assert.doesNotMatch(html, /隐藏的原始引文|禁止展示的内部信息|重写|丢掉|\[A2\]|data-act="goto"/);
   assert.match(h.run(`msgHtml({role:'user',version:1,text:'问',refs:['A2']})`), /data-id="A2" data-version="1"/);
 });
+test('answers disclose omitted unsupported wording without exposing rejected content or diagnostics',()=>{
+ const h=harness();
+ const filtered=h.run(`msgHtml({role:'assistant',mode:'model',version:1,text:'已有依据支持的内容',citations:[],suggest:[],has_omitted_claims:true})`);
+ assert.match(filtered,/部分表述未获依据支持，已省略/);
+ assert.doesNotMatch(filtered,/被拒绝的原句|3 条|2 次/);
+ for(const has_omitted_claims of [false,undefined,'true']) {
+   h.ctx.testReply={role:'assistant',mode:'model',version:1,text:'答复',citations:[],suggest:[],has_omitted_claims};
+   assert.doesNotMatch(h.run('msgHtml(testReply)'),/已省略/);
+ }
+ const missing=h.run(`msgHtml({role:'assistant',mode:'guard',version:1,text:'资料不足',citations:[],suggest:[],has_omitted_claims:false,not_found:true})`);
+ assert.match(missing,/部分信息仍待核实/);assert.doesNotMatch(missing,/已省略/);
+});
 
 test('source detail resolves report facts to original records from the answer version', () => {
   const h = harness();

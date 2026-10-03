@@ -97,7 +97,7 @@
     return stations[active?.id] || stations.plain;
   }
   function progressHtml(state) {
-    return `<h2>${escape(state.company)}</h2>${state.prebuilt ? `<aside class="report-provenance"><strong>预制示例快照</strong><p>正在回放生成过程，本次未重新联网查询。${state.prebuilt.built_at ? `预制包生成时间：${escape(state.prebuilt.built_at)}` : '生成时间未记录；各条资料日期见出处。'}</p></aside>` : ''}<ol class="research-steps">${state.steps.map(step => {
+    return `<h2>${escape(state.company)}</h2>${state.prebuilt ? `<aside class="report-provenance"><strong>预制示例快照</strong><p>正在回放生成过程，本次未重新联网查询。${state.prebuilt.built_at ? `预制包生成时间：${escape(state.prebuilt.built_at)}。` : ''}各条资料日期见出处。</p></aside>` : ''}<ol class="research-steps">${state.steps.map(step => {
       const label = step.phase === 'waiting' ? '等待' : step.phase === 'start' ? state.prebuilt ? '回放中' : '进行中' : `${state.prebuilt ? '当时：' : ''}${stamps[step.coverage] || '完成'}`;
       return `<li class="rp-${escape(step.phase)}"><strong>${escape(step.label)}</strong>
         <span class="rp-stamp rp-${escape(step.coverage || step.phase)}">${label}</span>
