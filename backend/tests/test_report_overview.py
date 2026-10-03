@@ -35,7 +35,7 @@ def test_two_key_normals_and_outside_key_warning_share_one_scope():
     v = version(normal_credit(), ("reputation", [item("news_negative", "warn", source="qcc_news")]))
     summary = build_overview(v)
     assert summary.status == "warn"
-    assert summary.headline == "资料较少，需谨慎判断"
+    assert "报道或投诉线索" in summary.headline and summary.summary.tone == "attention"
     assert "核心核查尚有 3 项未完成" in summary.detail
     assert summary.counts.model_dump() == {"normal": 2, "attention": 1, "abnormal": 0, "unknown": 0}
     assert summary.items[-1].id == "reputation.news_negative"
@@ -49,8 +49,8 @@ def test_real_bad_record_cannot_be_masked_by_company_name_or_positive_items(name
     v.company.name = name
     summary = build_overview(v)
     assert summary.status == "bad"
-    assert summary.headline == "信任度较低，需要注意风险"
-    assert summary.trust_level == "low"
+    assert summary.headline == "发现监管风险提示"
+    assert summary.summary.tone == "critical" and summary.trust_level == "unknown"
     assert summary.counts.abnormal == 1 and summary.counts.normal == 2
     assert summary.items[-1].status == Status.bad
 
@@ -59,42 +59,43 @@ def test_missing_key_check_is_unknown_not_anomaly_or_normal():
     v = version(("credit", [item("status", "none", gap="failed"), item("penalties")]),
                 ("reputation", [item("news_negative", "warn")]))
     summary = build_overview(v)
-    assert summary.headline == "资料较少，需谨慎判断" and summary.trust_level == "unknown"
+    assert "报道或投诉线索" in summary.headline and summary.trust_level == "unknown"
     assert summary.counts.model_dump() == {"normal": 1, "attention": 1, "abnormal": 0, "unknown": 1}
     assert "关键公司资料仍有缺口" in summary.detail
     assert summary.items[0].gap == "failed"
 
 
-@pytest.mark.parametrize("signals,status,level,label,note,counts", [
-    ([normal_credit()], "ok", "unknown", "资料较少", "需谨慎判断", (2, 0, 0, 0)),
+@pytest.mark.parametrize("signals,status,counts", [
+    ([normal_credit()], "ok", (2, 0, 0, 0)),
     ([normal_credit(), ("reputation", [item("news", "warn")])],
-     "warn", "unknown", "资料较少", "需谨慎判断", (2, 1, 0, 0)),
+     "warn", (2, 1, 0, 0)),
     ([normal_credit(), ("reputation", [item("news", "warn"), item("media", "warn")])],
-     "warn", "unknown", "资料较少", "需谨慎判断", (2, 2, 0, 0)),
+     "warn", (2, 2, 0, 0)),
     ([("credit", [item("status"), item("penalties", "warn")])],
-     "warn", "unknown", "资料较少", "需谨慎判断", (1, 1, 0, 0)),
+     "warn", (1, 1, 0, 0)),
     ([("credit", [item("status", "none", gap="failed"), item("penalties", "warn")])],
-     "warn", "unknown", "资料较少", "需谨慎判断", (0, 1, 0, 1)),
+     "warn", (0, 1, 0, 1)),
     ([("credit", [item("status", "warn")])],
-     "warn", "unknown", "资料较少", "需谨慎判断", (0, 1, 0, 0)),
+     "warn", (0, 1, 0, 0)),
     ([("reputation", [item("news", "warn")])],
-     "warn", "unknown", "资料较少", "需谨慎判断", (0, 1, 0, 0)),
+     "warn", (0, 1, 0, 0)),
     ([("credit", [item("status", "none", gap="failed"), item("penalties", "bad")])],
-     "bad", "low", "信任度较低", "需要注意风险", (0, 0, 1, 1)),
-    ([], "none", "unknown", "资料较少", "需谨慎判断", (0, 0, 0, 0)),
-    ([complete_trust()], "ok", "high", "信任度较高", "已查信息未见明显异常", (5, 0, 0, 0)),
+     "bad", (0, 0, 1, 1)),
+    ([], "none", (0, 0, 0, 0)),
+    ([complete_trust()], "ok", (5, 0, 0, 0)),
     ([complete_trust(), ("reputation", [item("news", "warn")])],
-     "warn", "high", "信任度较高", "个别事项仍需核实", (5, 1, 0, 0)),
+     "warn", (5, 1, 0, 0)),
     ([complete_trust(), ("reputation", [item("news", "warn"), item("media", "warn")])],
-     "warn", "high", "信任度较高", "部分事项仍需核实", (5, 2, 0, 0)),
+     "warn", (5, 2, 0, 0)),
     ([complete_trust(penalties="warn")],
-     "warn", "pending", "信任度待确认", "建议先核实关键事项", (4, 1, 0, 0)),
+     "warn", (4, 1, 0, 0)),
 ])
-def test_trust_wording_preserves_fact_status_counts_and_matches_headline(signals, status, level, label, note, counts):
+def test_findings_preserve_fact_status_counts_without_company_trust_rating(signals, status, counts):
     summary = build_overview(version(*signals))
     assert summary.status == status
-    assert (summary.trust_level, summary.trust_label, summary.trust_note) == (level, label, note)
-    assert summary.headline == f"{label}，{note}"
+    assert (summary.trust_level, summary.trust_label, summary.trust_note) == ("unknown", summary.headline, "")
+    assert "信任度" not in summary.headline
+    assert set(summary.summary.basis_ids) <= {i.id for i in summary.items}
     assert summary.counts.model_dump() == dict(zip(("normal", "attention", "abnormal", "unknown"), counts))
     assert sum(counts) == len(summary.items)
 
@@ -103,7 +104,7 @@ def test_non_key_gap_does_not_hide_key_attention_or_become_low_trust():
     v = version(complete_trust(penalties="warn"),
                 ("finance", [item("cashflow", "none", gap="undisclosed")]))
     summary = build_overview(v)
-    assert summary.status == "warn" and summary.trust_level == "pending"
+    assert summary.status == "warn" and summary.summary.tone == "attention"
     assert summary.counts.unknown == 1 and "其余缺口仍需补查" in summary.detail
 
 
@@ -112,7 +113,8 @@ def test_registration_only_never_implies_high_trust_in_any_scenario(scenario):
     v = version(("credit", [item("status")]))
     v.scenario = scenario
     summary = build_overview(v)
-    assert summary.trust_level == "unknown" and summary.headline == "资料较少，需谨慎判断"
+    assert summary.trust_level == "unknown" and summary.headline.startswith("登记信息已核实")
+    assert summary.summary.tone == "unknown"
     assert summary.counts.model_dump() == {"normal": 1, "attention": 0, "abnormal": 0, "unknown": 0}
     assert len(summary.items) == 1 and "核心核查尚有 4 项未完成" in summary.detail
     if scenario == "prepaid":
@@ -127,7 +129,11 @@ def test_each_common_core_check_affects_trust_even_outside_scenario_first_items(
     if state == "missing":
         rows = [row for row in rows if row.key != key]
     summary = build_overview(version((credit_key, rows)))
-    assert summary.trust_level == level
+    assert summary.trust_level == "unknown"  # A record state is never a company trust grade.
+    if state in {"warn", "bad"}:
+        assert f"credit.{key}" in summary.summary.priority_ids
+    else:
+        assert summary.summary.tone == "unknown"
     assert summary.counts.normal == 4
     assert len(summary.items) == (4 if state == "missing" else 5)
     assert summary.counts.unknown == (1 if state == "none" else 0)
@@ -160,7 +166,7 @@ def test_high_trust_requires_common_core_and_scenario_coverage(scenario, extra):
     v = version(complete_trust(), *extra)
     v.scenario = scenario
     summary = build_overview(v)
-    assert summary.trust_level == "high" and summary.headline == "信任度较高，已查信息未见明显异常"
+    assert summary.trust_level == "unknown" and "信任度" not in summary.headline
     assert "核心核查" not in summary.detail
     assert summary.counts.normal == 5 + sum(len(rows) for _, rows in extra)
     if extra:
@@ -175,14 +181,14 @@ def test_core_gap_has_priority_over_key_attention_but_confirmed_bad_still_wins()
     assert summary.status == "warn" and summary.trust_level == "unknown"
     v.signals[0].items[1].status = Status.bad
     summary = build_overview(v)
-    assert summary.status == "bad" and summary.trust_level == "low"
+    assert summary.status == "bad" and summary.summary.tone == "attention"
     assert summary.counts.unknown == 1 and "核心核查尚有 1 项未完成" in summary.detail
 
 
 def test_complete_core_with_non_key_gap_keeps_scoped_high_trust_and_visible_gap():
     v = version(complete_trust(), ("finance", [item("cashflow", "none", gap="undisclosed")]))
     summary = build_overview(v)
-    assert summary.trust_level == "high" and summary.trust_note == "已查信息未见明显异常"
+    assert summary.summary.tone == "neutral" and summary.headline == "已查关键项目未见异常，另有资料未覆盖"
     assert summary.counts.unknown == 1 and "其余缺口仍需补查" in summary.detail
 
 
@@ -245,7 +251,7 @@ def test_duplicate_ids_keep_stronger_record_and_counts_equal_visible_items():
 def test_normal_scenario_checks_do_not_imply_high_trust_without_core_coverage():
     v = version(normal_credit(), ("finance", [item("cashflow", "none", gap="undisclosed")]))
     summary = build_overview(v)
-    assert summary.status == "ok" and summary.headline == "资料较少，需谨慎判断"
+    assert summary.status == "ok" and summary.summary.tone == "unknown"
     assert summary.trust_level == "unknown" and summary.counts.normal == 2
     assert summary.counts.unknown == 1 and "其余缺口仍需补查" in summary.detail
     v.signals = v.signals[1:]
@@ -261,7 +267,7 @@ def test_absent_expected_key_check_cannot_silently_count_as_completed():
     assert "关键核查尚有 1 个项目未返回" in summary.detail
     v.signals.append(Signal(key="reputation", title="口碑", lede="", flags=1,
                            items=[item("news_negative", "warn")]))
-    assert build_overview(v).headline == "资料较少，需谨慎判断"
+    assert "报道或投诉线索" in build_overview(v).headline
 
 
 def test_explicit_not_applicable_key_is_excluded_but_company_needs_input_stays_visible():
@@ -356,7 +362,7 @@ def test_api_projects_legacy_versions_after_ownership_check_without_rewriting_di
         case = created.json()
         assert case["versions"][0]["overview"]["schema_version"] == 1
         current_summary = case["versions"][0]["overview"]
-        assert current_summary["headline"] == f"{current_summary['trust_label']}，{current_summary['trust_note']}"
+        assert current_summary["headline"] == current_summary["trust_label"] and current_summary["summary"]
         path = main.store._path(case["id"])
         legacy = json.loads(path.read_text(encoding="utf-8"))
         if legacy_shape == "no_overview":
@@ -380,6 +386,6 @@ def test_api_projects_legacy_versions_after_ownership_check_without_rewriting_di
         assert supplemented.status_code == 200
         saved = json.loads(path.read_text(encoding="utf-8"))["versions"]
         assert all(v["overview"]["schema_version"] == 1 for v in saved)
-        assert all(v["overview"]["headline"] == f"{v['overview']['trust_label']}，{v['overview']['trust_note']}" for v in saved)
+        assert all(v["overview"]["headline"] == v['overview']['trust_label'] and v['overview']['summary'] for v in saved)
         with TestClient(main.app) as outsider:
             assert outsider.get(f"/api/cases/{case['id']}").status_code == 404

@@ -210,3 +210,38 @@ test('insufficient core evidence opens the uncovered records even when another r
   assert.match(html,/data-group="unknown" aria-controls="dossier-inspection">查看判断依据/);
   assert.match(html,/data-id="credit.dishonest"/);
 });
+
+test('need-led findings render the exact server headline, purpose, explanation and evidence without trust grades',()=>{
+  const h=harness();
+  h.run(`v.overview={schema_version:1,status:'bad',trust_level:'unknown',trust_label:'不应显示旧标题',trust_note:'旧说明',
+    headline:'所查劳动仲裁未见记录；发现行政处罚记录',detail:'记录不删减',counts:{normal:1,attention:0,abnormal:1,unknown:0},
+    summary:{perspective:'入职前企业核查',explanation:'处罚内容 <待核实>，不等于招聘不可靠。',tone:'attention',
+      basis_ids:['credit.labor','credit.penalties','risk.payee'],priority_ids:['credit.penalties']},
+    items:[{id:'credit.labor',label:'劳动仲裁',text:'无',status:'ok',category:'normal',axis:'stability'},
+      {id:'credit.penalties',label:'行政处罚',text:'1 条',status:'bad',category:'abnormal',axis:'stability'}]};`);
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/入职前企业核查/);
+  assert.match(html,/所查劳动仲裁未见记录；发现行政处罚记录/);
+  assert.match(html,/处罚内容 &lt;待核实&gt;/);
+  assert.match(html,/data-summary-tone="attention"/);
+  assert.match(html,/data-inspection="abnormal"/);
+  assert.match(html,/data-id="credit.labor"/);assert.match(html,/data-id="credit.penalties"/);
+  assert.match(html,/后续可选 · 独立核对材料/);assert.match(html,/进入材料分析/);
+  assert.doesNotMatch(html,/不应显示旧标题|旧说明|data-trust-level|data-id="risk.payee"|这家公司是否值得你的信任/);
+  assert.match(html,/data-group="abnormal" data-count="1"/);
+});
+
+test('all additional priority findings stay visible and unsafe labels or purpose text are escaped',()=>{
+  const h=harness();
+  h.run(`v.overview={schema_version:1,status:'bad',headline:'登记状态：吊销',detail:'范围',
+    summary:{perspective:'核查 <目的>',explanation:'原文 <说明>',tone:'critical',basis_ids:['credit.status'],
+      priority_ids:['credit.status','credit.dishonest','credit.penalties']},
+    counts:{normal:0,attention:0,abnormal:3,unknown:0},items:[
+      {id:'credit.status',label:'登记状态',text:'吊销',status:'bad',category:'abnormal',axis:'basics'},
+      {id:'credit.dishonest',label:'失信 <记录>',text:'有',status:'bad',category:'abnormal',axis:'stability'},
+      {id:'credit.penalties',label:'行政处罚',text:'1 条',status:'bad',category:'abnormal',axis:'stability'}]};`);
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/data-summary-tone="critical"/);assert.match(html,/其他关注项/);
+  assert.match(html,/核查 &lt;目的&gt;/);assert.match(html,/失信 &lt;记录&gt;/);
+  assert.match(html,/data-id="credit.penalties"/);assert.doesNotMatch(html,/<目的>|<记录>/);
+});

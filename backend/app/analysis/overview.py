@@ -6,6 +6,7 @@ their original places in the report and cannot rate the company overview.
 """
 from app.models import Case, OverviewCounts, OverviewItem, ReportOverview, Status, Version
 from app.scenarios import get_scenario
+from app.analysis.company_summary import build_company_summary
 
 
 ITEM_AXIS = {
@@ -22,8 +23,7 @@ MATERIAL_ITEMS = {
 # These records are emitted only when a specific finding exists, not as a
 # routine check. Absence of the optional finding is not a failed source query.
 OPTIONAL_KEY_ITEMS = {"risk.amac_tips"}
-# Scenario first_items select the initial question, not the complete evidence
-# needed to assess trust. These routine registry checks apply across scenarios.
+# Routine company checks apply across scenarios, independent of materials.
 TRUST_CORE_KEYS = {
     "credit.status": "登记状态", "credit.penalties": "行政处罚", "credit.abnormal": "经营异常名录",
     "credit.serious_illegal": "严重违法失信名单", "credit.dishonest": "失信被执行人",
@@ -82,29 +82,8 @@ def build_overview(version: Version) -> ReportOverview:
     else:
         status = "none"
 
-    # Trust requires the common registry checks AND the user's scenario checks.
-    # A quiet/reference/not-applicable marker on a common core item is not a
-    # completed check; retain the original grouping but leave trust unresolved.
-    trust_keys = set(TRUST_CORE_KEYS) | expected_keys
-    trust_items = [by_id[key] for key in trust_keys if key in by_id]
-    trust_missing = trust_keys - by_id.keys()
-    trust_unknown = any(i.category == "unknown" for i in trust_items)
-    trust_attention = any(i.category == "attention" for i in trust_items)
     core_gaps = [key for key in TRUST_CORE_KEYS if key not in by_id or by_id[key].category == "unknown"]
-    # Missing core evidence means uncertainty, never a low trust result;
-    # confirmed anomalies retain priority over positive records and gaps.
-    if status == "bad":
-        trust_level, trust_label, trust_note = "low", "信任度较低", "需要注意风险"
-    elif trust_missing or trust_unknown:
-        trust_level, trust_label, trust_note = "unknown", "资料较少", "需谨慎判断"
-    elif trust_attention:
-        trust_level, trust_label, trust_note = "pending", "信任度待确认", "建议先核实关键事项"
-    elif counts.attention:
-        trust_level, trust_label = "high", "信任度较高"
-        trust_note = "部分事项仍需核实" if counts.attention > 1 else "个别事项仍需核实"
-    else:
-        trust_level, trust_label, trust_note = "high", "信任度较高", "已查信息未见明显异常"
-    headline = f"{trust_label}，{trust_note}"
+    headline, summary = build_company_summary(version, items)
     detail = (f"本版适用公司核查 {len(items)} 项：{counts.normal} 项已核验正常，"
               f"{counts.attention} 项需了解，{counts.abnormal} 项异常记录，{counts.unknown} 项待核实。")
     if missing_keys:
@@ -116,9 +95,9 @@ def build_overview(version: Version) -> ReportOverview:
     elif counts.unknown:
         detail += "正常仅指已核验项目，其余缺口仍需补查。"
     if core_gaps:
-        detail += f"信任度判断所需的核心核查尚有 {len(core_gaps)} 项未完成：{'、'.join(TRUST_CORE_KEYS[key] for key in core_gaps)}。"
-    return ReportOverview(status=status, trust_level=trust_level, trust_label=trust_label, trust_note=trust_note,
-                          headline=headline, detail=detail, counts=counts, items=items)
+        detail += f"核心核查尚有 {len(core_gaps)} 项未完成：{'、'.join(TRUST_CORE_KEYS[key] for key in core_gaps)}。"
+    return ReportOverview(status=status, trust_level="unknown", trust_label=headline, trust_note="",
+                          headline=headline, detail=detail, counts=counts, items=items, summary=summary)
 
 
 def refresh_overviews(case: Case) -> Case:

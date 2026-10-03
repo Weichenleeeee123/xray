@@ -488,10 +488,22 @@ class OverviewItem(BaseModel):
     axis: Literal["qualify", "basics", "funds", "stability", "news"]
 
 
+class CompanyFindingSummary(BaseModel):
+    """Need-led reading of company records, not a company trust rating."""
+    perspective: str
+    explanation: str
+    basis_ids: list[str] = Field(default_factory=list)  # 本版概况条目，不引用材料或其他版本
+    priority_ids: list[str] = Field(default_factory=list)  # 严重事项不能因场景排序而隐藏
+    tone: Literal["neutral", "attention", "critical", "unknown"]
+    rule: str                            # 可审计的确定性选择规则
+
+
 class ReportOverview(BaseModel):
     """企业概况、计数与轮廓共用的公司记录范围；材料和用户评价另行展示。"""
     schema_version: Literal[1] = 1
     status: Literal["ok", "warn", "bad", "none"]
+    # Legacy clients may still read these fields. New projections never issue
+    # high/low trust ratings; trust_label mirrors headline and trust_note is empty.
     trust_level: Literal["high", "pending", "low", "unknown"] = "unknown"
     trust_label: str = "资料较少"
     trust_note: str = "需谨慎判断"
@@ -499,6 +511,7 @@ class ReportOverview(BaseModel):
     detail: str
     counts: OverviewCounts
     items: list[OverviewItem] = Field(default_factory=list)
+    summary: CompanyFindingSummary | None = None  # 老案卷允许缺省，读取时确定性重算
 
 
 class Version(BaseModel):
