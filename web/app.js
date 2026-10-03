@@ -1066,6 +1066,11 @@ async function loadOnepager(v) {
     if (stillHere()) preview.innerHTML = opBody(cache[key], v);
   } catch (e) { if (stillHere()) preview.innerHTML = `<p class="err">一页结论没生成出来：${esc(e.message)}</p>`; }
 }
+function reportPresentation(v) {
+  const p = v.report_presentation;
+  return v.prebuilt && p?.title && p.note && p.body && p.refs?.length
+    && p.refs.every(ref => (v.raw_ids || []).includes(ref)) ? p : null;
+}
 function opBody(op, v) {
   if (!op) return '<p class="muted">正在生成…</p>';
   const seen = new Set();   // 整页每个词只标一次；打印时在页尾列出这些词的解释
@@ -1073,9 +1078,11 @@ function opBody(op, v) {
   const col = (title, lines, cls, empty) => `<div class="op-col ${cls}"><h4>${title}</h4>${lines.length
     ? `<ul>${lines.map(line).join('')}</ul>` : `<p class="small muted">${empty}</p>`}</div>`;
   const noClaims = !v.assertions.length;
+  const presentation = reportPresentation(v);
   const body = `<div class="op-head"><div><h3>${esc(op.title)}</h3><p>${esc(op.subject)}</p></div>
       <div class="stamp">案卷 ${esc(S.case.id)} · 第 ${v.no} 版<br>${esc(fmtTime(v.created_at))}${isDemoCase() ? '<br><b class="demo-mark">演示数据 · 公司为虚构</b>' : ''}</div></div>
-    <p class="headline">${esc(op.headline)}</p>
+    <p class="headline">${esc(presentation ? presentation.title + '，' + presentation.note : op.headline)}</p>
+    ${presentation ? `<p>${esc(presentation.body)}${refLinks(presentation.refs)}</p>` : ''}
     <div class="op-cols">
       ${col('哪里对不上', op.mismatch, 'mismatch', noClaims ? '还没有它的说法可以对照。' : '它的说法和记录没有对不上的地方。')}
       ${col('查到了什么', op.found, 'found', '还没查到具体记录。')}
