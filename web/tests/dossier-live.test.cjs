@@ -71,3 +71,10 @@ test('timeline range includes future recorded dates instead of ending at query y
   const h=harness();h.run(`v.charts=[{kind:'timeline',events:[{date:'2025-02-18',label:'成立'},{date:'2030-01-31',label:'认缴到期'}]}]`);
   assert.match(h.run('dossierTimeline(v)'),/2025 — 2030/);
 });
+
+test('production dossier assets contain no preview company or preview print footer',()=>{
+  const root=path.join(__dirname,'..','dossier');
+  for(const filename of fs.readdirSync(root).filter(name=>/\.(css|js)$/.test(name))) {
+    assert.doesNotMatch(fs.readFileSync(path.join(root,filename),'utf8'),/远山科技|独立设计预览|127\.0\.0\.1:8010/,filename);
+  }
+});
