@@ -40,6 +40,8 @@ def build_sources(license_meta: dict, registry_as_of: str, amac_as_of: str, comp
                note="企查查汇总的公司定期报告数据（上市、发债等公开披露的公司才有）；比率是平台算好的；以公告原文为准"),
         Source(id="web_media", name="权威媒体报道（联网搜索）", kind="web",
                note="只搜人民网、新华网、央视、财新、第一财经、证券时报、中国证券报、上海证券报等二十多家网站"),
+        Source(id="web_discovery", name="企业公开资料与关联线索（扩展搜索）", kind="web",
+               note="不限媒体或地方域名发现官网、品牌、产品、经营活动和不同说法；关系、来源性质与读取程度分别记录。取得资料不等于说法已证实。"),
         Source(id="cninfo", name="巨潮资讯网（上市公司公告）", kind="official", url="http://www.cninfo.com.cn",
                note="证监会指定的上市公司信息披露网站；年报原文和公告，免费公开"),
         Source(id="qcc_controller", name="实际控制人（企查查）", kind="commercial", url="https://agent.qcc.com",
