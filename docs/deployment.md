@@ -1,6 +1,6 @@
 # qier.asia 部署与维护
 
-当前验收版本：`20261003T035908Z-b3b052f`，发布于 2026-10-03 12:00 左右（Asia/Taipei），在 `253bdb9` 基础上改为五维雷达，并带上此后已提交的报告概况恢复与预制来源脚注。详见文末“五维雷达发布”；更早的发布见 [性能与部署](2026-10-03-performance-and-deployment.md)。
+当前验收版本：`20261003T044254Z-4dd8fa6`，发布于 2026-10-03 12:44 左右（Asia/Taipei），在五维雷达版本上合入 [PR #12](https://github.com/Weichenleeeee123/xray/pull/12)（小企开门与查询收尾动画、报告目录光效）。详见文末；更早的发布见 [性能与部署](2026-10-03-performance-and-deployment.md)。
 
 > 当前站点无需登录，案卷、材料、聊天和生成结果按浏览器身份隔离。无法确认归属的历史案卷隐藏但保留，只有主动提交的评价公开。`XRAY_PRIVATE_DIR` 已持久化；公网验证了 HttpOnly、Secure、SameSite=Lax 和 API 的 private/no-store。维护时仍需遵循 [小企与私有案卷交接](2026-10-03-assistant-privacy-handoff.md)。
 
@@ -23,7 +23,7 @@
 | 路径 | 用途 |
 |---|---|
 | `/opt/qier/releases/20261002T152239Z` | 本次部署的代码、页面和公开资料 |
-| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261003T035908Z-b3b052f` |
+| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261003T044254Z-4dd8fa6` |
 | `/opt/qier/venv` | 独立 Python 环境 |
 | `/opt/qier/current/requirements-deployed.txt` | 服务器实际安装的完整依赖版本 |
 | `/etc/qier/backend.env` | 私有模型/企查查配置，由 systemd 加载，不在网站静态目录中 |
@@ -131,3 +131,10 @@ systemctl reload caddy
 - 切换前确认没有进行中的查询和 8000 端口连接；运行数据和私有配置先备份为 `/var/backups/qier/qier-before-20261003T035908Z-b3b052f.tar.gz`（仅 root 可读），配置备份为 `/etc/qier/backend.env.before-b3b052f-*`，旧链接保留为 `/opt/qier/current.before-b3b052f`。预制示例包沿用 `/var/lib/qier/demo_prebuilt`，`XRAY_QCC_MAX_POINTS` 未改。
 - 验证：后端 537、报告页 91、研究室 92 项测试通过；候选版本以服务用户在临时数据目录冒烟，A、B、C 三个示例均由预制包回放，无“没查成”。切换后本机与公网健康接口均报告新版本，首页哈希与构建一致；公网取到的新脚本 `cf-cache-status: MISS`，含“企业五维轮廓”。浏览器在公网新建一份 A 示例报告，雷达为闭合五边形，页面请求均为 200。
 - 上传时 SSH 多次被重置，改为逐个上传、校验 SHA-256，并在服务器上用 `setsid nohup` 执行，避免连接中断打断切换。
+
+## 2026-10-03 12:44 合入 PR #12 发布
+
+- 发布提交 `4dd8fa6`（合并 fanmeilinn 的 PR #12），服务器版本 `/opt/qier/releases/20261003T044254Z-4dd8fa6`。合并时只有 `web/index.html` 的版本号冲突：PR 改过的三个样式表和 `case-design.js` 统一换成 `?v=pr12-halo-20261003`，`research-progress.js`、`app.js` 沿用主分支版本号；五维雷达保留。首页按本次提交重新构建；后端代码与依赖未变。
+- 运行数据与私有配置先备份为 `/var/backups/qier/qier-before-20261003T044254Z-4dd8fa6.tar.gz`，旧链接保留为 `/opt/qier/current.before-4dd8fa6`，配置备份为 `/etc/qier/backend.env.before-4dd8fa6-*`。
+- 验证：后端 537、报告页 91、研究室 98 项测试与类型检查通过；候选版本冒烟时 A、B、C 示例均由预制包回放、无“没查成”。切换后公网健康接口报告新版本，首页哈希一致，新样式与脚本 `cf-cache-status: MISS` 且含新代码；浏览器打开公网报告为五维雷达，无失败请求。
+- 同时清理分支：本地只保留 `main`，远端只有 `main`（PR #12 的分支合并后已删除）。删除工作区前，工作区独有的报告、运行记录、缓存与路演文件已复制到开发机被忽略的 `.tmp/worktree-archive/`；Codex 未提交的代码保存为本地标签 `archive/codex-office-live-research-wip`。Codex 工作区里的 `node_modules` 等是指向主项目和 `D:/codex-artifacts` 的目录联接，删除前已先单独移除联接，目标未受影响。
