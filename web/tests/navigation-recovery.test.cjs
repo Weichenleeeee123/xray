@@ -40,7 +40,7 @@ function serviceHealth(){
 }
 async function openGuide(h,{health=serviceHealth(),cases=[],failure=false}={}){
   h.ctx.guideHealth=health;h.ctx.guideCases=cases;
-  h.run(`S.health=guideHealth;location.hash='#/me'`);const work=h.run('route()');
+  h.run(`S.health=guideHealth;location.hash='#/guide'`);const work=h.run('route()');
   h.run(failure?`pending['/api/cases'].reject(new Error('temporary read error'))`:`pending['/api/cases'].resolve(guideCases)`);
   await work;return h.nodes.get('#view').innerHTML;
 }
@@ -104,6 +104,22 @@ test('the usage guide describes private browser cases, retained versions and del
   assert.match(html,/材料文字.*保留/);assert.match(html,/旧版本.*保留/);
   assert.match(html,/主动发布的评价会公开/);assert.match(html,/发布日期.*记录日期.*采集时间/);
   assert.doesNotMatch(html,/backend\/data\/cases|\.env|gitignore|只用在这一次判断|1999-01-01|端到端加密|数据不外发|自动脱敏/);
+});
+
+test('the standalone guide does not depend on the personal page and is selected in navigation',async()=>{
+  const h=harness();
+  h.run(`renderMe=()=>{throw new Error('The personal page must not render the guide')}`);
+  const html=await openGuide(h);
+  assert.match(html,/<h1>使用说明<\/h1>/);
+  assert.equal(h.run('location.hash'),'#/guide');
+  const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
+  h.run(source.slice(source.indexOf('function renderTop()'),source.indexOf('// ---------- 壳子')));
+  h.run('renderTop()');
+  const navigation=h.nodes.get('#shellNav').innerHTML;
+  assert.match(navigation,/data-sec="guide" aria-current="true"/);
+  assert.match(navigation,/data-sec="me" aria-current="false"/);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(NAV.map(([key,label])=>[key,label]))')),
+    [['check','查企'],['cases','案卷'],['library','资料库'],['me','我的'],['guide','使用说明']]);
 });
 
 test('the guide assistant also treats missing model metadata as unknown',()=>{
@@ -254,7 +270,7 @@ test('optional metadata has a six second timeout independent from the twelve sec
   assert.equal(h.run('rendered'),'first');
 });
 
-for(const [from,to] of [['me','cases'],['cases','me']]){
+for(const [from,to] of [['me','cases'],['cases','me'],['guide','cases'],['cases','guide']]){
   test(`a late ${from} case-list read cannot replace the newer ${to} page`,async()=>{
     const h=harness();h.run(`location.hash='#/${from}'`);const first=h.run('route()');
     h.run(`globalThis.older=pending['/api/cases'];location.hash='#/${to}'`);const second=h.run('route()');
