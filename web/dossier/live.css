@@ -1,4 +1,10 @@
 /* Live shell adapters. The approved paper components are scoped to dossier-live. */
+body.research-mode.report-workspace.me-mode #view { padding-top:0; }
+body.research-mode.report-workspace.me-mode .home { max-width:960px; padding:30px 24px 64px; }
+body.research-mode.report-workspace.me-mode .home-hero h1 { margin-top:0; }
+@media (max-width:700px) {
+  body.research-mode.report-workspace.me-mode .home { padding:24px 0 48px; }
+}
 body.report-workspace { --workspace-nav:190px; --workspace-assist:360px; }
 body.report-workspace .topbar { height:68px; background:#15232f; border-bottom:1px solid #927b56; gap:26px; }
 body.report-workspace .brand { width:auto; min-width:135px; display:flex; align-items:center; gap:9px; color:#d6ba83; }
