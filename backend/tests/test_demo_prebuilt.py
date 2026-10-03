@@ -67,6 +67,16 @@ def test_the_next_prepared_supplement_gets_the_prebuilt_version(bundle):
     assert nxt.id == case.id and nxt.owner_id == "browser-1" and len(nxt.versions) == 2
 
 
+def test_later_prebuilt_supplement_keeps_its_own_build_date_and_old_snapshot(bundle):
+    bundle["built_at"] = "2026-10-03 04:55"
+    bundle["stages"][1]["built_at"] = "2026-10-03 15:43"
+    case = demo_prebuilt.start_case(bundle, "browser-1")
+    assert case.versions[0].prebuilt.built_at == "2026-10-03 04:55"
+    nxt = demo_prebuilt.next_case(case, bundle, 1)
+    assert nxt.versions[0].prebuilt.built_at == "2026-10-03 04:55"
+    assert nxt.versions[1].prebuilt.built_at == "2026-10-03 15:43"
+
+
 def test_api_hands_out_the_prebuilt_case(bundle):
     client = TestClient(app)   # 不用 with：那会触发应用关闭，影响后面的测试
     lines = client.post("/api/cases/stream", json={"company_name": DEMO_COMPANY, "need": SAVINGS_NEED}).text.splitlines()

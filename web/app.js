@@ -999,25 +999,30 @@ function answerOf(list) {
   if (!nOk) return ['none', open.length && open.every(i => gapOf(i) === 'failed') ? '没查成，稍后重查' : '没查到数据'];
   return open.length ? ['none', '已查项暂未见异常', `另有 ${pendingNote(open)}`] : ['ok', '已查项暂未见异常'];
 }
-function glanceHtml(v, includeSignals = true) {
-  const items = glanceItems(v), seen = new Set();
+function glanceFirstHtml(v, seen = new Set()) {
+  const items = glanceItems(v);
   const sc = S.scenarios.find(s => s.id === v.scenario);
   const firstIds = ((v.glance && v.glance.first.length) ? v.glance.first : (sc && sc.first_items) || []).filter(id => items[id]);
   const bySev = (a, b) => SEV[items[b].status] - SEV[items[a].status];
 
   // 第一问
   let first = '';
-  if (sc && firstIds.length) {
+  if (firstIds.length) {
     const [st, word, note] = answerOf(firstIds.map(id => items[id]));
     // 下面"它说的 ⟷ 记录里的"已经列了说法，这里只列记录本身；没有记录条目才列说法
     const lines = firstIds.filter(id => !/^[AM]\d+$/.test(id));
     const show = lines.length ? lines : firstIds;
     first = `<div class="gl-first s-${st}">
-      <div class="gl-q">第一问：${esc(sc.first_question)}？</div>
+      ${sc ? `<div class="gl-q">第一问：${esc(sc.first_question)}？</div>` : ''}
       <div class="gl-a"><span class="mk">${MARK[st]}</span><span>${esc(word)}${note ? `<small>${esc(note)}</small>` : ''}</span></div>
       <ul>${[...show].sort(bySev).slice(0, 4).map(id => `<li class="s-${items[id].status}" data-act="goto" data-id="${esc(id)}" tabindex="0" role="link"><span class="mk">${MARK[items[id].status]}</span><span>${termText(shortOf(v, id, items[id].text), seen)}</span></li>`).join('')}</ul>
     </div>`;
   }
+  return first;
+}
+
+function glanceHtml(v, includeSignals = true) {
+  const seen = new Set(), first = glanceFirstHtml(v, seen);
 
   // 它说的 ⟷ 记录里的
   const claims = [...v.assertions].sort((a, b) => SEV[COLOR_ST[b.color]] - SEV[COLOR_ST[a.color]]);
@@ -1044,7 +1049,7 @@ function glanceHtml(v, includeSignals = true) {
 
   const q = v.questions[0];
   const ai = v.glance && ['model', 'replay'].includes(v.glance.mode);
-  return `${first}
+  return `<div data-first-question>${first}</div>
     <div class="gl-grid${includeSignals ? '' : ' without-signals'}">
       <div><h4 class="gl-h">它说的 <span>⟷</span> 记录里的</h4>${pairs}</div>
       ${includeSignals ? `<div><h4 class="gl-h">四个信号</h4><div class="tiles">${tiles}</div></div>` : ''}
@@ -2163,6 +2168,17 @@ window.addEventListener('scroll', closePop, { passive: true });
 
 // ---------- 路由与启动 ----------
 
+// Metadata can arrive after the report. Refresh only the conclusion, preserving
+// the radar, signal dialogs, current scroll position and the reader's chat draft.
+function refreshScenarioParts() {
+  const match = location.hash.match(/^#\/case\/([\w-]+)(?:\/v\/(\d+))?$/);
+  const v = S.case && ver();
+  if (!match || S.case?.id !== match[1] || !v || (match[2] && v.no !== +match[2])) return;
+  for (const el of $$('[data-first-question]')) {
+    if (el.isConnected) el.innerHTML = glanceFirstHtml(v) || '<p>现有记录尚不足以形成结论。</p>';
+  }
+}
+
 let routeRequest = null;
 let startupReady = Promise.resolve();
 const currentRoute = request => !request || (request === routeRequest && !request.signal.aborted);
@@ -2199,11 +2215,17 @@ async function route() {
 async function boot() {
   startupReady = Promise.allSettled([
     '/api/health', '/api/scenarios', '/api/sources', '/api/demo/cases', '/api/glossary', '/api/session'
-  ].map(path => api(path, {timeoutMs: 6000}))).then(([health, scenarios, sources, demos, glossary, session]) => {
+  ].map(path => api(path, {timeoutMs: 6000}).then(value => {
+    if (path === '/api/scenarios') {
+      S.scenarios = Array.isArray(value) ? value : [];
+      refreshScenarioParts();
+    }
+    return value;
+  }))).then(([health, scenarios, sources, demos, glossary, session]) => {
     S.health = health.value || null;
     S.session = session.value || null;
     void libSync();
-    S.scenarios = scenarios.value || [];
+    S.scenarios = Array.isArray(scenarios.value) ? scenarios.value : [];
     S.sources = sources.value || [];
     S.demos = demos.value || [];
     setGlossary(glossary.value);
