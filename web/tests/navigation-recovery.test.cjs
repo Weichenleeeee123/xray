@@ -9,16 +9,18 @@ function harness(){
   const node=()=>{
     const classes=new Set();
     return {innerHTML:'',textContent:'',hidden:true,isConnected:true,open:true,dataset:{},attributes:{},setAttribute(k,v){this.attributes[k]=v;},getAttribute(k){return this.attributes[k];},close(){this.open=false;},
+      get className(){return [...classes].join(' ');},set className(value){classes.clear();String(value).split(/\s+/).filter(Boolean).forEach(n=>classes.add(n));},
       classList:{toggle(n,on){if(on??!classes.has(n))classes.add(n);else classes.delete(n);},add(...names){names.forEach(n=>classes.add(n));},remove(...names){names.forEach(n=>classes.delete(n));},contains(n){return classes.has(n);}}};
   };
   const ctx=vm.createContext({FormData,AbortController,URLSearchParams,console,
     setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout(){},
-    location:{hash:'#/case/first',search:'',replace(){}},
+    location:{hash:'#/case/first',search:'',replace(url){this.replaced=url;},assign(url){this.assigned=url;}},
     document:{body:node(),querySelector:s=>{if(!nodes.has(s))nodes.set(s,node());return nodes.get(s);},querySelectorAll:()=>[],addEventListener:(event,fn)=>{listeners[`document:${event}`]=fn;}},
     window:{addEventListener:(event,fn)=>{listeners[event]=fn;},scrollTo(){}}});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../app.js'),'utf8').replace(/boot\(\);\s*$/,''),ctx);
   const run=code=>vm.runInContext(code,ctx);
-  run(`researchCleanup=()=>{}; renderTop=()=>{}; globalThis.notices=[]; toast=(message,bad)=>notices.push({message,bad}); shellHtml=x=>x;
+  run(`isDesignReview=()=>!new URLSearchParams(location.search).has('classic');
+    researchCleanup=()=>{}; renderTop=()=>{}; globalThis.notices=[]; toast=(message,bad)=>notices.push({message,bad}); shellHtml=x=>x;
     renderCase=()=>{ globalThis.rendered=S.case.id; useTerms(ver().terms||[]); };
     globalThis.pending={}; api=(url,opts)=>new Promise((resolve,reject)=>{pending[url]={resolve,reject,opts};});`);
   return {ctx,run,nodes,listeners,timers};
@@ -32,6 +34,131 @@ function restoreApi(h){
   const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
   h.run(source.slice(source.indexOf('async function api('),source.indexOf('// ---------- 小工具')));
 }
+
+const routeModes=['research-mode','report-workspace','dossier-live','dossier-shell','cases-mode','collections-mode','knowledge-mode','me-mode'];
+function assertRouteModes(h,enabled){
+  for(const name of routeModes)assert.equal(h.ctx.document.body.classList.contains(name),enabled.includes(name),name);
+}
+
+test('home redirects preserve the displayed report until the browser leaves the application',async()=>{
+  for(const hash of ['', '#/', '#/check', '#/new', '#/unknown']){
+    const h=harness();await openReport(h);
+    h.nodes.get('#view').innerHTML='<article>current report and draft</article>';
+    h.run(`document.body.classList.add('research-mode','report-workspace','dossier-live','reader-preference');globalThis.cleanups=0;researchCleanup=()=>{cleanups++}`);
+    const modes=h.ctx.document.body.className;
+    h.ctx.location.hash=hash;await h.run('route()');
+    assert.equal(h.ctx.location.replaced,'/',hash);
+    assert.equal(h.ctx.document.body.className,modes,hash);
+    assert.equal(h.nodes.get('#view').innerHTML,'<article>current report and draft</article>',hash);
+    assert.equal(h.run('cleanups'),0,hash);
+  }
+});
+
+test('home redirects abort pending report reads and ignore their late success or failure',async()=>{
+  for(const succeeds of [true,false]){
+    const h=harness();const pendingReport=h.run('route()');
+    const markup=h.nodes.get('#view').innerHTML,modes=h.ctx.document.body.className;
+    h.run(`location.hash='#/check'`);await h.run('route()');
+    assert.equal(h.ctx.location.replaced,'/');
+    assert.equal(h.run(`pending['/api/cases/first'].opts.signal.aborted`),true);
+    if(succeeds){
+      h.ctx.caseResult=result('first');h.run(`pending['/api/cases/first'].resolve(caseResult)`);
+    }else h.run(`pending['/api/cases/first'].reject(new Error('late failure while leaving'))`);
+    await pendingReport;
+    assert.equal(h.nodes.get('#view').innerHTML,markup);
+    assert.equal(h.ctx.document.body.className,modes);
+    assert.equal(h.run('S.case'),null);
+    assert.equal(h.ctx.rendered,undefined);
+  }
+});
+
+test('the company navigation button goes directly home while application sections keep their hash routes',()=>{
+  const h=harness();
+  const click=sec=>h.listeners['document:click']({target:{closest:()=>({dataset:{act:'go',sec}})}});
+  click('check');
+  assert.equal(h.ctx.location.assigned,'/');
+  assert.equal(h.ctx.location.hash,'#/case/first');
+  for(const sec of ['cases','library','me','guide']){
+    h.ctx.location.assigned=undefined;click(sec);
+    assert.equal(h.ctx.location.hash,`#/${sec}`);
+    assert.equal(h.ctx.location.assigned,undefined);
+  }
+});
+
+test('the assistant links directly to the company homepage',()=>{
+  const h=harness();h.run(`S.case=null;qiSpriteHtml=()=>''`);
+  const html=h.run('qibarHtml()');
+  assert.match(html,/<a[^>]+href="\/"[^>]*>去查一家公司<\/a>/);
+  assert.doesNotMatch(html,/href="#\/check"/);
+});
+
+test('a cold modern report keeps its workspace through loading, failure and retry',async()=>{
+  const h=harness();h.run(`location.hash='#/case/first/v/1';document.body.classList.add('reader-preference')`);
+  const modes=['research-mode','report-workspace','dossier-live'];
+  const failed=h.run('route()');
+  assertRouteModes(h,modes);
+  assert.match(h.nodes.get('#view').innerHTML,/workspace-loading/);
+  assert.match(h.nodes.get('#view').innerHTML,/读取案卷/);
+  assert.doesNotMatch(h.nodes.get('#view').innerHTML,/class="home(?:\s|")/);
+  h.run(`pending['/api/cases/first'].reject(new Error('<temporary failure>'))`);await failed;
+  assertRouteModes(h,modes);
+  assert.match(h.nodes.get('#view').innerHTML,/workspace-loading/);
+  assert.match(h.nodes.get('#view').innerHTML,/data-act="retry-read"/);
+  assert.match(h.nodes.get('#view').innerHTML,/&lt;temporary failure&gt;/);
+  assert.doesNotMatch(h.nodes.get('#view').innerHTML,/class="home(?:\s|")|<temporary failure>/);
+  h.run('globalThis.retryRoute=route;route=()=>globalThis.retryWork=retryRoute()');
+  h.listeners['document:click']({target:{closest:()=>({dataset:{act:'retry-read'}})}});
+  assertRouteModes(h,modes);
+  assert.match(h.nodes.get('#view').innerHTML,/workspace-loading/);
+  h.ctx.caseResult=result('first');h.run(`pending['/api/cases/first'].resolve(caseResult)`);await h.ctx.retryWork;
+  assertRouteModes(h,modes);
+  assert.equal(h.run('rendered'),'first');
+  assert.equal(h.ctx.document.body.classList.contains('reader-preference'),true);
+});
+
+test('classic reports clear modern workspace modes during loading and failure',async()=>{
+  const h=harness();h.run(`location.search='?classic';location.hash='#/library'`);await h.run('route()');
+  assert.equal(h.ctx.document.body.classList.contains('research-mode'),true);
+  h.run(`location.hash='#/case/first'`);const failed=h.run('route()');
+  assertRouteModes(h,[]);
+  assert.doesNotMatch(h.nodes.get('#view').innerHTML,/workspace-loading/);
+  h.run(`pending['/api/cases/first'].reject(new Error('try again'))`);await failed;
+  assertRouteModes(h,[]);
+  assert.match(h.nodes.get('#view').innerHTML,/data-act="retry-read"/);
+  assert.doesNotMatch(h.nodes.get('#view').innerHTML,/workspace-loading/);
+});
+
+test('cases and guide establish their own workspace before reads complete, including when leaving the library',async()=>{
+  for(const fromLibrary of [false,true])for(const section of ['cases','guide']){
+    const h=harness();
+    if(fromLibrary){
+      h.run(`location.hash='#/library'`);await h.run('route()');
+      assertRouteModes(h,['research-mode','report-workspace','dossier-shell','collections-mode','knowledge-mode']);
+    }
+    h.ctx.location.hash=`#/${section}`;const work=h.run('route()');
+    const modes=section==='cases'?['research-mode','report-workspace','cases-mode','collections-mode']:['research-mode','report-workspace','dossier-shell'];
+    assertRouteModes(h,modes);
+    assert.match(h.nodes.get('#view').innerHTML,/读取/);
+    h.run(`pending['/api/cases'].resolve([])`);await work;
+    assertRouteModes(h,modes);
+  }
+});
+
+test('report version routes retain selected evidence only for the same viewed version',async()=>{
+  const h=harness();await openReport(h);
+  h.run(`S.case.versions.push({no:2,terms:[]});S.case.current=2;S.selected.add('version-one-evidence');location.hash='#/case/first/v/1'`);
+  const originalRead=h.run(`pending['/api/cases/first']`);
+  await h.run('route()');
+  assert.equal(h.run('S.viewNo'),1);
+  assert.equal(h.run(`S.selected.has('version-one-evidence')`),true);
+  assert.equal(h.run(`pending['/api/cases/first']`),originalRead);
+  assertRouteModes(h,['research-mode','report-workspace','dossier-live']);
+  h.run(`location.hash='#/case/first/v/2'`);await h.run('route()');
+  assert.equal(h.run('S.viewNo'),2);
+  assert.equal(h.run('S.selected.size'),0);
+  assert.equal(h.run(`pending['/api/cases/first']`),originalRead);
+  assertRouteModes(h,['research-mode','report-workspace','dossier-live']);
+});
 
 function jobVersion(){
   return {no:1,terms:[],scenario:'job',assertions:[],missing:[],questions:[],
@@ -445,7 +572,7 @@ function beginReview(h){
     globalThis.reviewButton={disabled:false,textContent:''};
     globalThis.reviewForm={text:{value:'这里是十个字以上的真实经历描述'},nickname:{value:'测试用户'},
       isConnected:true,querySelector(){return reviewButton;}};
-    reviewsPanel=()=>'<p>published reviews</p>'`);
+    reviewsPanel=()=>'<p>published reviews</p>';dossierReviews=reviewsPanel`);
   return h.run('submitReview(reviewForm)');
 }
 

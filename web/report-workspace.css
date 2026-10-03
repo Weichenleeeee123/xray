@@ -125,6 +125,17 @@ body.research-mode.report-workspace .fab {background:linear-gradient(135deg,#385
 
 
 /* Report workspace: fixed navigation, flowing report and docked assistant. */
+.workspace-loading {padding:clamp(24px,4vw,56px);min-height:calc(100dvh - 68px)}
+.workspace-loading-card {max-width:860px;margin:0 auto;padding:clamp(24px,3vw,40px);background:#faf6eb;border:1px solid #c4b38f;box-shadow:0 5px 18px #25344008;color:#243844}
+.workspace-loading-kicker {display:block;font:11px var(--sans);letter-spacing:.08em;color:#927b56}
+.workspace-loading-card h1 {font:600 clamp(24px,2.3vw,34px)/1.5 var(--serif);margin:18px 0 12px}
+.workspace-loading-card p {font-size:14px;color:#6f7777}
+.workspace-loading-card .err {color:var(--red)}
+.workspace-loading-actions {display:flex;gap:14px;flex-wrap:wrap;margin-top:24px}
+.workspace-loading-lines {display:grid;gap:14px;margin:32px 0}
+.workspace-loading-lines i {display:block;height:11px;background:#d9cdb55c;max-width:92%;border-radius:2px}
+.workspace-loading-lines i:nth-child(2) {max-width:76%}
+.workspace-loading-lines i:nth-child(3) {max-width:58%}
 .workspace-sidebar,.workspace-assistant-toggle {display:none}
 body.research-mode.report-workspace {--workspace-nav:188px;--top-h:64px;--workspace-assist:320px}
 body.report-workspace .topbar {height:64px;padding:0 24px;gap:24px;z-index:90}
