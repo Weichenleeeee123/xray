@@ -29,6 +29,7 @@ from app.models import PublicCase, PublicChatMessage
 from app.analysis.pipeline import NoNewReviews, load_services, new_case, refresh_reviews, resolve, supplement
 from app.analysis.report import onepager
 from app.analysis.company_keywords import refresh_company_keywords
+from app.analysis.overview import refresh_overviews
 from app.assistant import answer
 from app.glossary import load_glossary
 from app.intake import run_intake
@@ -94,7 +95,7 @@ _memory_lock = threading.Lock()
 
 def _persist_case(case: Case) -> Case:
     """One post-persistence hook for every new version, including demo copies."""
-    saved = store.save(ensure_material_analyses(refresh_company_keywords(case, current_only=True)))
+    saved = store.save(refresh_overviews(ensure_material_analyses(refresh_company_keywords(case, current_only=True))))
     if not config.CASE_MEMORY_ENABLED or _stopping.is_set() or not saved.owner_id:
         return saved
     owner = privacy.identity()
@@ -165,7 +166,7 @@ def _case(case_id: str) -> Case:
     case = store.get(case_id)
     if case is None or case.owner_id != privacy.identity():
         raise HTTPException(status_code=404, detail="案卷不存在")
-    return ensure_material_analyses(refresh_company_keywords(case))
+    return refresh_overviews(ensure_material_analyses(refresh_company_keywords(case)))
 
 
 @app.get("/api/health")
