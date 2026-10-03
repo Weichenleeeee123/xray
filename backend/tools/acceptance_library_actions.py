@@ -43,7 +43,7 @@ def serve(port):
     @main.app.post('/api/__library_seed')
     def seed():
         cases = {}
-        for kind in ('fresh', 'old', 'multi', 'blocked'):
+        for kind in ('fresh', 'another', 'old', 'multi', 'blocked'):
             case = helpers.make_case(helpers.DEMO_COMPANY, need='合成收藏功能验收')
             case.owner_id = privacy.identity()
             if kind in {'old', 'multi'}:
@@ -140,6 +140,15 @@ def run(out):
                 ask('收藏这个词')
                 assert len(library()) == 1
                 passed.append('repeated_command_is_idempotent')
+                open_case('another')
+                answer = ask('什么是实缴资本')
+                expect(answer.locator('[data-act="chat-lib-save"]')).to_be_enabled()
+                answer.locator('[data-act="chat-lib-save"]').click()
+                page.wait_for_function('JSON.parse(localStorage.getItem("xray.library")||"[]")[0]?.seen.length === 2')
+                assert len(library()) == 1
+                assert {source['caseId'] for source in library()[0]['seen']} == {ids['fresh'], ids['another']}
+                expect(answer.locator('[data-act="chat-lib-save"]')).to_be_disabled()
+                passed.append('same_term_button_records_another_report_source')
                 page.locator('#shellNav [data-sec="library"]').click()
                 expect(page.locator('#libList')).to_contain_text('实缴资本')
                 page.screenshot(path=str(out / 'saved-library.png'))

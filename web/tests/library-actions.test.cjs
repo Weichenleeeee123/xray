@@ -64,6 +64,24 @@ test('deleting a saved term re-enables its chat button instead of retaining a st
   assert.doesNotMatch(h.api.html(h.S.case.chat[0],0),/已收藏|已保存到此浏览器|disabled/);
 });
 
+test('same explanation in another report or version keeps the save button enabled until this source is recorded',async()=>{
+  for(const prior of [{caseId:'c1',version:2,company:'旧版公司'},{caseId:'other',version:1,company:'其他报告公司'}]){
+    const h=harness({initial:[entry({seen:[prior]})]});
+    assert.doesNotMatch(h.api.html(h.S.case.chat[0],0),/disabled|已收藏/);
+    await h.api.handle(0,'status');
+    assert.equal(h.list().length,1);assert.equal(h.list()[0].seen.length,2);
+    assert.ok(h.list()[0].seen.some(seen=>seen.caseId==='c1'&&seen.version===1));
+    assert.match(h.api.html(h.S.case.chat[0],0),/disabled/);
+  }
+});
+
+test('stale success state is cleared when the saved snapshot no longer contains this report source',async()=>{
+  const h=harness();await h.api.handle(0,'status');
+  h.setRaw(JSON.stringify([entry({seen:[{caseId:'other',version:1,company:'其他报告公司'}]})]));
+  assert.doesNotMatch(h.api.html(h.S.case.chat[0],0),/disabled|已收藏|已保存到此浏览器/);
+  await h.api.handle(0,'status');assert.equal(h.list()[0].seen.length,2);
+});
+
 test('historical report company name is used rather than the current case input',async()=>{
   const h=harness();h.S.case.versions[0].company={name:'该版登记名称'};
   await h.api.handle(0,'status');assert.equal(h.list()[0].seen[0].company,'该版登记名称');

@@ -280,8 +280,9 @@
       try {
         const entry = snapshot(message, term), existing = list?.find(value => value.id === entry.id);
         if (existing && !sameSnapshot(existing, entry)) result = STATES.conflict;
-        else if (existing && !result) result = STATES.exists;
-        else if (!existing && ['synced','local','exists','sync_failed','conflict'].includes(result?.status)) result = null;
+        else if (existing && containsSnapshot(existing, entry)) {
+          if (!result) result = STATES.exists;
+        } else if (['synced','local','exists','sync_failed','conflict'].includes(result?.status)) result = null;
       } catch { result = STATES.invalid; }
       result = readFailure || result;
       const locked = ['saving','synced','local','exists','conflict','invalid','corrupt','owner'].includes(result?.status);
