@@ -12,3 +12,7 @@ os.environ["XRAY_LLM_MODE"] = "off"
 os.environ["XRAY_COMMERCIAL"] = ""  # 商业接口按次计费，测试绝不调用
 os.environ["XRAY_AMAC_DETAIL"] = "0"  # 不联网取中基协详情页
 os.environ["XRAY_CNINFO"] = "0"  # 巨潮也联网，测试不查
+for _quota in ("XRAY_QUOTA_GUEST", "XRAY_QUOTA_IP", "XRAY_QUOTA_ACCOUNT"):
+    os.environ[_quota] = "0"  # 每日限额另有专门的测试；其余测试不受它影响
+# Keep an explicit empty value so config._load_env cannot restore a real local key.
+os.environ["XRAY_RESEND_KEY"] = ""

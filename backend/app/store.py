@@ -64,6 +64,21 @@ class CaseStore:
             case.chat.extend(messages)
             self._write(case, path)
 
+    def reassign(self, old_owner: str, new_owner: str) -> int:
+        """把一个身份名下的案卷整批转给另一个身份（登录后并入账号）。"""
+        moved = 0
+        for path in self.dir.glob("*.json"):
+            try:
+                with locked(path):
+                    case = self.get(path.stem)
+                    if case and case.owner_id == old_owner:
+                        case.owner_id = new_owner
+                        self._write(case, path)
+                        moved += 1
+            except (ValueError, OSError):
+                continue
+        return moved
+
     def get(self, case_id: str) -> Case | None:
         try:
             path = self._path(case_id)

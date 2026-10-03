@@ -19,6 +19,9 @@ from app import config
 from app.persistence import atomic_text, locked
 
 OWNER: ContextVar[str | None] = ContextVar("guest_owner", default=None)
+GUEST: ContextVar[str | None] = ContextVar("guest_identity", default=None)  # 匿名身份；登录后 OWNER 换成账号，它不变
+ACCOUNT: ContextVar[dict | None] = ContextVar("account", default=None)
+CLIENT_IP: ContextVar[str] = ContextVar("client_ip", default="")
 LIFETIME = 180 * 86400
 COOKIE = "qier_guest"
 SECURE_COOKIE = "__Host-qier_guest"
@@ -31,9 +34,12 @@ def identity() -> str:
     return owner
 
 
+def private_dir() -> Path:
+    return Path(os.getenv("XRAY_PRIVATE_DIR", str(config.CASES_DIR.parent / "private")))
+
+
 def secret() -> bytes:
-    directory = Path(os.getenv("XRAY_PRIVATE_DIR", str(config.CASES_DIR.parent / "private")))
-    path = directory / "guest-signing.secret"
+    path = private_dir() / "guest-signing.secret"
     with locked(path):
         if not path.exists():
             atomic_text(path, secrets.token_hex(32))
@@ -61,6 +67,12 @@ def owner_from_token(token: str | None) -> str | None:
     if not hmac.compare_digest(expected, signature):
         return None
     return hashlib.sha256(payload.split(".")[0].encode()).hexdigest()
+
+
+def client_ip(request: Request) -> str:
+    """Cloudflare 填 CF-Connecting-IP；没经过它时退到代理头，再退到连接地址。只用来计数，不用来鉴权。"""
+    forwarded = request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for", "").split(",")[0]
+    return forwarded.strip()[:64] or (request.client.host if request.client else "")
 
 
 def allowed_origins() -> list[str]:
@@ -96,7 +108,13 @@ class GuestPrivacyMiddleware:
         if fresh:
             token = issue()
             owner = owner_from_token(token)
-        context_token = OWNER.set(owner)
+        from app import accounts  # 账号模块要用这里的签名密钥，放到调用时再导入
+        user_token = request.cookies.get(accounts.cookie_name(secure))
+        account = accounts.from_session(user_token) if user_token else None
+        stale_user = bool(user_token) and account is None
+        context_token = OWNER.set(accounts.owner(account) if account else owner)
+        guest_token, account_token = GUEST.set(owner), ACCOUNT.set(account)
+        ip_token = CLIENT_IP.set(client_ip(request))
 
         async def private_send(message):
             if message["type"] == "http.response.start":
@@ -109,6 +127,9 @@ class GuestPrivacyMiddleware:
                     if secure:
                         cookie += "; Secure"
                     headers.append((b"set-cookie", cookie.encode("ascii")))
+                if stale_user and not any(k.lower() == b"set-cookie" and v.startswith(accounts.cookie_name(secure).encode())
+                                          for k, v in headers):
+                    headers.append((b"set-cookie", accounts.clear_cookie(secure).encode("ascii")))
                 message = {**message, "headers": headers}
             await send(message)
 
@@ -116,3 +137,6 @@ class GuestPrivacyMiddleware:
             await self.app(scope, receive, private_send)
         finally:
             OWNER.reset(context_token)
+            GUEST.reset(guest_token)
+            ACCOUNT.reset(account_token)
+            CLIENT_IP.reset(ip_token)

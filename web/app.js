@@ -192,8 +192,45 @@ function libRead() {
   try { const list = JSON.parse(localStorage.getItem(LIB_KEY) || '[]'); return Array.isArray(list) ? list : []; }
   catch { return []; }
 }
-function libWrite(list) {
-  try { localStorage.setItem(LIB_KEY, JSON.stringify(list)); return true; } catch { return false; }
+function libWrite(list, push = true) {
+  try { localStorage.setItem(LIB_KEY, JSON.stringify(list)); } catch { return false; }
+  if (push) libPush();
+  return true;
+}
+// 登录了就以账号里的为准：每次改动推上去；本地这份是缓存。
+// LIB_OWNER 记着本地这份属于哪个账号——没有记号的是未登录时收的，第一次登录时并进账号。
+const LIB_OWNER = 'xray.library.owner';
+function libPush() {
+  if (!S.session?.account) return;
+  clearTimeout(libPush.t);
+  libPush.t = setTimeout(() => api('/api/me/library', {method: 'PUT', body: libRead()})
+    .catch(() => toast('资料库没同步到账号，下次打开会再试', true)), 400);
+}
+function libMerge(a, b) {
+  const byId = new Map();
+  for (const e of [...a, ...b]) {
+    const old = byId.get(e.id);
+    if (!old) { byId.set(e.id, e); continue; }
+    const [keep, other] = (e.savedAt || '') > (old.savedAt || '') ? [e, old] : [old, e];
+    byId.set(e.id, {...keep, seen: [...(other.seen || []).filter(s => !(keep.seen || []).some(k => k.caseId === s.caseId)), ...(keep.seen || [])]});
+  }
+  return [...byId.values()].sort((x, y) => (y.savedAt || '').localeCompare(x.savedAt || ''));
+}
+async function libSync() {
+  const email = S.session?.account?.email;
+  if (!email) return;
+  let remote;
+  try { remote = await api('/api/me/library'); } catch { return; }
+  let owner = null;
+  try { owner = localStorage.getItem(LIB_OWNER); } catch {}
+  const list = owner ? remote : libMerge(libRead(), remote);   // 别的账号留下的缓存不并
+  libWrite(list, false);
+  try { localStorage.setItem(LIB_OWNER, email); } catch {}
+  if (JSON.stringify(list) !== JSON.stringify(remote)) libPush();
+  if ($('#libList')) $('#libList').innerHTML = libraryHtml(libRead());
+}
+function libForget() {
+  try { localStorage.removeItem(LIB_KEY); localStorage.removeItem(LIB_OWNER); } catch {}
 }
 const libHas = id => libRead().some(e => e.id === id);
 // 正在看的那份报告；不在案卷页（比如「我的」里的词表）就不记
@@ -222,7 +259,8 @@ function libNote(id) {
 const libBtn = id => { const on = libHas(id); return `<button type="button" class="lib-tog" data-act="lib-toggle" data-term="${esc(id)}" aria-pressed="${on}">${on ? '★ 已收藏' : '☆ 收藏复习'}</button>`; };
 function libraryHtml(list) {
   if (!list.length) return '<div class="empty-case"><p>还没有收藏的词。在报告里点开带虚线的词，点「☆ 收藏复习」，就会出现在这里。</p><a class="btn sm" href="#/cases">去看案卷</a></div>';
-  return `<p class="lists-line">共 ${list.length} 个词。只存在这个浏览器里，清除浏览器数据后会丢失。</p>
+  const where = S.session?.account ? `已同步到账号 ${esc(S.session.account.email)}，换设备登录也能看到。` : '只存在这个浏览器里，清除浏览器数据后会丢失；登录后可以同步到账号。';
+  return `<p class="lists-line">共 ${list.length} 个词。${where}</p>
   <div class="lib-list">${list.map(e => `<article class="lib-card">
     <div class="lib-h"><h3>${esc(e.term)}</h3>${e.origin === 'model' ? '<span class="lib-ai">AI 解释·未经人工核对</span>' : ''}</div>
     <p>${esc(e.plain)}</p>
@@ -288,7 +326,7 @@ const chgTag = (id, cm) => (cm[id] ? `<span class="chg-tag ${cm[id]}" title="和
 
 function renderTop() {
   const onCase = S.case && location.hash.startsWith('#/case/');
-  const sec = onCase ? 'cases' : (location.hash.match(/^#\/(check|cases|library|me|guide)(?:\/)?$/) || [])[1] || 'check';
+  const sec = onCase ? 'cases' : /^#\/reset\b/.test(location.hash) ? 'me' : (location.hash.match(/^#\/(check|cases|library|me|guide)\/?$/) || [])[1] || 'check';
   $('#shellNav').innerHTML = NAV.map(([k, label, hint]) =>
     `<button type="button" class="snav-b" data-act="go" data-sec="${k}" aria-current="${k === sec}" title="${esc(hint)}">${label}</button>`).join('');
   $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : sec === 'cases' ? '我的案卷' : '';
@@ -438,18 +476,24 @@ function renderLibrary() {
 // ---------- 分区四：我的 ----------
 
 async function renderMe(request = routeRequest) {
-  // Personal-home integration owns #/me. Keep its current content until that lands;
-  // the standalone guide remains available independently at #/guide.
-  await renderGuide(request);
+  // Keep the account panel and its actions on the personal-home route.
+  await renderGuide(request, true);
 }
 
 // ---------- 使用说明：独立于个人主页 ----------
 
-async function renderGuide(request = routeRequest) {
+async function renderGuide(request = routeRequest, showAccount = false) {
   S.case = null; useTerms(S.terms); renderTop();
   $('#view').innerHTML = '<div class="home"><p class="muted">读取服务状态…</p></div>';
   let cases = null;
   const caseRead = api('/api/cases', {signal: request?.signal}).then(value => {if (Array.isArray(value)) cases = value;}).catch(() => {});
+  // 次数和未并入的案卷随时会变，每次进来都重读；不挡着页面，读到了只重画账号这一块
+  api('/api/session', {signal: request?.signal}).then(value => {
+    if (!currentRoute(request) || !value) return;
+    S.session = value;
+    const box = $('#acct');
+    if (box) box.innerHTML = acctHtml();
+  }).catch(() => {});
   await Promise.all([startupReady, caseRead]);
   if (!currentRoute(request)) return;
   if (cases) S.cases = cases;
@@ -467,22 +511,25 @@ async function renderGuide(request = routeRequest) {
       ? '已启用商业资料服务。具体取得了哪些登记、年报等资料，以本次报告的来源和覆盖状态为准。'
       : '当前未启用商业资料服务；可用的公开记录和已收集资料仍会用于核对，缺少的部分会在报告中说明。';
   const caseStatus = cases
-    ? cases.length ? `${cases.length} 份，可在「案卷」查看` : '本浏览器还没有案卷'
+    ? cases.length ? `${cases.length} 份，可在「案卷」查看` : S.session?.account ? '账号里还没有案卷' : '本浏览器还没有案卷'
     : '<span class="err">案卷列表暂未读到，已保存的案卷不会因此清空。</span> <button class="btn sm" data-act="retry-read">重试读取案卷</button>';
   const terms = S.terms.slice(0, 8);
   $('#view').innerHTML = shellHtml(`
   <div class="home">
     <section class="home-hero">
-      <div class="kicker">使用说明</div>
-      <h1>使用说明</h1>
+      <div class="kicker">${showAccount ? '我的' : '使用说明'}</div>
+      <h1>${showAccount ? '我的' : '使用说明'}</h1>
       <p>了解当前可用的资料、案卷如何保存，以及阅读报告时需要留意的范围。</p>
     </section>
+
+    ${showAccount ? `<section class="me-sec acct" id="acct">${acctHtml()}</section>
+      <p class="me-p"><a href="#/guide">查看使用说明 →</a></p>` : ''}
 
     <section class="me-sec"><h2>服务与资料覆盖</h2>
       <dl class="kv-me">
         <dt>模型辅助</dt><dd>${esc(model)}</dd>
         <dt>商业资料服务</dt><dd>${esc(commercial)}</dd>
-        <dt>本浏览器案卷</dt><dd>${caseStatus}</dd>
+        <dt>${S.session?.account ? '账号里的案卷' : '本浏览器案卷'}</dt><dd>${caseStatus}</dd>
       </dl>
     </section>
 
@@ -499,7 +546,7 @@ async function renderGuide(request = routeRequest) {
 
     <section class="me-sec"><h2>材料和案卷</h2>
       <ul class="me-ul">
-        <li>材料、案卷和聊天仅此浏览器可见，不会自动跨设备同步；清除浏览器数据后不能自动恢复。</li>
+        <li>${S.session?.account ? '材料、案卷和聊天只有登录这个账号才能看到，换设备登录同一账号即可找回。' : '材料、案卷和聊天仅此浏览器可见，不会自动跨设备同步；清除浏览器数据后不能自动恢复。登录后可以换设备找回。'}</li>
         <li>提交到案卷的材料文字会保留在原始记录中，便于回看核对。补材料、加入对方回复或修改需求会生成新版本，旧版本也会保留。</li>
         <li>上传材料不会自动变成公开评价。只有你主动发布的评价会公开；发布前请自行检查内容，避免写入个人敏感信息。</li>
       </ul>
@@ -514,6 +561,93 @@ async function renderGuide(request = routeRequest) {
         <li>虚构的演示案例全程挂着"演示数据 · 公司为虚构"。</li>
       </ul>
     </section>
+  </div>`);
+}
+
+// ---------- 账号（可选）：登录了换设备也能找回案卷和资料库 ----------
+
+const quotaLine = q => !q ? '' : q.limit ? `今天已新建 ${q.used} / ${q.limit} 次研究` : `今天已新建 ${q.used} 次研究`;
+function acctHtml() {
+  const ses = S.session, a = ses?.account;
+  if (!ses) return '<h2>账号</h2><p class="me-p muted">账号状态暂未读到，请刷新页面再试。</p>';
+  if (a) return `<h2>账号</h2>
+    <dl class="kv-me"><dt>邮箱</dt><dd>${esc(a.email)}</dd><dt>额度</dt><dd>${quotaLine(ses.quota)}（示例不计次）</dd></dl>
+    ${ses.guest_cases ? `<div class="acct-merge"><p>这个浏览器上还有 ${ses.guest_cases} 份未登录时查的案卷。是你自己查的，就并进账号；在别人的电脑上，就别并。</p>
+      <button type="button" class="btn sm" data-act="acct-merge">并进账号</button></div>` : ''}
+    <div class="acct-acts"><button type="button" class="btn sm ghost" data-act="acct-logout">退出登录</button></div>
+    <details class="acct-more"><summary>修改密码</summary>
+      <form class="acct-form" id="acctPw"><label>原密码 <input type="password" name="old" required autocomplete="current-password"></label>
+        <label>新密码 <input type="password" name="new" required minlength="8" maxlength="128" autocomplete="new-password"></label>
+        <button class="btn sm" type="submit">修改</button><p class="small muted">改完后，其他设备上的登录会失效。</p></form></details>
+    <details class="acct-more"><summary>注销账号</summary>
+      <form class="acct-form" id="acctDel"><p class="small">注销后账号和资料库会删除，账号里的案卷也再打不开，不能恢复。</p>
+        <label>密码 <input type="password" name="password" required autocomplete="current-password"></label>
+        <button class="btn sm danger" type="submit">确认注销</button></form></details>`;
+  const mode = S.acctMode || 'login';
+  const tabs = [['login', '登录'], ['register', '注册']].map(([k, l]) =>
+    `<button type="button" class="acct-tab" data-act="acct-mode" data-mode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('');
+  const intro = `<h2>账号</h2><p class="me-p">不登录也能用。登录后，换手机或电脑也能找回案卷和资料库。${ses.quota ? `未登录${quotaLine(ses.quota)}，登录后每天额度更多。` : ''}</p>`;
+  if (mode === 'forgot') return `${intro}
+    <form class="acct-form" id="acctForgot"><label>注册时的邮箱 <input type="email" name="email" required autocomplete="email"></label>
+      <button class="btn sm" type="submit">发送重设密码邮件</button>
+      <button type="button" class="linkish small" data-act="acct-mode" data-mode="login">返回登录</button>
+      ${ses.mail ? '' : '<p class="small err">找回邮件暂时发不出去，请稍后再试。</p>'}</form>`;
+  return `${intro}<div class="acct-tabs">${tabs}</div>
+    <form class="acct-form" id="acctForm" data-mode="${mode}">
+      <label>邮箱 <input type="email" name="email" required autocomplete="${mode === 'login' ? 'username' : 'email'}"></label>
+      <label>密码 <input type="password" name="password" required ${mode === 'register' ? 'minlength="8" ' : ''}maxlength="128" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}"></label>
+      <button class="btn sm" type="submit">${mode === 'login' ? '登录' : '注册并登录'}</button>
+      ${mode === 'login' ? '<button type="button" class="linkish small" data-act="acct-mode" data-mode="forgot">忘记密码</button>'
+        : '<p class="small muted">密码至少 8 位。我们只存邮箱和加密后的密码；邮箱填错了就没法找回密码。</p>'}
+    </form>`;
+}
+async function acctRefresh(msg) {
+  S.acctMode = 'login';
+  try { S.session = await api('/api/session'); } catch {}
+  if (msg) toast(msg);
+  await libSync();
+  if (/^#\/me/.test(location.hash)) await renderMe(); else void route();
+}
+async function acctSignedOut(msg) {
+  libForget(); S.cases = []; S.case = null;
+  await acctRefresh(msg);
+}
+async function acctSubmit(form) {
+  const btn = form.querySelector('button[type="submit"]'), f = Object.fromEntries(new FormData(form));
+  btn.disabled = true;
+  try {
+    if (form.id === 'acctForm') {
+      const login = form.dataset.mode === 'login';
+      await api(login ? '/api/auth/login' : '/api/auth/register', {method: 'POST', body: {email: f.email, password: f.password}});
+      await acctRefresh(login ? '已登录' : '已注册并登录');
+    } else if (form.id === 'acctForgot') {
+      const r = await api('/api/auth/forgot', {method: 'POST', body: {email: f.email}});
+      S.acctMode = 'login'; toast(r.message); $('#acct').innerHTML = acctHtml();
+    } else if (form.id === 'acctPw') {
+      await api('/api/auth/password', {method: 'POST', body: {old: f.old, new: f.new}});
+      await acctRefresh('密码已修改，其他设备需要重新登录');
+    } else if (form.id === 'acctDel') {
+      await api('/api/auth/delete', {method: 'POST', body: {password: f.password}});
+      await acctSignedOut('账号已注销');
+    } else if (form.id === 'resetForm') {
+      if (f.password !== f.again) { toast('两次输入的密码不一样', true); return; }
+      await api('/api/auth/reset', {method: 'POST', body: {token: form.dataset.token, password: f.password}});
+      history.replaceState(null, '', '#/me');
+      await acctRefresh('密码已重设，已登录');
+    }
+  } catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; }
+}
+function renderReset() {
+  S.case = null; useTerms(S.terms); renderTop();
+  const token = new URLSearchParams(location.hash.split('?')[1] || '').get('t') || '';
+  $('#view').innerHTML = shellHtml(`<div class="home">
+    <section class="home-hero"><div class="kicker">账号</div><h1>重设密码</h1><p>邮件里的链接 30 分钟内有效，只能用一次。</p></section>
+    <section class="me-sec acct">${token ? `<form class="acct-form" id="resetForm" data-token="${esc(token)}">
+      <label>新密码 <input type="password" name="password" required minlength="8" maxlength="128" autocomplete="new-password"></label>
+      <label>再输一遍 <input type="password" name="again" required minlength="8" maxlength="128" autocomplete="new-password"></label>
+      <button class="btn sm" type="submit">重设并登录</button></form>`
+      : '<p class="me-p">链接不完整。请从邮件里重新打开，或者到「我的」重新申请找回。</p><a class="btn sm" href="#/me">去「我的」</a>'}</section>
   </div>`);
 }
 
@@ -1962,6 +2096,13 @@ document.addEventListener('click', e => {
       if ($('#libList')) $('#libList').innerHTML = libraryHtml(libRead());
       break;
     case 'src': showSource(el, d.src); break;
+    case 'acct-mode': S.acctMode = d.mode; $('#acct').innerHTML = acctHtml(); $('#acct input')?.focus(); break;
+    case 'acct-logout':
+      api('/api/auth/logout', {method: 'POST'}).then(() => acctSignedOut('已退出登录')).catch(err => toast(err.message, true)); break;
+    case 'acct-merge':
+      el.disabled = true;
+      api('/api/auth/merge', {method: 'POST'}).then(r => acctRefresh(`已把 ${r.moved} 份案卷并进账号`))
+        .catch(err => { el.disabled = false; toast(err.message, true); }); break;
     case 'close-pop': closePop(); break;
     case 'ask': ask(d.q); break;
     case 'open-assist': $('#assist').classList.add('open'); setTimeout(() => { const t = $('#asForm textarea'); if (t) t.focus(); }, 50); break;
@@ -1996,6 +2137,7 @@ document.addEventListener('keydown', e => {
 document.addEventListener('submit', e => {
   if (e.target.id === 'asForm') { e.preventDefault(); const t = e.target.q; const q = t.value; t.value = ''; ask(q); }
   if (e.target.id === 'rvForm') { e.preventDefault(); submitReview(e.target); }
+  if (['acctForm', 'acctForgot', 'acctPw', 'acctDel', 'resetForm'].includes(e.target.id)) { e.preventDefault(); void acctSubmit(e.target); }
 });
 window.addEventListener('scroll', closePop, { passive: true });
 
@@ -2024,6 +2166,7 @@ async function route() {
     if (currentRoute(request) && !sameCase) window.scrollTo(0, 0);
     return;
   }
+  if (/^#\/reset\b/.test(location.hash)) { renderReset(); return; }
   const sec = (location.hash.match(/^#\/(cases|library|me|guide)\/?$/) || [])[1];
   if (sec === 'cases') await renderCases(request);
   else if (sec === 'library') renderLibrary();
@@ -2035,9 +2178,11 @@ async function route() {
 
 async function boot() {
   startupReady = Promise.allSettled([
-    '/api/health', '/api/scenarios', '/api/sources', '/api/demo/cases', '/api/glossary'
-  ].map(path => api(path, {timeoutMs: 6000}))).then(([health, scenarios, sources, demos, glossary]) => {
+    '/api/health', '/api/scenarios', '/api/sources', '/api/demo/cases', '/api/glossary', '/api/session'
+  ].map(path => api(path, {timeoutMs: 6000}))).then(([health, scenarios, sources, demos, glossary, session]) => {
     S.health = health.value || null;
+    S.session = session.value || null;
+    void libSync();
     S.scenarios = scenarios.value || [];
     S.sources = sources.value || [];
     S.demos = demos.value || [];

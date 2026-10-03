@@ -112,6 +112,7 @@ test('the standalone guide does not depend on the personal page and is selected 
   const html=await openGuide(h);
   assert.match(html,/<h1>使用说明<\/h1>/);
   assert.equal(h.run('location.hash'),'#/guide');
+  assert.doesNotMatch(html,/id="acct"|id="acctForm"/);
   const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
   h.run(source.slice(source.indexOf('function renderTop()'),source.indexOf('// ---------- 壳子')));
   h.run('renderTop()');
@@ -120,6 +121,29 @@ test('the standalone guide does not depend on the personal page and is selected 
   assert.match(navigation,/data-sec="me" aria-current="false"/);
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(NAV.map(([key,label])=>[key,label]))')),
     [['check','查企'],['cases','案卷'],['library','资料库'],['me','我的'],['guide','使用说明']]);
+});
+
+test('the personal page keeps the newly merged account panel and links to the standalone guide',async()=>{
+  const h=harness();
+  h.run(`S.session={account:null,mail:false,quota:{used:0,limit:5}};location.hash='#/me'`);
+  const work=h.run('route()');
+  h.run(`pending['/api/session'].resolve(S.session);pending['/api/cases'].resolve([])`);
+  await work;
+  const html=h.nodes.get('#view').innerHTML;
+  assert.match(html,/<h1>我的<\/h1>/);
+  assert.match(html,/id="acctForm"/);
+  assert.match(html,/href="#\/guide"/);
+});
+
+test('password reset links remain available and select the personal navigation after retiring the old home',async()=>{
+  const h=harness();
+  h.run(`location.hash='#/reset?t=sample-reset-token';renderReset=()=>{globalThis.resetRendered=true}`);
+  await h.run('route()');
+  assert.equal(h.run('resetRendered'),true);
+  const source=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
+  h.run(source.slice(source.indexOf('function renderTop()'),source.indexOf('// ---------- 壳子')));
+  h.run('renderTop()');
+  assert.match(h.nodes.get('#shellNav').innerHTML,/data-sec="me" aria-current="true"/);
 });
 
 test('the guide assistant also treats missing model metadata as unknown',()=>{
@@ -239,7 +263,8 @@ test('late global glossary preserves the viewed versions own terms and does not 
   h.run(`renderCase=()=>{throw new Error('must not erase reader input')};
     pending['/api/health'].resolve({llm:{mode:'off'}});pending['/api/scenarios'].resolve([]);
     pending['/api/sources'].resolve([]);pending['/api/demo/cases'].resolve([]);
-    pending['/api/glossary'].resolve([{id:'global',term:'全局术语',aliases:[],plain:'全局解释'}]);`);
+    pending['/api/glossary'].resolve([{id:'global',term:'全局术语',aliases:[],plain:'全局解释'}]);
+    pending['/api/session'].resolve({account:null});`);
   await ready;
   assert.equal(h.run(`S.vTermById.has('own')`),true);assert.equal(h.run(`S.termById.has('global')`),true);
 });
@@ -259,7 +284,7 @@ test('optional metadata has a six second timeout independent from the twelve sec
     transport[url]={resolve,signal:init.signal};init.signal.addEventListener('abort',()=>reject(new Error('aborted')));
   })`);
   const boot=h.run('boot()');
-  assert.equal(h.timers.filter(t=>t.ms===6000).length,5);
+  assert.equal(h.timers.filter(t=>t.ms===6000).length,6);
   assert.equal(h.timers.filter(t=>t.ms===12000).length,1);
   h.timers.filter(t=>t.ms===6000).forEach(t=>t.fn());
   await h.run('startupReady');

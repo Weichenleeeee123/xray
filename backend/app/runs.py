@@ -61,6 +61,15 @@ def owned_by(directory: Path, run_id: str, owner_id: str) -> bool:
         return False
 
 
+def reassign(directory: Path, old_owner: str, new_owner: str) -> None:
+    for path in directory.glob("*.owner.json"):
+        try:
+            if json.loads(path.read_text(encoding="utf-8")).get("owner_id") == old_owner:
+                atomic_json(path, {"owner_id": new_owner})
+        except (ValueError, OSError):
+            continue
+
+
 def events(directory: Path, run_id: str) -> list[dict] | None:
     path = path_for(directory, run_id)
     if not path.is_file():
