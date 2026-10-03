@@ -17,7 +17,9 @@ SOURCE_KEY = "来源目录（不可作为事实出处）"
 def legacy_context(case, version, terms=()):
     """Reconstruct the previous duplicated layout to reproduce the size regression."""
     data = context(case, version, terms)
-    data["报告"] = version.model_dump(mode="json", exclude={"created_at", "prebuilt"})
+    # This fixture represents the layout before prebuilt presentation existed;
+    # a newly added optional null field must not alter that historical payload.
+    data["报告"] = version.model_dump(mode="json", exclude={"created_at", "prebuilt", "report_presentation"})
     data["名词解释"] = [{"id": term_ref(t), "名词": t.term, "解释": t.plain, "对你意味着": t.why}
                     for t in terms]
     return data
@@ -74,7 +76,8 @@ def test_full_report_and_sixty_raw_records_survive_context_deduplication(packed_
     before = case.model_dump_json()
     data = packed_context(case, version, version.terms)
     assert "sources" not in data["报告"] and "terms" not in data["报告"]
-    assert data["报告"] == version.model_dump(mode="json", exclude={"created_at", "sources", "terms", "prebuilt"})
+    assert version.report_presentation is None
+    assert data["报告"] == version.model_dump(mode="json", exclude={"created_at", "sources", "terms", "prebuilt", "report_presentation"})
     expected_raw = [r.model_dump(mode="json", exclude={"retrieved_at"}) for r in case.raw]
     assert len(data["原始数据"]) == 60
     assert data["原始数据"] == expected_raw

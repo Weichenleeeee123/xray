@@ -32,17 +32,44 @@ function dossierTrustAnswer(v) {
 function dossierOverview(v) {
   const evidence = dossierEvidence(v), findings = evidence.items, groups = dossierGroups(v);
   const [status, word] = dossierTrustAnswer(v);
-  const trustLevel = ['high','pending','low','unknown'].includes(evidence.trust_level) ? evidence.trust_level : 'unrated';
+  // A server-bound prebuilt presentation wins only for its exact saved scope.
+  // Ordinary queries and invalidated presentations use evidence-led summaries.
   const presentation = reportPresentation(v);
+  const summary = presentation ? null : evidence.summary;
+  const tone = ['neutral','attention','critical','unknown'].includes(summary?.tone) ? summary.tone : 'unknown';
+  const basis = (summary?.basis_ids || []).map(id => findings.find(item => item.id === id)).filter(Boolean);
+  const priorities = (summary?.priority_ids || []).map(id => findings.find(item => item.id === id)).filter(Boolean);
+  const additional = priorities.filter(item => !basis.some(row => row.id === item.id));
+  const trustLevel = ['high','pending','low','unknown'].includes(evidence.trust_level) ? evidence.trust_level : 'unrated';
   const title = presentation
     ? `<span class="trust-label">${esc(presentation.title)}</span><span class="trust-note">${esc(presentation.note)}</span>`
-    : evidence.trust_label && evidence.trust_note
+    : !summary && evidence.trust_label && evidence.trust_note
     ? `<span class="trust-label">${esc(evidence.trust_label)}</span><span class="trust-note">${esc(evidence.trust_note)}</span>`
     : `<span class="verdict-phrase">${esc(word)}</span>`;
-  const mark = presentation ? '·' : {high:'✓',pending:'?',low:'!',unknown:'?',unrated:MARK[status]}[trustLevel];
-  const initial = groups.abnormal.length ? 'abnormal' : (trustLevel === 'unknown' || status === 'none') && groups.unknown.length ? 'unknown' : groups.attention.length ? 'attention' : 'normal';
+  const mark = presentation ? '·' : summary ? {neutral:'✓',attention:'!',critical:'!',unknown:'?'}[tone]
+    : {high:'✓',pending:'?',low:'!',unknown:'?',unrated:MARK[status]}[trustLevel];
+  const initial = summary ? (priorities[0] || basis[0])?.category || 'unknown'
+    : groups.abnormal.length ? 'abnormal' : (trustLevel === 'unknown' || status === 'none') && groups.unknown.length ? 'unknown' : groups.attention.length ? 'attention' : 'normal';
   const co = v.company;
-  return `<section id="research-overview" class="research-section report-section">${dossierHeading('01','企业概况','围绕这次需求，先看判断与依据')}<div class="decision-grid"><article class="decision-card decision-dossier" data-inspection="${initial}"><span class="summary-folder-tab">企er / 核验摘要</span><div class="decision-sheet"><div class="decision-eyebrow"><span>${presentation ? '围绕入职，了解公司基础与历史记录' : '这家公司是否值得你的信任'}</span><span class="decision-state">${presentation ? '本版核查' : '本版判断'}</span></div><div class="decision-hero"><div class="decision-verdict-copy"><div class="verdict-answer s-${presentation ? 'none' : status} trust-${presentation ? 'context' : trustLevel}" data-trust-level="${trustLevel}"><span class="verdict-mark" aria-hidden="true">${mark}</span><div><h2 id="verdict-title" class="trust-title">${title}</h2><button class="verdict-explain" data-act="dossier-group" data-group="${initial}" aria-controls="dossier-inspection">查看判断依据 ${dossierIcon('arrow')}</button></div></div>${presentation ? `<p class="overview-context">${esc(presentation.body)}${refLinks(presentation.refs)}</p>` : ''}<p class="overview-detail">${esc(evidence.detail)}</p>${dossierCompanyKeywords(v)}</div><div class="summary-art" aria-hidden="true">${dossierSummaryArt}</div></div><div class="inspection-heading"><span>${findings.length} 项公司记录</span><small>点击纸签，展开依据</small></div><div class="verdict-summary" role="group" aria-label="公司记录分类">${[['normal','核验正常'],['attention','一般关注'],['abnormal','异常记录'],['unknown','待核实']].map(([key,label]) => `<button class="verdict-count ${key}" data-act="dossier-group" data-group="${key}" data-count="${groups[key].length}" aria-pressed="${key === initial}" aria-controls="dossier-inspection"><span>${label}</span><strong>${groups[key].length}<small> 项</small></strong>${dossierIcon('arrow')}</button>`).join('')}</div><div class="overview-inspection" id="dossier-inspection">${dossierInspection(v, initial)}</div><div class="decision-next"><span class="summary-camera-mark">${dossierIcon('camera')}</span><div><small>建议下一步</small><button data-act="contract">补充材料，继续核实 ${dossierIcon('arrow')}</button></div><button class="summary-ask" data-act="open-assist">问小企 ${dossierIcon('chat')}</button></div></div></article><aside class="radar-card">${researchRadar(v)}<button class="radar-help" data-act="open-assist">${dossierGoose()}<span><strong>让小企解释这份报告</strong><small>依据、疑点、下一步</small></span>${dossierIcon('arrow')}</button></aside></div><details class="company-basics"><summary><span>${dossierIcon('building')}<strong>公司基础信息</strong><small>${co ? esc([co.status,co.founded && `${co.founded} 成立`].filter(Boolean).join(' · ')) : '登记资料未覆盖'}</small></span><span class="expand-label">展开登记资料 ＋</span></summary><div class="company-panel">${co ? `<dl class="company-facts">${[['公司全称',co.name],['统一社会信用代码',co.code || '未覆盖'],['登记状态',co.status],['成立日期',co.founded],['注册资本',co.checked == null || co.checked.includes('reg_capital') ? fmtMoney(co.reg_capital) : '未覆盖'],['经营范围',co.scope]].map(([label,value]) => `<div><dt>${label}</dt><dd>${termText(value || '未覆盖')}</dd></div>`).join('')}</dl>` : '<p>本版没有可展示的登记资料，未覆盖不代表不存在。</p>'}<button class="text-button" data-act="tab" data-tab="raw">查看登记资料与来源 ↗</button></div></details></section>`;
+  const evidenceLink = row => `<button type="button" class="text-button" data-act="goto" data-id="${esc(row.id)}">${esc(row.label)} ↗</button>`;
+  return `<section id="research-overview" class="research-section report-section">${dossierHeading('01','企业概况','围绕这次需求，先看发现与依据')}
+    <div class="decision-grid"><article class="decision-card decision-dossier" data-inspection="${initial}"><span class="summary-folder-tab">企er / 核验摘要</span><div class="decision-sheet">
+      <div class="decision-eyebrow"><span>${esc(presentation ? '围绕入职，了解公司基础与历史记录' : summary?.perspective || '这家公司是否值得你的信任')}</span><span class="decision-state">${presentation ? '本版核查' : summary ? '本版发现' : '本版判断'}</span></div>
+      <div class="decision-hero"><div class="decision-verdict-copy">
+        <div class="verdict-answer ${presentation ? 's-none trust-context' : summary ? `finding-${tone}` : `s-${status} trust-${trustLevel}`}" ${summary ? `data-summary-tone="${tone}"` : `data-trust-level="${trustLevel}"`}>
+          <span class="verdict-mark" aria-hidden="true">${mark}</span><div><h2 id="verdict-title" class="trust-title">${title}</h2><button class="verdict-explain" data-act="dossier-group" data-group="${initial}" aria-controls="dossier-inspection">查看判断依据 ${dossierIcon('arrow')}</button></div>
+        </div>
+        ${presentation ? `<p class="overview-context">${esc(presentation.body)}${refLinks(presentation.refs)}</p>` : ''}
+        ${summary ? `<p class="overview-explanation">${esc(summary.explanation)}</p><div class="overview-basis" aria-label="摘要对应依据">${basis.map(evidenceLink).join('')}</div>${additional.length ? `<div class="overview-additional"><small>其他关注项</small>${additional.map(evidenceLink).join('')}</div>` : ''}` : ''}
+        <p class="overview-detail">${esc(evidence.detail)}</p>${dossierCompanyKeywords(v)}
+      </div><div class="summary-art" aria-hidden="true">${dossierSummaryArt}</div></div>
+      <div class="inspection-heading"><span>${findings.length} 项公司记录</span><small>点击纸签，展开依据</small></div>
+      <div class="verdict-summary" role="group" aria-label="公司记录分类">${[['normal','核验正常'],['attention','一般关注'],['abnormal','异常记录'],['unknown','待核实']].map(([key,label]) => `<button class="verdict-count ${key}" data-act="dossier-group" data-group="${key}" data-count="${groups[key].length}" aria-pressed="${key === initial}" aria-controls="dossier-inspection"><span>${label}</span><strong>${groups[key].length}<small> 项</small></strong>${dossierIcon('arrow')}</button>`).join('')}</div>
+      <div class="overview-inspection" id="dossier-inspection">${dossierInspection(v, initial)}</div>
+      <div class="decision-next"><span class="summary-camera-mark">${dossierIcon('camera')}</span><div><small>${summary ? '后续可选 · 独立核对材料' : '建议下一步'}</small><button data-act="${summary ? 'supplement' : 'contract'}">${summary ? '进入材料分析' : '补充材料，继续核实'} ${dossierIcon('arrow')}</button></div><button class="summary-ask" data-act="open-assist">问小企 ${dossierIcon('chat')}</button></div>
+    </div></article><aside class="radar-card">${researchRadar(v)}<button class="radar-help" data-act="open-assist">${dossierGoose()}<span><strong>让小企解释这份报告</strong><small>依据、疑点、下一步</small></span>${dossierIcon('arrow')}</button></aside></div>
+    <details class="company-basics"><summary><span>${dossierIcon('building')}<strong>公司基础信息</strong><small>${co ? esc([co.status,co.founded && `${co.founded} 成立`].filter(Boolean).join(' · ')) : '登记资料未覆盖'}</small></span><span class="expand-label">展开登记资料 ＋</span></summary><div class="company-panel">${co ? `<dl class="company-facts">${[['公司全称',co.name],['统一社会信用代码',co.code || '未覆盖'],['登记状态',co.status],['成立日期',co.founded],['注册资本',co.checked == null || co.checked.includes('reg_capital') ? fmtMoney(co.reg_capital) : '未覆盖'],['经营范围',co.scope]].map(([label,value]) => `<div><dt>${label}</dt><dd>${termText(value || '未覆盖')}</dd></div>`).join('')}</dl>` : '<p>本版没有可展示的登记资料，未覆盖不代表不存在。</p>'}<button class="text-button" data-act="tab" data-tab="raw">查看登记资料与来源 ↗</button></div></details>
+  </section>`;
 }
 function dossierInspection(v, group, open = false) {
   const rows = dossierGroups(v)[group] || [];

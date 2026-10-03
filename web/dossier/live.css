@@ -318,3 +318,19 @@ body.research-mode.report-workspace.dossier-live .trust-high.s-warn .trust-note 
 body.research-mode.report-workspace.dossier-live .trust-low .trust-note { color:#a05240; }
 body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-answer:has(.trust-label) { align-items:flex-start; margin:16px 0 10px; }
 body.research-mode.report-workspace.dossier-live .verdict-answer:has(.trust-label) .verdict-mark { margin-top:5px; }
+
+/* Finding tone is not a trust grade; original record colours remain below. */
+body.research-mode.report-workspace.dossier-live .verdict-answer[data-summary-tone] { align-items:flex-start; margin:16px 0 12px; }
+body.research-mode.report-workspace.dossier-live .verdict-answer[data-summary-tone] > div { min-width:0; }
+body.research-mode.report-workspace.dossier-live .verdict-answer[data-summary-tone] .verdict-phrase { display:block; overflow-wrap:anywhere; font-size:clamp(24px,3cqw,35px); line-height:1.5; letter-spacing:.02em; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.finding-neutral { color:#284650; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.finding-attention { color:#946d36; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.finding-critical { color:#a05240; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.finding-unknown { color:#65717a; }
+body.research-mode.report-workspace.dossier-live .overview-explanation { margin:10px 0; font:14px/1.9 var(--sans); color:#565e5d; overflow-wrap:anywhere; }
+body.research-mode.report-workspace.dossier-live .overview-basis,
+body.research-mode.report-workspace.dossier-live .overview-additional { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 14px; margin:9px 0; }
+body.research-mode.report-workspace.dossier-live .overview-basis .text-button,
+body.research-mode.report-workspace.dossier-live .overview-additional .text-button { white-space:normal; text-align:left; overflow-wrap:anywhere; }
+body.research-mode.report-workspace.dossier-live .overview-additional { padding:8px 0; border-top:1px dashed #c7b68d; }
+body.research-mode.report-workspace.dossier-live .overview-additional > small { color:#82714f; }

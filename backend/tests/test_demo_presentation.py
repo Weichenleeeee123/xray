@@ -26,6 +26,30 @@ def test_replayed_identity_does_not_change_presentation_or_evidence():
     assert case.versions[0].overview.model_dump() == before
 
 
+def test_need_led_overview_refresh_preserves_bound_copy_and_all_evidence():
+    from app.analysis.overview import refresh_overviews
+    from app.demo_presentation import evidence_fingerprint, refresh_presentations
+    case = prepared()
+    version = case.versions[0]
+    presentation = version.report_presentation.model_dump()
+    fingerprint = evidence_fingerprint(case, version)
+    records = [record.model_dump() for record in case.raw]
+    signals = [signal.model_dump() for signal in version.signals]
+    counts = version.overview.counts.model_dump()
+    # Previously persisted projections may predate the new finding summary.
+    version.overview.summary = None
+    version.overview.trust_label = '信任度较低'
+    refresh_overviews(case)
+    refresh_presentations(case)
+    assert version.overview.summary is not None
+    assert version.overview.trust_note == ''
+    assert version.report_presentation.model_dump() == presentation
+    assert evidence_fingerprint(case, version) == fingerprint
+    assert [record.model_dump() for record in case.raw] == records
+    assert [signal.model_dump() for signal in version.signals] == signals
+    assert version.overview.counts.model_dump() == counts
+
+
 @pytest.mark.parametrize('change', ['raw', 'company', 'scenario', 'need', 'version', 'status', 'not_prebuilt', 'missing_ref'])
 def test_changed_evidence_or_scope_discards_presentation(change):
     from app.demo_presentation import refresh_presentations
@@ -71,6 +95,16 @@ def test_empty_presentation_preserves_existing_assistant_recording_context():
     from app.assistant import context
     case = make_case(DEMO_COMPANY)
     assert 'report_presentation' not in context(case, case.versions[0])['报告']
+
+
+@pytest.mark.parametrize('max_chars', [1, 120_000])
+def test_bound_presentation_is_kept_in_assistant_context_with_complete_evidence(max_chars):
+    from app.assistant import _context_json
+    case = prepared()
+    version = case.versions[0]
+    data = json.loads(_context_json(case, version, max_chars=max_chars))
+    assert data['报告']['report_presentation'] == version.report_presentation.model_dump(mode='json')
+    assert data['原始数据'] == [record.model_dump(mode='json', exclude={'retrieved_at'}) for record in case.raw]
 
 
 def test_api_prebuilt_replay_and_read_keep_bound_presentation(tmp_path, monkeypatch):
