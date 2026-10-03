@@ -151,7 +151,8 @@ test('late global glossary preserves the viewed versions own terms and does not 
   h.run(`renderCase=()=>{throw new Error('must not erase reader input')};
     pending['/api/health'].resolve({llm:{mode:'off'}});pending['/api/scenarios'].resolve([]);
     pending['/api/sources'].resolve([]);pending['/api/demo/cases'].resolve([]);
-    pending['/api/glossary'].resolve([{id:'global',term:'全局术语',aliases:[],plain:'全局解释'}]);`);
+    pending['/api/glossary'].resolve([{id:'global',term:'全局术语',aliases:[],plain:'全局解释'}]);
+    pending['/api/session'].resolve({account:null});`);
   await ready;
   assert.equal(h.run(`S.vTermById.has('own')`),true);assert.equal(h.run(`S.termById.has('global')`),true);
 });
@@ -171,7 +172,7 @@ test('optional metadata has a six second timeout independent from the twelve sec
     transport[url]={resolve,signal:init.signal};init.signal.addEventListener('abort',()=>reject(new Error('aborted')));
   })`);
   const boot=h.run('boot()');
-  assert.equal(h.timers.filter(t=>t.ms===6000).length,5);
+  assert.equal(h.timers.filter(t=>t.ms===6000).length,6);
   assert.equal(h.timers.filter(t=>t.ms===12000).length,1);
   h.timers.filter(t=>t.ms===6000).forEach(t=>t.fn());
   await h.run('startupReady');

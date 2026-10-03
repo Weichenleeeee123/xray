@@ -17,14 +17,14 @@ from collections.abc import Callable
 from contextvars import copy_context
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile, Header
+from fastapi import Body, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse, FileResponse, HTMLResponse
 from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app import config, demo_prebuilt, deployment, privacy, progress, runs
+from app import accounts, config, demo_prebuilt, deployment, privacy, progress, quota, runs
 from app.models import PublicCase, PublicChatMessage
 from app.analysis.pipeline import NoNewReviews, load_services, new_case, refresh_reviews, resolve, supplement
 from app.analysis.report import onepager
@@ -90,6 +90,11 @@ app = FastAPI(title="X-Ray 透视·真相", version="0.2.0", lifespan=lifespan)
 @app.exception_handler(ConflictError)
 async def conflict_handler(request, error):
     return JSONResponse(status_code=409, content={"detail": str(error)})
+
+
+@app.exception_handler(accounts.AccountError)
+async def account_error_handler(request, error):
+    return JSONResponse(status_code=error.status, content={"detail": error.detail})
 RUNS_DIR = Path(os.getenv("XRAY_RUNS_DIR", config.DATA_DIR / "runs"))
 _active_runs: set[str] = set()
 _active_lock = threading.Lock()
@@ -111,7 +116,7 @@ def _inline(work):
         _run_slots.release()
 # 前端由本服务同源提供；放开跨域只是方便有人单独起前端调试
 app.add_middleware(CORSMiddleware, allow_origins=privacy.allowed_origins(), allow_credentials=True,
-                   allow_methods=["GET", "POST"], allow_headers=["Content-Type", "Idempotency-Key"])
+                   allow_methods=["GET", "POST", "PUT"], allow_headers=["Content-Type", "Idempotency-Key"])
 app.add_middleware(privacy.GuestPrivacyMiddleware)
 
 
@@ -134,8 +139,147 @@ def health() -> dict:
 
 @app.get("/api/session")
 def guest_session() -> dict:
-    return {"private": True, "identity": "browser_guest", "cross_device": False,
-            "notice": "材料、案卷和聊天仅此浏览器可见；清除浏览器数据后不能自动恢复。只有主动提交的评价会公开。"}
+    account, guest = privacy.ACCOUNT.get(), privacy.GUEST.get()
+    out = {"private": True, "identity": "account" if account else "browser_guest", "cross_device": bool(account),
+           "account": accounts.public(account), "mail": accounts.mail_configured(),
+           "quota": quota.status(privacy.identity(), account),
+           "notice": "材料、案卷和聊天只有登录这个账号才能看到；换设备登录同一账号即可找回。只有主动提交的评价会公开。"
+           if account else "材料、案卷和聊天仅此浏览器可见；清除浏览器数据后不能自动恢复，登录后可以换设备找回。只有主动提交的评价会公开。"}
+    if account:
+        out["guest_cases"] = len(store.list(owner_id=guest)) if guest else 0
+    return out
+
+
+# ---------- 账号：可选，登录了换设备也能找回 ----------
+
+class Credentials(BaseModel):
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=128)
+
+
+def _set_session(request: Request, response: Response, account: dict) -> dict:
+    secure = request.url.scheme == "https"
+    response.set_cookie(accounts.cookie_name(secure), accounts.issue_session(account), max_age=accounts.LIFETIME,
+                        path="/", httponly=True, samesite="lax", secure=secure)
+    guest = privacy.GUEST.get()
+    return {"account": accounts.public(account), "guest_cases": len(store.list(owner_id=guest)) if guest else 0}
+
+
+def _account() -> dict:
+    account = privacy.ACCOUNT.get()
+    if account is None:
+        raise HTTPException(status_code=401, detail="请先登录")
+    return account
+
+
+@app.post("/api/auth/register")
+def register(body: Credentials, request: Request, response: Response) -> dict:
+    return _set_session(request, response, accounts.register(body.email, body.password))
+
+
+@app.post("/api/auth/login")
+def login(body: Credentials, request: Request, response: Response) -> dict:
+    return _set_session(request, response, accounts.login(body.email, body.password, privacy.CLIENT_IP.get()))
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request, response: Response) -> dict:
+    """退出时连匿名身份一起换掉：下一个人用这台电脑，看不到未登录时留下的东西。"""
+    secure = request.url.scheme == "https"
+    response.delete_cookie(accounts.cookie_name(secure), path="/", secure=secure, httponly=True, samesite="lax")
+    response.set_cookie(privacy.SECURE_COOKIE if secure else privacy.COOKIE, privacy.issue(), max_age=privacy.LIFETIME,
+                        path="/", httponly=True, samesite="lax", secure=secure)
+    return {"ok": True}
+
+
+@app.post("/api/auth/merge")
+def merge_guest() -> dict:
+    """用户确认后，把这个浏览器未登录时的案卷和研究任务并入账号。"""
+    owner, guest = accounts.owner(_account()), privacy.GUEST.get()
+    if not guest or guest == owner:
+        return {"moved": 0}
+    runs.reassign(RUNS_DIR, guest, owner)
+    return {"moved": store.reassign(guest, owner)}
+
+
+class PasswordChange(BaseModel):
+    old: str = Field(max_length=128)
+    new: str = Field(max_length=128)
+
+
+@app.post("/api/auth/password")
+def change_password(body: PasswordChange, request: Request, response: Response) -> dict:
+    return _set_session(request, response, accounts.change_password(_account(), body.old, body.new))
+
+
+class ForgotIn(BaseModel):
+    email: str = Field(max_length=254)
+
+
+@app.post("/api/auth/forgot")
+def forgot_password(body: ForgotIn, request: Request) -> dict:
+    accounts.forgot(body.email, privacy.CLIENT_IP.get(), str(request.base_url))
+    return {"ok": True, "message": "如果这个邮箱注册过，重设密码的邮件已经发出，30 分钟内有效。没收到请看看垃圾邮件。"}
+
+
+class ResetIn(BaseModel):
+    token: str = Field(max_length=200)
+    password: str = Field(max_length=128)
+
+
+@app.post("/api/auth/reset")
+def reset_password(body: ResetIn, request: Request, response: Response) -> dict:
+    return _set_session(request, response, accounts.reset(body.token, body.password))
+
+
+class DeleteIn(BaseModel):
+    password: str = Field(max_length=128)
+
+
+@app.post("/api/auth/delete")
+def delete_account(body: DeleteIn, request: Request, response: Response) -> dict:
+    """注销：删掉账号和资料库。名下案卷不再有人能打开。"""
+    accounts.delete(_account(), body.password)
+    secure = request.url.scheme == "https"
+    response.delete_cookie(accounts.cookie_name(secure), path="/", secure=secure, httponly=True, samesite="lax")
+    return {"ok": True}
+
+
+@app.get("/api/me/library")
+def get_library() -> list[dict]:
+    return accounts.library(_account())
+
+
+class LibrarySeen(BaseModel):
+    caseId: str = Field(max_length=40)
+    version: int | None = None
+    company: str = Field("", max_length=120)
+
+
+class LibraryEntry(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    term: str = Field(max_length=80)
+    plain: str = Field("", max_length=2000)
+    why: str = Field("", max_length=2000)
+    basis: str = Field("", max_length=300)
+    origin: str | None = Field(None, max_length=20)
+    savedAt: str = Field("", max_length=40)
+    seen: list[LibrarySeen] = Field(default_factory=list, max_length=50)
+
+
+@app.put("/api/me/library")
+def put_library(entries: list[LibraryEntry] = Body(..., max_length=accounts.LIBRARY_MAX)) -> list[dict]:
+    return accounts.save_library(_account(), [e.model_dump() for e in entries])
+
+
+def _metered(demo: bool, start):
+    """新建或补充一次研究就记一次；预制示例的回放不记。启动失败退回。"""
+    keys = [] if demo else quota.charge(privacy.identity(), privacy.ACCOUNT.get(), privacy.CLIENT_IP.get())
+    try:
+        return start()
+    except BaseException:
+        quota.refund(keys)
+        raise
 
 
 @app.get("/api/sources")
@@ -347,18 +491,20 @@ def _idempotent_run(key: str | None, scope: str, body: BaseModel, start):
 
 @app.post("/api/runs", status_code=202)
 def create_run(body: CaseIn, idempotency_key: str | None = Header(None, max_length=128)) -> dict:
-    return _idempotent_run(idempotency_key, "create", body,
-                           lambda rid: _start_run(progress.begin("create", body.company_name, intake=True), lambda: _create(body), rid,
-                                                  original_input={"kind": "create", "body": body.model_dump(mode="json")}))
+    demo = demo_prebuilt.for_create(body) is not None
+    return _idempotent_run(idempotency_key, "create", body, lambda rid: _metered(demo, lambda:
+                           _start_run(progress.begin("create", body.company_name, intake=True), lambda: _create(body), rid,
+                                      original_input={"kind": "create", "body": body.model_dump(mode="json")})))
 
 
 @app.post("/api/cases/{case_id}/runs", status_code=202)
 def supplement_run(case_id: str, body: SupplementIn, idempotency_key: str | None = Header(None, max_length=128)) -> dict:
     case = _case(case_id)
-    return _idempotent_run(idempotency_key, f"supplement:{case_id}", body, lambda rid:
+    demo = demo_prebuilt.for_supplement(case, body) is not None
+    return _idempotent_run(idempotency_key, f"supplement:{case_id}", body, lambda rid: _metered(demo, lambda:
                           _start_run(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
                                      lambda: _supplement(case, body), rid,
-                                     original_input={"kind": "supplement", "case_id": case_id, "body": body.model_dump(mode="json")}))
+                                     original_input={"kind": "supplement", "case_id": case_id, "body": body.model_dump(mode="json")})))
 
 
 @app.get("/api/runs/{run_id}")
@@ -383,13 +529,14 @@ def get_run(run_id: str, after: int = Query(0, ge=0)) -> dict:
 
 @app.post("/api/cases", response_model=PublicCase)
 def create_case(body: CaseIn) -> Case:
-    return _inline(lambda: _create(body))
+    return _metered(demo_prebuilt.for_create(body) is not None, lambda: _inline(lambda: _create(body)))
 
 
 @app.post("/api/cases/stream")
 def create_case_stream(body: CaseIn) -> StreamingResponse:
     """同 /api/cases，但边查边发进度，给等待动画用。事件格式见 docs/progress-events.md。"""
-    return _stream(progress.begin("create", body.company_name, intake=True), lambda: _create(body))
+    return _metered(demo_prebuilt.for_create(body) is not None,
+                    lambda: _stream(progress.begin("create", body.company_name, intake=True), lambda: _create(body)))
 
 
 @app.get("/api/cases")
@@ -414,15 +561,17 @@ def get_case(case_id: str) -> Case:
 
 @app.post("/api/cases/{case_id}/supplements", response_model=PublicCase)
 def add_supplement(case_id: str, body: SupplementIn) -> Case:
-    return _inline(lambda: _supplement(_case(case_id), body))
+    case = _case(case_id)
+    return _metered(demo_prebuilt.for_supplement(case, body) is not None, lambda: _inline(lambda: _supplement(case, body)))
 
 
 @app.post("/api/cases/{case_id}/supplements/stream")
 def add_supplement_stream(case_id: str, body: SupplementIn) -> StreamingResponse:
     """同 /supplements，但边查边发进度。案卷不存在照常回 404，不开流。"""
     case = _case(case_id)
-    return _stream(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
-                   lambda: _supplement(case, body))
+    return _metered(demo_prebuilt.for_supplement(case, body) is not None,
+                    lambda: _stream(progress.begin("supplement", case.case.company_name, intake=body.kind == "need"),
+                                    lambda: _supplement(case, body)))
 
 
 @app.post("/api/cases/{case_id}/resolve", response_model=PublicCase)
