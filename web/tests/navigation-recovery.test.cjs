@@ -9,7 +9,7 @@ function harness(){
   const node=()=>{
     const classes=new Set();
     return {innerHTML:'',textContent:'',hidden:true,isConnected:true,open:true,dataset:{},attributes:{},setAttribute(k,v){this.attributes[k]=v;},getAttribute(k){return this.attributes[k];},close(){this.open=false;},
-      classList:{add(...names){names.forEach(n=>classes.add(n));},remove(...names){names.forEach(n=>classes.delete(n));},contains(n){return classes.has(n);}}};
+      classList:{toggle(n,on){if(on??!classes.has(n))classes.add(n);else classes.delete(n);},add(...names){names.forEach(n=>classes.add(n));},remove(...names){names.forEach(n=>classes.delete(n));},contains(n){return classes.has(n);}}};
   };
   const ctx=vm.createContext({FormData,AbortController,URLSearchParams,console,
     setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout(){},
@@ -159,7 +159,7 @@ test('the standalone guide does not depend on the personal page and is selected 
   assert.match(navigation,/data-sec="guide" aria-current="true"/);
   assert.match(navigation,/data-sec="me" aria-current="false"/);
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(NAV.map(([key,label])=>[key,label]))')),
-    [['check','查企'],['cases','案卷'],['library','资料库'],['me','我的'],['guide','使用说明']]);
+    [['check','企业'],['cases','案卷'],['library','知识库'],['me','我的'],['guide','使用说明']]);
 });
 
 test('the personal page keeps the newly merged account panel and links to the standalone guide',async()=>{

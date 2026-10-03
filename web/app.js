@@ -41,7 +41,7 @@ function pendingNote(list) {   // "2 项没查成、1 项待补材料"，没查�
 }
 const stLabel = i => (isRef(i) ? '只作参考' : (i.status === 'none' && GAP[i.gap]) || STATUS[i.status] || '');
 // 与研究室首页的功能列表保持相同顺序。
-const NAV = [['check', '查企', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['library', '资料库', '收藏的名词，回头复习'], ['me', '我的', '个人主页'], ['guide', '使用说明', '使用方法、服务与资料覆盖']];
+const NAV = [['check', '企业', '输入公司全称和一句需求，出新报告'], ['cases', '案卷', '查过的公司和它们的每一版'], ['library', '知识库', '收藏的名词，回头复习'], ['me', '我的', '个人主页'], ['guide', '使用说明', '使用方法、服务与资料覆盖']];
 const QI_SUG = ['它有没有资格收这笔钱？', '还有哪些没查到？', '我该先问对方什么？'];
 const SUP_KIND = {
   material: { label: '新材料', help: '宣传单、合同、聊天记录的文字。可以上传图片、PDF、Word，读出来的文字会填进下面，你可以改。' },
@@ -184,7 +184,7 @@ function termPop(el, id) {
   popAt(el, termPopHtml(t));
 }
 
-// ---------- 资料库：看不懂的名词收藏起来，回头复习 ----------
+// ---------- 知识库：看不懂的名词收藏起来，回头复习 ----------
 // 只存在这个浏览器里（和案卷一个口径）。存的是收藏当时的解释快照：AI 词条只在那一版报告里有，
 // 固定词表以后改了措辞，复习时看到的也还是当时那一版。seen 记在哪几份报告里碰到过，按案卷去重。
 const LIB_KEY = 'xray.library';
@@ -204,7 +204,7 @@ function libPush() {
   if (!S.session?.account) return;
   clearTimeout(libPush.t);
   libPush.t = setTimeout(() => api('/api/me/library', {method: 'PUT', body: libRead()})
-    .catch(() => toast('资料库没同步到账号，下次打开会再试', true)), 400);
+    .catch(() => toast('知识库没同步到账号，下次打开会再试', true)), 400);
 }
 function libMerge(a, b) {
   const byId = new Map();
@@ -458,14 +458,15 @@ function caseRow(c, index = 0) {
   </a>`;
 }
 
-// ---------- 分区三：资料库 ----------
+// ---------- 分区三：知识库 ----------
 
 function renderLibrary() {
+  document.body.classList.add('research-mode', 'dossier-shell');
   S.case = null; useTerms(S.terms); renderTop();
   $('#view').innerHTML = shellHtml(`
   <div class="home">
     <section class="home-hero">
-      <div class="kicker">资料库</div>
+      <div class="kicker">知识库</div>
       <h1>收藏的名词</h1>
       <p>报告里看不懂的词，点开后可以收藏到这里，回头复习。每个词都记着你是在哪份报告里碰到的。</p>
     </section>
@@ -483,6 +484,7 @@ async function renderMe(request = routeRequest) {
 // ---------- 使用说明：独立于个人主页 ----------
 
 async function renderGuide(request = routeRequest, showAccount = false) {
+  document.body.classList.add('research-mode', 'dossier-shell');
   S.case = null; useTerms(S.terms); renderTop();
   $('#view').innerHTML = '<div class="home"><p class="muted">读取服务状态…</p></div>';
   let cases = null;
@@ -540,7 +542,7 @@ async function renderGuide(request = routeRequest, showAccount = false) {
     </section>
 
     <section class="me-sec"><h2>名词解释</h2>
-      <p class="me-p">报告里带虚线的词可以点开解释，不熟的可以收藏到「资料库」复习；模型补充的解释会标注为“AI 解释”，需要结合原文核对。这里是固定词表中的几个：</p>
+      <p class="me-p">报告里带虚线的词可以点开解释，不熟的可以收藏到「知识库」复习；模型补充的解释会标注为“AI 解释”，需要结合原文核对。这里是固定词表中的几个：</p>
       ${terms.length ? `<div class="chips">${terms.map(t => `<button type="button" class="chip" data-act="term" data-term="${esc(t.id)}">${esc(t.term)}</button>`).join('')}</div>` : '<p class="muted small">词表暂未读到，请刷新页面再试。</p>'}
     </section>
 
@@ -564,7 +566,7 @@ async function renderGuide(request = routeRequest, showAccount = false) {
   </div>`);
 }
 
-// ---------- 账号（可选）：登录了换设备也能找回案卷和资料库 ----------
+// ---------- 账号（可选）：登录了换设备也能找回案卷和知识库 ----------
 
 const quotaLine = q => !q ? '' : q.limit ? `今天已新建 ${q.used} / ${q.limit} 次研究` : `今天已新建 ${q.used} 次研究`;
 function acctHtml() {
@@ -580,13 +582,13 @@ function acctHtml() {
         <label>新密码 <input type="password" name="new" required minlength="8" maxlength="128" autocomplete="new-password"></label>
         <button class="btn sm" type="submit">修改</button><p class="small muted">改完后，其他设备上的登录会失效。</p></form></details>
     <details class="acct-more"><summary>注销账号</summary>
-      <form class="acct-form" id="acctDel"><p class="small">注销后账号和资料库会删除，账号里的案卷也再打不开，不能恢复。</p>
+      <form class="acct-form" id="acctDel"><p class="small">注销后账号和知识库会删除，账号里的案卷也再打不开，不能恢复。</p>
         <label>密码 <input type="password" name="password" required autocomplete="current-password"></label>
         <button class="btn sm danger" type="submit">确认注销</button></form></details>`;
   const mode = S.acctMode || 'login';
   const tabs = [['login', '登录'], ['register', '注册']].map(([k, l]) =>
     `<button type="button" class="acct-tab" data-act="acct-mode" data-mode="${k}" aria-pressed="${mode === k}">${l}</button>`).join('');
-  const intro = `<h2>账号</h2><p class="me-p">不登录也能用。登录后，换手机或电脑也能找回案卷和资料库。${ses.quota ? `未登录${quotaLine(ses.quota)}，登录后每天额度更多。` : ''}</p>`;
+  const intro = `<h2>账号</h2><p class="me-p">不登录也能用。登录后，换手机或电脑也能找回案卷和知识库。${ses.quota ? `未登录${quotaLine(ses.quota)}，登录后每天额度更多。` : ''}</p>`;
   if (mode === 'forgot') return `${intro}
     <form class="acct-form" id="acctForgot"><label>注册时的邮箱 <input type="email" name="email" required autocomplete="email"></label>
       <button class="btn sm" type="submit">发送重设密码邮件</button>
@@ -838,6 +840,7 @@ async function openCase(id, no, request = routeRequest) {
 
 function renderCase() {
   const c = S.case, v = ver();
+  document.body.classList.toggle('dossier-live', isDesignReview());
   if (S.tab === 'changes' && v.no === 1) S.tab = 'signals';
   if (isDesignReview() && ['signals', 'reviews'].includes(S.tab)) S.tab = 'claims';
   const assistOpen = $('#assist') && $('#assist').classList.contains('open');
@@ -846,7 +849,7 @@ function renderCase() {
   $('#view').innerHTML = `
   <div class="case-layout">
     <div class="report" id="report">
-      ${isDesignReview() ? researchReport(c, v) : caseHead(c, v) + conclusionHtml(v) + chartsHtml(v)}
+      ${isDesignReview() ? dossierReport(c, v) : caseHead(c, v) + conclusionHtml(v) + chartsHtml(v)}
       ${!isDesignReview() ? `${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc((SHOW_JUDGMENTS && v.judgment_summary) || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}${tabsHtml(v)}<div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>` : ''}
       ${isDesignReview() ? researchDisclaimer() : '<footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>'}
       ${prebuiltNoticeHtml(v)}
@@ -855,6 +858,7 @@ function renderCase() {
   </div>
   ${qiLauncherHtml()}`;
   initResearchDesign();
+  if (isDesignReview()) initDossierReport();
   if ($('#onepager')) loadOnepager(v);
   loadReviews();
   scrollChat();
@@ -1392,7 +1396,7 @@ function refreshReviewTab(rerender = true) {
   const n = $('.tabs .tab[data-tab="reviews"] .n');
   if (n && S.reviews) n.textContent = S.reviews.count;
   const reviewBody = $('#research-reviews-body');
-  if (reviewBody && rerender) reviewBody.innerHTML = reviewsPanel(ver());
+  if (reviewBody && rerender) reviewBody.innerHTML = document.body.classList.contains('dossier-live') ? dossierReviews(ver()) : reviewsPanel(ver());
   else if (S.tab === 'reviews' && rerender) renderPanel();
 }
 
@@ -1425,11 +1429,11 @@ function reviewsPanel(v) {
     <div class="rv-list">${R.reviews.map(reviewHtml).join('')}</div>`;
 }
 function reviewFormHtml() {
-  return `<form class="rv-form" id="rvForm" novalidate>
+  return `<form class="rv-form experience-form" id="rvForm" novalidate>
     <h4>写一条评价</h4>
     <div class="rv-row"><span class="lbl">打几星</span><span class="stars" role="group" aria-label="星级">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="star" data-act="rv-star" data-n="${n}" aria-pressed="${n <= S.rvStars}" aria-label="${n} 星">★</button>`).join('')}</span><span class="small muted" id="rvStarTxt">${S.rvStars ? `${S.rvStars} 星` : ''}</span></div>
     <div class="rv-row"><span class="lbl">你是它的</span><span class="seg">${Object.entries(REL).map(([k, l]) => `<button type="button" data-act="rv-rel" data-rel="${k}" aria-pressed="${S.rvRel === k}">${l}</button>`).join('')}</span></div>
-    <textarea class="big-inp sm" name="text" rows="4" maxlength="500" placeholder="写你遇到的事：对方怎么说的、钱打到哪、能不能取出来。10–500 字。手机号、身份证号会自动遮掉。"></textarea>
+    <textarea class="big-inp sm" name="text" rows="3" maxlength="500" placeholder="写你遇到的事：对方怎么说的、钱打到哪、能不能取出来。10–500 字。手机号、身份证号会自动遮掉。"></textarea>
     <div class="rv-row"><input class="big-inp sm" name="nickname" maxlength="20" placeholder="昵称（选填，不填显示匿名用户）"><button type="submit" class="btn sm">发布评价</button></div>
     <p class="small muted">没有账号，防不了刷：同一个浏览器对同一家公司只能写一条。发布后所有人都能看到。</p>
     <div class="err" id="rvErr" role="alert"></div>
@@ -2093,7 +2097,7 @@ document.addEventListener('click', e => {
       const on = libToggle(d.term);
       if (on === null) { toast('这个浏览器存不了收藏'); break; }
       el.setAttribute('aria-pressed', on); el.textContent = on ? '★ 已收藏' : '☆ 收藏复习';
-      toast(on ? '已收藏到「资料库」' : '已移出资料库');
+      toast(on ? '已收藏到「知识库」' : '已移出知识库');
       break;
     }
     case 'lib-remove':
@@ -2154,6 +2158,7 @@ function refreshScenarioParts() {
   const match = location.hash.match(/^#\/case\/([\w-]+)(?:\/v\/(\d+))?$/);
   const v = S.case && ver();
   if (!match || S.case?.id !== match[1] || !v || (match[2] && v.no !== +match[2])) return;
+  if (typeof refreshDossierScenario === 'function') refreshDossierScenario(v);
   for (const el of $$('[data-first-question]')) {
     if (el.isConnected) el.innerHTML = glanceFirstHtml(v) || '<p>现有记录尚不足以形成结论。</p>';
   }
@@ -2167,7 +2172,7 @@ async function route() {
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();
   researchCleanup();
-  document.body.classList.remove('research-mode', 'cases-mode');
+  document.body.classList.remove('research-mode', 'cases-mode', 'dossier-live', 'dossier-shell');
   // The research room is the only query homepage, including old #/new bookmarks.
   if (!location.hash || /^#\/(?:check|new)?\/?$/.test(location.hash)) {
     location.replace('/');

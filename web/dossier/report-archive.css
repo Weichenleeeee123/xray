@@ -1,0 +1,142 @@
+/* A four-tab record folder. The content and existing timeline controls are retained. */
+body.research-mode.report-workspace.dossier-live .details-shell { position: relative; padding: 0 11px 12px; border: 1px solid #b19a71; background: #e5d2ae url('assets/kraft-grain.svg'); box-shadow: 0 3px 6px #7353230b; }
+body.research-mode.report-workspace.dossier-live .detail-tabs { gap: 9px; align-items: end; padding: 12px 4px 0; background: transparent; border: 0; }
+body.research-mode.report-workspace.dossier-live .detail-tabs button { position: relative; display: flex; align-items: center; gap: 12px; min-width: 133px; padding: 12px 16px 13px; margin: 0 0 -1px; border: 1px solid #bba57e; border-bottom: 0; border-radius: 0; color: #7e7158; background: #dccaab; font-size: 13px; isolation: isolate; transition: background .2s, color .2s, translate .25s, box-shadow .25s; }
+body.research-mode.report-workspace.dossier-live .detail-tabs button::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 6px; height: 1px; background: #b598623d; }
+body.research-mode.report-workspace.dossier-live .archive-tab-number { font: 11px Georgia,serif; color: #a68c62; }
+body.research-mode.report-workspace.dossier-live .detail-tabs button:hover { translate: 0 -3px; background: #eee2c9; color: #31414a; box-shadow: 0 -3px 5px #7353230a; }
+body.research-mode.report-workspace.dossier-live .detail-tabs button[aria-selected="true"] { z-index: 2; color: #233c49; border-color: #b4a17e; background: #fcf8ed; font-weight: 600; }
+body.research-mode.report-workspace.dossier-live .detail-tabs button[aria-selected="true"]::before { content: ''; position: absolute; height: 3px; left: -1px; right: -1px; top: -1px; background: #2b414e; }
+body.research-mode.report-workspace.dossier-live .detail-tabs button[aria-selected="true"]::after { background: #c4af8640; }
+body.research-mode.report-workspace.dossier-live .detail-panel { position: relative; z-index: 1; border: 1px solid #b5a582; padding: 21px 24px 22px; background: #fcf8ed; box-shadow: 2px 3px 0 #eee3cb,3px 4px 0 #b9a582; }
+body.research-mode.report-workspace.dossier-live .detail-panel::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: url('assets/kraft-grain.svg'); opacity: .11; mix-blend-mode: multiply; }
+body.research-mode.report-workspace.dossier-live .detail-panel > * { position: relative; }
+body.research-mode.report-workspace.dossier-live .detail-panel:not([hidden]) { animation: archive-page-enter .28s ease-out; }
+body.research-mode.report-workspace.dossier-live .detail-panel-intro { min-height: 62px; padding: 0 88px 0 0; }
+body.research-mode.report-workspace.dossier-live .detail-panel-intro h3 { font-size: 20px; color: #263b44; }
+body.research-mode.report-workspace.dossier-live .detail-panel-intro p { line-height: 1.8; margin-top: 7px; }
+body.research-mode.report-workspace.dossier-live .archive-intro-art { position: absolute; right: 2px; top: -6px; width: 73px; height: 73px; }
+body.research-mode.report-workspace.dossier-live .archive-intro-art svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 3px 2px #75532120); transition: translate .3s, rotate .3s; }
+body.research-mode.report-workspace.dossier-live .detail-panel-intro:hover .archive-intro-art svg { translate: 0 -2px; rotate: -3deg; }
+body.research-mode.report-workspace.dossier-live .archive-clock-hand { transform-origin: 55px 47px; transition: rotate .5s; }
+body.research-mode.report-workspace.dossier-live .detail-panel-intro:hover .archive-clock-hand { rotate: 30deg; }
+@keyframes archive-page-enter { from { opacity: .45; translate: 4px 3px; } to { opacity: 1; translate: 0 0; } }
+
+/* Keep the rising timeline; the events are individual index slips below it. */
+body.research-mode.report-workspace.dossier-live .timeline-list { margin-top: 8px; }
+body.research-mode.report-workspace.dossier-live .timeline-caption { margin: 12px 0 2px; }
+body.research-mode.report-workspace.dossier-live .timeline-caption > span { font-size: 21px; }
+body.research-mode.report-workspace.dossier-live .timeline-strip { padding: 10px 0 13px; }
+body.research-mode.report-workspace.dossier-live .timeline-stop { padding-bottom: 4px; }
+body.research-mode.report-workspace.dossier-live .timeline-year { font-size: 14px; }
+body.research-mode.report-workspace.dossier-live .timeline-stop::before { background: #baa37a; }
+body.research-mode.report-workspace.dossier-live .timeline-stop .timeline-day { margin: 0; color: #967a4e; font-size: 10px; }
+body.research-mode.report-workspace.dossier-live .timeline-label { margin-top: 5px; font-size: 12px; }
+body.research-mode.report-workspace.dossier-live .timeline-ticket { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-width: 108px; max-width: 160px; width: 78%; padding: 11px 9px 9px; margin-top: 12px; border: 1px solid #c8b898; background: #f3ebd8; box-shadow: 2px 3px 0 #e7dcc3; rotate: -.6deg; transition: translate .3s, rotate .3s, background .3s, border-color .3s, box-shadow .3s; }
+body.research-mode.report-workspace.dossier-live .timeline-ticket::before { content: ''; position: absolute; width: 16px; height: 3px; border: 1px solid #a4a08d; background: #c4c2af; box-shadow: 0 1px 0 #fffaf0; top: -2px; left: calc(50% - 8px); rotate: -4deg; }
+body.research-mode.report-workspace.dossier-live .timeline-stop:nth-child(even) .timeline-ticket { rotate: .7deg; }
+body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-ticket { translate: 0 -3px; rotate: 0deg; background: #eee1c2; border-color: #aa8a51; box-shadow: 2px 4px 0 #deca9f,0 7px 8px #7652220a; }
+body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-ticket::before { border-color: #8a8c7a; }
+body.research-mode.report-workspace.dossier-live .timeline-stop:active .timeline-ticket { translate: 0 0; }
+body.research-mode.report-workspace.dossier-live .timeline-focus-card { position: relative; isolation: isolate; gap: 20px; min-height: 99px; padding: 16px 21px; margin: 8px 3px 2px 0; background: #f8f1df; border-color: #b6a27d; box-shadow: 3px 3px 0 #e9ddc2,4px 4px 0 #c9b693; }
+body.research-mode.report-workspace.dossier-live .timeline-focus-card::before { content: ''; position: absolute; left: 95px; top: -4px; height: 5px; width: 23px; border: 1px solid #a1a08c; background: #c0c1af; box-shadow: 0 1px 0 #fffbf0; rotate: -5deg; }
+body.research-mode.report-workspace.dossier-live .timeline-focus-card > time { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 0 0 68px; align-self: stretch; padding: 8px 5px; color: #dac28a; background: #293e4b; border: 1px solid #aa8f5d; box-shadow: inset 0 0 0 3px #293e4b,inset 0 0 0 4px #c9b27d36; }
+body.research-mode.report-workspace.dossier-live .timeline-focus-card > time span { font: 10px Georgia,serif; padding-bottom: 5px; color: #bfb699; }
+body.research-mode.report-workspace.dossier-live .timeline-focus-card > time strong { font: 18px/1.25 Georgia,serif; }
+body.research-mode.report-workspace.dossier-live .timeline-detail-copy h3 { font-size: 15px; }
+body.research-mode.report-workspace.dossier-live .timeline-detail-copy p { font-size: 12px; margin-top: 5px; }
+body.research-mode.report-workspace.dossier-live .timeline-focus-card > .text-button { padding: 8px 10px; border: 1px solid #bea77c; font-size: 10px; background: #f2e8d1; transition: background .2s,translate .2s; }
+body.research-mode.report-workspace.dossier-live .timeline-focus-card > .text-button:hover { translate: 2px 0; background: #e5d4af; }
+
+/* The other three pages keep their information models inside the same folder. */
+body.research-mode.report-workspace.dossier-live .ownership-view { margin: 17px auto 20px; }
+body.research-mode.report-workspace.dossier-live .ownership-company { border-color: #b49a63; padding: 14px 20px; box-shadow: 3px 3px 0 #e0cfab; }
+body.research-mode.report-workspace.dossier-live .ownership-branches { gap: 26px; padding-top: 26px; }
+body.research-mode.report-workspace.dossier-live .ownership-branches > div { background: #f5ecd6; padding: 17px; box-shadow: 3px 3px 0 #e9dec5; border-color: #b9a47b; transition: translate .3s,box-shadow .3s; }
+body.research-mode.report-workspace.dossier-live .ownership-branches > div:hover { translate: 0 -3px; box-shadow: 3px 6px 0 #e6d8ba; }
+body.research-mode.report-workspace.dossier-live .ownership-branches > div::after { content: ''; position: absolute; right: 8px; top: 8px; width: 16px; height: 3px; border: 1px solid #a3a38f; background: #c0c1af; rotate: -5deg; }
+body.research-mode.report-workspace.dossier-live .ownership-branches span { color: #896a34; }
+body.research-mode.report-workspace.dossier-live .capital-facts { border: 0; gap: 14px; background: transparent; margin: 17px 0 20px; }
+body.research-mode.report-workspace.dossier-live .capital-facts > div { position: relative; padding: 19px; border: 1px solid #beaa85; background: #f4ecd9; box-shadow: 3px 3px 0 #e6dac0; transition: translate .3s,border-color .3s; }
+body.research-mode.report-workspace.dossier-live .capital-facts > div:hover { translate: 0 -3px; border-color: #9a8254; }
+body.research-mode.report-workspace.dossier-live .capital-facts > div::before { content: ''; display: block; position: absolute; top: -1px; left: 18px; width: 29px; height: 3px; background: #ac9569; }
+body.research-mode.report-workspace.dossier-live .capital-facts > div:first-child::before { background: #526d5f; }
+body.research-mode.report-workspace.dossier-live .capital-facts strong { font-size: 32px; color: #2c4547; }
+body.research-mode.report-workspace.dossier-live .capital-facts .unknown-value { font-size: 22px; color: #9b885f; }
+body.research-mode.report-workspace.dossier-live .review-list { background: #f1e8d3; border: 1px solid #c1ae88; margin: 17px 0; padding: 14px 17px; }
+body.research-mode.report-workspace.dossier-live #rvForm { border-left: 2px solid #ccb88e; padding-left: 18px; }
+body.research-mode.report-workspace.dossier-live #rvForm textarea { border-radius: 0; background: repeating-linear-gradient(to bottom,transparent 0,transparent 27px,#c2b69933 27px,#c2b69933 28px) #fcf8ec; background-origin: content-box; font-size: 13px; line-height: 28px; padding: 10px 13px; transition: border-color .25s,box-shadow .25s; }
+body.research-mode.report-workspace.dossier-live #rvForm textarea:focus { border-color: #9a7c49; box-shadow: 2px 3px 0 #e7d9bd; }
+body.research-mode.report-workspace.dossier-live .local-review { animation: archive-page-enter .25s ease-out; }
+
+/* Sources are stored in a document sleeve and stay folded until opened. */
+body.research-mode.report-workspace.dossier-live .source-fold { position: relative; border: 1px solid #b19a71; border-radius: 0; background: #e5d2ae url('assets/kraft-grain.svg'); padding: 8px; overflow: visible; box-shadow: 0 3px 5px #7353230a; }
+body.research-mode.report-workspace.dossier-live .source-fold > summary { position: relative; z-index: 1; padding: 12px 20px 12px 13px; gap: 16px; border: 1px solid #bba883; background: #faf4e5; box-shadow: 2px 2px 0 #dbcaab; transition: background .25s,box-shadow .25s; }
+body.research-mode.report-workspace.dossier-live .source-fold > summary:hover { background: #fcf7ec; box-shadow: 2px 4px 0 #d6c19b; }
+body.research-mode.report-workspace.dossier-live .source-fold-icon { position: relative; width: 61px; height: 61px; border: 0; border-radius: 0; background: transparent; }
+body.research-mode.report-workspace.dossier-live .source-fold-icon svg { width: 61px; height: 61px; overflow: visible; filter: drop-shadow(0 3px 2px #73532316); }
+body.research-mode.report-workspace.dossier-live .archive-loose-sheet { transition: translate .35s,rotate .35s; transform-origin: 41px 48px; }
+body.research-mode.report-workspace.dossier-live .source-fold > summary:hover .archive-loose-sheet,body.research-mode.report-workspace.dossier-live .source-fold > summary:focus-visible .archive-loose-sheet,body.research-mode.report-workspace.dossier-live .source-fold[open] .archive-loose-sheet { translate: 0 -4px; rotate: -4deg; }
+body.research-mode.report-workspace.dossier-live .source-fold-copy { gap: 6px; }
+body.research-mode.report-workspace.dossier-live .source-fold-copy strong { font-size: 14px; }
+body.research-mode.report-workspace.dossier-live .source-fold-copy small { font-size: 11px; }
+body.research-mode.report-workspace.dossier-live .source-fold-action { border-left: 1px solid #cabb9d; padding: 6px 0 6px 19px; gap: 10px; }
+body.research-mode.report-workspace.dossier-live .source-fold-content { margin-top: 7px; border: 1px solid #bba883; background: #fcf8ed; }
+body.research-mode.report-workspace.dossier-live .source-fold[open] .source-fold-content { animation: archive-page-enter .24s ease-out; }
+body.research-mode.report-workspace.dossier-live .source-toolbar { background: #f3ecd9; border-bottom: 1px solid #cebd98; padding: 15px 18px; }
+body.research-mode.report-workspace.dossier-live .source-filters button { border-radius: 0; font-size: 11px; }
+body.research-mode.report-workspace.dossier-live #research-sources th { background: #eae0c9; color: #8a7350; }
+body.research-mode.report-workspace.dossier-live #research-sources td { background: transparent; border-color: #d5c9ae; }
+body.research-mode.report-workspace.dossier-live #research-sources tbody tr:hover { background: #eee4ce; }
+body.research-mode.report-workspace.dossier-live #research-sources tbody tr:hover td:first-child { box-shadow: inset 3px 0 #b39355; }
+body.research-mode.report-workspace.dossier-live #research-sources .source-title { font-size: 13px; color: #344951; }
+body.research-mode.report-workspace.dossier-live #research-sources .table-note { background: #f5edda; padding: 13px 18px; }
+
+@media (max-width: 950px) {
+  body.research-mode.report-workspace.dossier-live .detail-tabs button { min-width: 112px; gap: 9px; padding: 11px 14px 12px; }
+}
+@container report-pane (max-width: 880px) {
+  body.research-mode.report-workspace.dossier-live .detail-panel { padding: 20px; }
+  body.research-mode.report-workspace.dossier-live .detail-tabs { gap: 6px; }
+  body.research-mode.report-workspace.dossier-live .detail-tabs button { flex: 1; min-width: 0; padding: 11px 10px 12px; gap: 9px; }
+  body.research-mode.report-workspace.dossier-live .timeline-focus-card { gap: 13px; padding: 15px; }
+  body.research-mode.report-workspace.dossier-live .timeline-detail-copy { flex-basis: calc(100% - 85px); }
+  body.research-mode.report-workspace.dossier-live .capital-facts { gap: 10px; }
+  body.research-mode.report-workspace.dossier-live .capital-facts > div { padding: 16px 12px; }
+}
+@media (max-width: 650px) {
+  body.research-mode.report-workspace.dossier-live .details-shell { padding: 0 7px 8px; }
+  body.research-mode.report-workspace.dossier-live .detail-tabs { padding: 9px 0 0; gap: 4px; }
+  body.research-mode.report-workspace.dossier-live .detail-tabs button { flex: 1; min-width: 0; padding: 11px 8px; font-size: 12px; justify-content: center; }
+  body.research-mode.report-workspace.dossier-live .archive-tab-number { display: none; }
+  body.research-mode.report-workspace.dossier-live .detail-panel { padding: 18px 15px; }
+  body.research-mode.report-workspace.dossier-live .detail-panel-intro { padding-right: 62px; min-height: 66px; }
+  body.research-mode.report-workspace.dossier-live .detail-panel-intro h3 { font-size: 17px; line-height: 1.6; }
+  body.research-mode.report-workspace.dossier-live .detail-panel-intro p { font-size: 11px; }
+  body.research-mode.report-workspace.dossier-live .archive-intro-art { width: 55px; height: 55px; top: 0; }
+  body.research-mode.report-workspace.dossier-live .timeline-caption > span { font-size: 18px; white-space: nowrap; }
+  body.research-mode.report-workspace.dossier-live .timeline-caption small { font-size: 9px; }
+  body.research-mode.report-workspace.dossier-live .timeline-focus-card { display: grid; grid-template-columns: 63px minmax(0,1fr); gap: 10px 13px; padding: 15px; }
+  body.research-mode.report-workspace.dossier-live .timeline-detail-copy { margin: 0; }
+  body.research-mode.report-workspace.dossier-live .timeline-focus-card > .text-button { grid-column: 2; justify-self: start; }
+  body.research-mode.report-workspace.dossier-live .timeline-focus-card > time { grid-row: 1/3; }
+  body.research-mode.report-workspace.dossier-live .ownership-branches { gap: 13px; }
+  body.research-mode.report-workspace.dossier-live .ownership-branches > div { padding: 15px 10px; }
+  body.research-mode.report-workspace.dossier-live .capital-facts { gap: 11px; }
+  body.research-mode.report-workspace.dossier-live .source-fold { padding: 6px; }
+  body.research-mode.report-workspace.dossier-live .source-fold > summary { padding: 11px; gap: 10px; }
+  body.research-mode.report-workspace.dossier-live .source-fold-icon,body.research-mode.report-workspace.dossier-live .source-fold-icon svg { width: 43px; height: 51px; }
+  body.research-mode.report-workspace.dossier-live .source-fold-copy { min-width: 145px; }
+  body.research-mode.report-workspace.dossier-live .source-fold-copy strong { font-size: 13px; }
+  body.research-mode.report-workspace.dossier-live .source-fold-copy small { font-size: 10px; }
+  body.research-mode.report-workspace.dossier-live .source-fold-action { margin-left: auto; padding-left: 10px; font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.research-mode.report-workspace.dossier-live .detail-panel:not([hidden]),body.research-mode.report-workspace.dossier-live .source-fold[open] .source-fold-content,body.research-mode.report-workspace.dossier-live .local-review { animation: none; }
+  body.research-mode.report-workspace.dossier-live #research-details *,body.research-mode.report-workspace.dossier-live #research-details *::before,body.research-mode.report-workspace.dossier-live #research-details *::after,body.research-mode.report-workspace.dossier-live #research-sources * { transition: none !important; }
+  body.research-mode.report-workspace.dossier-live .detail-tabs button:hover,body.research-mode.report-workspace.dossier-live .detail-panel-intro:hover .archive-intro-art svg,body.research-mode.report-workspace.dossier-live .ownership-branches > div:hover,body.research-mode.report-workspace.dossier-live .capital-facts > div:hover { translate: none; rotate: none; }
+  body.research-mode.report-workspace.dossier-live .timeline-stop.active .timeline-ticket,body.research-mode.report-workspace.dossier-live .detail-panel-intro:hover .archive-clock-hand,body.research-mode.report-workspace.dossier-live .source-fold > summary:hover .archive-loose-sheet,body.research-mode.report-workspace.dossier-live .source-fold > summary:focus-visible .archive-loose-sheet,body.research-mode.report-workspace.dossier-live .source-fold[open] .archive-loose-sheet { translate: none; rotate: none; }
+}
+@media print {
+  body.research-mode.report-workspace.dossier-live .archive-intro-art { display: none; }
+}
