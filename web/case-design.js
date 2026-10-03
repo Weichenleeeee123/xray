@@ -123,20 +123,28 @@ function researchRecordRow(text,seen) {
 }
 function researchItemDetail(detail,seen) {
   const {intro,records}=researchDetailParts(detail);
-  return `${intro?`<p class="signal-explanation">${termText(intro,seen)}</p>`:''}${records.length?`<div class="signal-records"><span class="signal-records-label">记录明细 · ${records.length} 条</span><ul>${records.slice(0,3).map(t=>researchRecordRow(t,seen)).join('')}</ul>${records.length>3?`<details class="signal-records-more"><summary><span class="when-closed">展开其余 ${records.length-3} 条记录</span><span class="when-open">收起其余记录</span><span aria-hidden="true">＋</span></summary><ul>${records.slice(3).map(t=>researchRecordRow(t,seen)).join('')}</ul></details>`:''}</div>`:''}`;
+  return `${intro?`<div class="signal-explanation"><span class="signal-section-label">如何理解</span><p>${termText(intro,seen)}</p></div>`:''}${records.length?`<div class="signal-records"><span class="signal-records-label">记录明细 · ${records.length} 条</span><ul>${records.slice(0,3).map(t=>researchRecordRow(t,seen)).join('')}</ul>${records.length>3?`<details class="signal-records-more"><summary><span class="when-closed">展开其余 ${records.length-3} 条记录</span><span class="when-open">收起其余记录</span><span aria-hidden="true">＋</span></summary><ul>${records.slice(3).map(t=>researchRecordRow(t,seen)).join('')}</ul></details>`:''}</div>`:''}`;
 }
 function researchItemValue(value,seen) {
-  const parts=String(value || '').split('、');
-  const metrics=parts.map(t=>t.match(/^(.+?)\s+(\d+(?:\.\d+)?(?:\s*[%％笔条项万元亿]*)?)$/));
+  const text=String(value ?? '');
+  // Only unambiguous label/value pairs become a compact definition list. Do not
+  // split narrative punctuation, infer totals or change units/source wording.
+  const parts=text.split('、');
+  const numeric='(?:[¥￥$€£]\\s*)?[-+−]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?(?:\\s*[%％笔条项万元亿人家份次年]*)?';
+  const metrics=parts.map(t=>t.trim().match(new RegExp(`^(.+?)\\s+(${numeric})$`)));
   if(parts.length>=3 && metrics.every(Boolean)) return `<dl class="signal-metrics">${metrics.map(m=>`<div><dt>${termText(m[1],seen)}</dt><dd>${esc(m[2])}</dd></div>`).join('')}</dl>`;
-  return `<div class="signal-value${String(value).length>32?' signal-value-long':''}">${termText(value,seen)}</div>`;
+  const kind=new RegExp(`^${numeric}$`).test(text.trim())?'metric':'prose';
+  return `<div class="signal-value signal-value-${kind}">${termText(text,seen)}</div>`;
+}
+function researchSignalHeading(sig) {
+  const flagged=sig.items.filter(it=>FLAG.has(it.status)).length;
+  return `<div class="signal-dialog-heading"><div class="signal-dialog-title"><h3 id="sig-${esc(sig.key)}">${esc(sig.title)}</h3><span class="research-eyebrow">信号详情</span></div><p id="signal-scope" class="sig-lede">${esc(sig.lede)}</p><div class="signal-total"><span>${sig.items.length} 项核查项</span>${flagged?`<b>其中 ${flagged} 项需要关注</b>`:''}</div></div>`;
 }
 function researchSignalCard(sig,cm,v) {
   const items=[...sig.items].sort((a,b)=>(SEV[b.status]||0)-(SEV[a.status]||0));
-  const flagged=items.filter(it=>FLAG.has(it.status)).length;
-  return `<section class="sig research-signal-content" aria-labelledby="sig-${sig.key}"><header><h3 id="sig-${sig.key}">${esc(sig.title)}</h3><span class="signal-total">${items.length} 项记录${flagged?`<b>${flagged} 项要看</b>`:''}</span></header><p class="sig-lede">${esc(sig.lede)}</p><div class="signal-items">${items.map(it=>{
+  return `<section class="sig research-signal-content" aria-labelledby="sig-${esc(sig.key)}"><div class="signal-items">${items.map(it=>{
     const id=`${sig.key}.${it.key}`,seen=new Set();
-    return `<article class="signal-item s-${esc(it.status)}${selCls(id)}" data-item="${esc(id)}"><div class="signal-item-head"><h4>${termText(it.label,seen)}</h4><span class="signal-status">${stLabel(it)}</span>${chgTag(id,cm)}${askBtn(id)}</div>${researchItemValue(it.value,seen)}${researchItemDetail(it.detail,seen)}<div class="signal-source">${srcLink(it.source,it.ref)}</div></article>`;
+    return `<article class="signal-item s-${esc(it.status)}${selCls(id)}" data-item="${esc(id)}"><div class="signal-item-head"><div class="signal-item-title"><h4>${termText(it.label,seen)}</h4><span class="signal-status">${stLabel(it)}</span>${chgTag(id,cm)}</div>${askBtn(id,'问小企')}</div>${researchItemValue(it.value,seen)}${researchItemDetail(it.detail,seen)}<div class="signal-source">${srcLink(it.source,it.ref,true)}</div></article>`;
   }).join('')}</div>${sigExtra(sig,v)}</section>`;
 }
 function renderResearchSignal(key) {
@@ -146,7 +154,8 @@ function renderResearchSignal(key) {
   if(dlg.contains(pop)){closePop();document.body.append(pop);}
   dlg.dataset.key=key;
   dlg.setAttribute('aria-labelledby',`sig-${key}`);
-  dlg.innerHTML=`<div class="dlg-in"><div class="dlg-head"><span class="research-eyebrow">信号详情</span><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭信号详情" autofocus>×</button></div><div class="dlg-body" tabindex="0" aria-label="可滚动的信号记录">${researchSignalCard(sig,changeMap(v),v)}${key==='reputation'?(v.charts||[]).filter(c=>c.id==='complaints').map(c=>chartCard(c,v)).join(''):''}</div></div>`;
+  dlg.setAttribute('aria-describedby','signal-scope');
+  dlg.innerHTML=`<div class="dlg-in"><div class="dlg-head">${researchSignalHeading(sig)}<button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭信号详情" autofocus>×</button></div><div class="dlg-body" tabindex="0" aria-label="可滚动的信号记录">${researchSignalCard(sig,changeMap(v),v)}${key==='reputation'?(v.charts||[]).filter(c=>c.id==='complaints').map(c=>chartCard(c,v)).join(''):''}</div></div>`;
   return true;
 }
 function openResearchSignal(key, itemId) {
