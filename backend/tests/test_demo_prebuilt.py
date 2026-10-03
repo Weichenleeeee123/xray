@@ -22,6 +22,39 @@ BUILT_AT = "2026-09-30 10:20"
 LEGACY_NOTE = f"预制示例：这份报告在 {BUILT_AT} 生成，现场演示直接展示，不重新联网查询；记录截至当时。"
 
 
+def test_replay_balances_cached_sources_and_slow_web_without_changing_evidence(monkeypatch):
+    events = []
+    for key, start, end, coverage in [
+        ("lists", 0, 0, "found"), ("amac", 0, 0, "not_covered"),
+        ("registry", 0, .01, "found"), ("finance", .01, .02, "failed"),
+        ("pack", .02, .02, "found"), ("web", .02, 90, "found"),
+    ]:
+        events.extend([
+            {"type": "step", "id": key, "phase": "start", "t": start},
+            {"type": "step", "id": key, "phase": "done", "t": end, "coverage": coverage},
+        ])
+    now, seen = [0.0], []
+    monkeypatch.setattr(demo_prebuilt, "time", SimpleNamespace(
+        monotonic=lambda: now[0], sleep=lambda seconds: now.__setitem__(0, now[0] + seconds)))
+    with progress.reporting(lambda event: seen.append((now[0], event))):
+        demo_prebuilt.replay(events)
+    assert [event for _, event in seen] == [{k: v for k, v in e.items() if k != "t"} for e in events]
+    durations = {events[i]["id"]: seen[i + 1][0] - seen[i][0] for i in range(0, len(events), 2)}
+    assert durations["amac"] == 0
+    assert all(3 <= durations[key] <= 4 for key in ("lists", "registry", "finance", "pack", "web"))
+    assert now[0] <= demo_prebuilt.REPLAY_CAP
+
+
+def test_replay_does_not_wait_without_listener_or_when_cap_is_zero(monkeypatch):
+    monkeypatch.setattr(demo_prebuilt, "time", SimpleNamespace(
+        monotonic=lambda: 0, sleep=lambda _: pytest.fail("unexpected wait")))
+    events = [{"type": "step", "id": "web", "phase": "start", "t": 0},
+              {"type": "step", "id": "web", "phase": "done", "t": 90, "coverage": "found"}]
+    demo_prebuilt.replay(events)
+    with progress.reporting(lambda _: None):
+        demo_prebuilt.replay(events, cap=0)
+
+
 @pytest.fixture
 def bundle(tmp_path, monkeypatch):
     monkeypatch.setattr(demo_prebuilt, "DIR", tmp_path)
@@ -129,7 +162,7 @@ def test_provenance_is_emitted_before_any_replay_wait(bundle, monkeypatch):
     with progress.reporting(lambda event: history.append(("event", event))):
         demo_prebuilt.start_case(bundle, "browser-1")
     assert history[0] == ("event", {"type": "prebuilt", "demo_id": "T", "built_at": BUILT_AT})
-    assert history[1][0] == "wait"
+    assert any(kind == "wait" for kind, _ in history[1:])
     steps = [value for kind, value in history if kind == "event" and value["type"] == "step"]
     assert steps == [{k: v for k, v in event.items() if k != "t"}
                      for event in bundle["stages"][0]["events"]]

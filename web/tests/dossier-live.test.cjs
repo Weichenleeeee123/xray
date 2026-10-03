@@ -17,6 +17,57 @@ function harness() {
     S.case.versions=[v];`);
   return {ctx,run};
 }
+
+test('bound prebuilt summary keeps adverse counts and references without a higher rating',()=>{
+  const h=harness();
+  h.run(`v.prebuilt={demo_id:'B',built_at:'2026-10-04 00:00'};v.raw_ids=['R1'];
+    v.report_presentation={title:'持牌经营 <核查>',note:'历史监管事项仍需了解',body:'存在处罚 <记录>，仍需核实。',refs:['R1']};
+    v.overview={schema_version:1,status:'bad',trust_level:'low',trust_label:'信任度较低',trust_note:'需要注意风险',headline:'信任度较低，需要注意风险',detail:'1 项异常记录',counts:{normal:0,attention:0,abnormal:1,unknown:0},items:[{id:'credit.penalties',label:'行政处罚',text:'5 条',status:'bad',category:'abnormal',axis:'stability',ref:'R1'}]};`);
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/持牌经营 &lt;核查&gt;/);
+  assert.match(html,/存在处罚 &lt;记录&gt;/);
+  assert.match(html,/data-group="abnormal" data-count="1"/);
+  assert.match(html,/行政处罚/);assert.match(html,/5 条/);
+  assert.match(html,/data-act="goto" data-id="R1"/);
+  assert.doesNotMatch(html,/信任度较高|示例解读|人工解读|这家公司是否值得你的信任/);
+  assert.match(html,/data-trust-level="low"/);
+  h.run('v.prebuilt=null');
+  assert.doesNotMatch(h.run('dossierOverview(v)'),/持牌经营/);
+});
+
+test('print uses bound summary and retains original findings',()=>{
+  const h=harness();
+  h.run(`v.prebuilt={demo_id:'B'};v.raw_ids=['R1'];v.report_presentation={title:'持牌经营',note:'历史事项需了解',body:'保留 <处罚>',refs:['R1']};
+    v.onepager={title:'入职核查',subject:'银行',headline:'原摘要',mismatch:[],found:[{text:'行政处罚：5 条',refs:['R1']}],unknown:[],next_steps:[],footer:'来源范围'};`);
+  const html=h.run('opBody(v.onepager,v)');
+  assert.match(html,/持牌经营/);assert.match(html,/历史事项需了解/);assert.match(html,/保留 &lt;处罚&gt;/);
+  assert.match(html,/行政处罚：5 条/);assert.doesNotMatch(html,/示例解读|人工解读/);
+});
+
+test('valid prebuilt wording takes precedence over need-led summaries; invalid scope falls back to live findings',()=>{
+  const h=harness();
+  h.run(`v.prebuilt={demo_id:'B'};v.raw_ids=['R1'];
+    v.report_presentation={title:'存在监管处罚，求职需结合具体岗位判断',note:'核实岗位职责',body:'定稿正文 <处罚记录>',refs:['R1']};
+    v.overview={schema_version:1,status:'bad',trust_level:'unknown',trust_label:'不应出现的旧标题',trust_note:'',
+      headline:'登记信息已核实；发现行政处罚记录',detail:'原始核查范围',counts:{normal:0,attention:0,abnormal:1,unknown:0},
+      summary:{perspective:'入职前企业核查',explanation:'普通查询解释',tone:'attention',basis_ids:['credit.penalties'],priority_ids:['credit.penalties']},
+      items:[{id:'credit.penalties',label:'行政处罚',text:'5 条',status:'bad',category:'abnormal',axis:'stability',ref:'R1'}]};`);
+  let html=h.run('dossierOverview(v)');
+  assert.match(html,/存在监管处罚，求职需结合具体岗位判断/);
+  assert.match(html,/定稿正文 &lt;处罚记录&gt;/);
+  assert.match(html,/围绕入职，了解公司基础与历史记录/);
+  assert.match(html,/data-act="goto" data-id="R1"/);
+  assert.match(html,/data-group="abnormal" data-count="1"/);
+  assert.doesNotMatch(html,/普通查询解释|登记信息已核实；|data-summary-tone|不应出现的旧标题/);
+  for(const change of ["v.report_presentation.refs=['R2']", "v.report_presentation.refs=['R1'];v.prebuilt=null"]) {
+    h.run(change);
+    html=h.run('dossierOverview(v)');
+    assert.match(html,/登记信息已核实；发现行政处罚记录/);
+    assert.match(html,/普通查询解释/);assert.match(html,/data-summary-tone="attention"/);
+    assert.match(html,/data-id="credit.penalties"/);
+    assert.doesNotMatch(html,/定稿正文|需结合具体岗位判断|不应出现的旧标题/);
+  }
+});
 test('live questions keep arbitrary counts, full wording, escaping and original actions',()=>{
   const h=harness();
   for(const n of [0,1,7]) {

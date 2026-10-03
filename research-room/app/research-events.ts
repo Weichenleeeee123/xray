@@ -77,8 +77,8 @@ export const stations = [
   },
   {
     id: 'news',
-    title: '政府公告',
-    caption: '监管 · 法院 · 政府网站',
+    title: '公开资料',
+    caption: '政府公告 · 新闻 · 官网与年报',
     steps: ['web'],
   },
   {

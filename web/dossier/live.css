@@ -309,6 +309,8 @@ body.research-mode.report-workspace.dossier-live .inspection-boundary { font-siz
 body.research-mode.report-workspace.dossier-live .verdict-answer.trust-high { color:#41715f; }
 body.research-mode.report-workspace.dossier-live .verdict-answer.trust-pending { color:#946d36; }
 body.research-mode.report-workspace.dossier-live .verdict-answer.trust-low { color:#a05240; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-context { color:#586954; }
+body.research-mode.report-workspace.dossier-live .overview-context { font:400 14px/1.85 var(--sans); color:#655f52; margin:12px 0; }
 body.research-mode.report-workspace.dossier-live .verdict-answer.trust-unknown { color:#857653; }
 body.research-mode.report-workspace.dossier-live .trust-label { display:block; font-size:clamp(28px,3.3cqw,38px); font-weight:700; line-height:1.35; letter-spacing:.03em; }
 body.research-mode.report-workspace.dossier-live .trust-note { display:block; font:500 clamp(14px,1.6cqw,18px)/1.7 var(--sans); margin-top:6px; letter-spacing:0; color:#7b7867; }

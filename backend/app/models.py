@@ -514,10 +514,20 @@ class ReportOverview(BaseModel):
     summary: CompanyFindingSummary | None = None  # 老案卷允许缺省，读取时确定性重算
 
 
+class ReportPresentation(BaseModel):
+    """服务端预制摘要；绑定具体证据，不修改核查状态或信任等级。"""
+    title: str = Field(min_length=1, max_length=160)
+    note: str = Field(min_length=1, max_length=300)
+    body: str = Field(min_length=1, max_length=2400)
+    refs: list[str] = Field(min_length=1, max_length=20)
+    evidence_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class Version(BaseModel):
     no: int
     created_at: str
     prebuilt: PrebuiltProvenance | None = None
+    report_presentation: ReportPresentation | None = None
     trigger: Literal["initial", "material", "reply", "need", "resolve", "reviews"]
     trigger_label: str
     need: str

@@ -32,16 +32,21 @@ function dossierTrustAnswer(v) {
 function dossierOverview(v) {
   const evidence = dossierEvidence(v), findings = evidence.items, groups = dossierGroups(v);
   const [status, word] = dossierTrustAnswer(v);
-  const summary = evidence.summary;
+  // A server-bound prebuilt presentation wins only for its exact saved scope.
+  // Ordinary queries and invalidated presentations use evidence-led summaries.
+  const presentation = reportPresentation(v);
+  const summary = presentation ? null : evidence.summary;
   const tone = ['neutral','attention','critical','unknown'].includes(summary?.tone) ? summary.tone : 'unknown';
   const basis = (summary?.basis_ids || []).map(id => findings.find(item => item.id === id)).filter(Boolean);
   const priorities = (summary?.priority_ids || []).map(id => findings.find(item => item.id === id)).filter(Boolean);
   const additional = priorities.filter(item => !basis.some(row => row.id === item.id));
   const trustLevel = ['high','pending','low','unknown'].includes(evidence.trust_level) ? evidence.trust_level : 'unrated';
-  const title = !summary && evidence.trust_label && evidence.trust_note
+  const title = presentation
+    ? `<span class="trust-label">${esc(presentation.title)}</span><span class="trust-note">${esc(presentation.note)}</span>`
+    : !summary && evidence.trust_label && evidence.trust_note
     ? `<span class="trust-label">${esc(evidence.trust_label)}</span><span class="trust-note">${esc(evidence.trust_note)}</span>`
     : `<span class="verdict-phrase">${esc(word)}</span>`;
-  const mark = summary ? {neutral:'✓',attention:'!',critical:'!',unknown:'?'}[tone]
+  const mark = presentation ? '·' : summary ? {neutral:'✓',attention:'!',critical:'!',unknown:'?'}[tone]
     : {high:'✓',pending:'?',low:'!',unknown:'?',unrated:MARK[status]}[trustLevel];
   const initial = summary ? (priorities[0] || basis[0])?.category || 'unknown'
     : groups.abnormal.length ? 'abnormal' : (trustLevel === 'unknown' || status === 'none') && groups.unknown.length ? 'unknown' : groups.attention.length ? 'attention' : 'normal';
@@ -49,11 +54,12 @@ function dossierOverview(v) {
   const evidenceLink = row => `<button type="button" class="text-button" data-act="goto" data-id="${esc(row.id)}">${esc(row.label)} ↗</button>`;
   return `<section id="research-overview" class="research-section report-section">${dossierHeading('01','企业概况','围绕这次需求，先看发现与依据')}
     <div class="decision-grid"><article class="decision-card decision-dossier" data-inspection="${initial}"><span class="summary-folder-tab">企er / 核验摘要</span><div class="decision-sheet">
-      <div class="decision-eyebrow"><span>${esc(summary?.perspective || '这家公司是否值得你的信任')}</span><span class="decision-state">${summary ? '本版发现' : '本版判断'}</span></div>
+      <div class="decision-eyebrow"><span>${esc(presentation ? '围绕入职，了解公司基础与历史记录' : summary?.perspective || '这家公司是否值得你的信任')}</span><span class="decision-state">${presentation ? '本版核查' : summary ? '本版发现' : '本版判断'}</span></div>
       <div class="decision-hero"><div class="decision-verdict-copy">
-        <div class="verdict-answer ${summary ? `finding-${tone}` : `s-${status} trust-${trustLevel}`}" ${summary ? `data-summary-tone="${tone}"` : `data-trust-level="${trustLevel}"`}>
+        <div class="verdict-answer ${presentation ? 's-none trust-context' : summary ? `finding-${tone}` : `s-${status} trust-${trustLevel}`}" ${summary ? `data-summary-tone="${tone}"` : `data-trust-level="${trustLevel}"`}>
           <span class="verdict-mark" aria-hidden="true">${mark}</span><div><h2 id="verdict-title" class="trust-title">${title}</h2><button class="verdict-explain" data-act="dossier-group" data-group="${initial}" aria-controls="dossier-inspection">查看判断依据 ${dossierIcon('arrow')}</button></div>
         </div>
+        ${presentation ? `<p class="overview-context">${esc(presentation.body)}${refLinks(presentation.refs)}</p>` : ''}
         ${summary ? `<p class="overview-explanation">${esc(summary.explanation)}</p><div class="overview-basis" aria-label="摘要对应依据">${basis.map(evidenceLink).join('')}</div>${additional.length ? `<div class="overview-additional"><small>其他关注项</small>${additional.map(evidenceLink).join('')}</div>` : ''}` : ''}
         <p class="overview-detail">${esc(evidence.detail)}</p>${dossierCompanyKeywords(v)}
       </div><div class="summary-art" aria-hidden="true">${dossierSummaryArt}</div></div>

@@ -5,6 +5,22 @@ import { OfficeDirector } from '../app/office-director.ts';
 const state = (steps, connection = 'live') => ({ ...events.emptyResearch(), connection, steps });
 const step = (id, phase, coverage, counts) => ({ id, label: id, lookup: true, phase, coverage, counts });
 
+test('new lookups wake an idle goose immediately instead of waiting an idle cycle', () => {
+  const d = new OfficeDirector();
+  d.tick(20, state([step('lists', 'start'), step('web', 'waiting')]));
+  assert.equal(d.action.id, 'stand');
+});
+
+test('finished lookups release the actor promptly while the next source is active', () => {
+  const d = new OfficeDirector();
+  const running = state([step('lists', 'start'), step('web', 'waiting')]);
+  for (let t = 0; t < 5000 && d.action.id !== 'research'; t += 20) d.tick(20, running);
+  assert.equal(d.action.station, 'enterprise');
+  d.tick(20, state([step('lists', 'done', 'found'), step('web', 'start')]));
+  assert.equal(d.action.mode, 'walk');
+  assert.match(d.action.label, /公开资料/);
+});
+
 test('completed mixed results are complete, with evidence outcomes separate from progress', () => {
   const s = state([step('lists', 'done', 'found', {found:1,not_found:3}), step('registry','done','found',{found:8,not_found:1})]);
   const station = events.stationState(s,'enterprise');

@@ -225,6 +225,8 @@ def context(case: Case, v: Version, terms: list[Term] = ()) -> dict:
     in context. Case/version identity also scopes the recording cache.
     """
     report_exclude = {"created_at"}
+    if v.report_presentation is None:
+        report_exclude.add("report_presentation")
     if v.prebuilt is None:
         # This optional field was added after existing recordings were made.
         # Keep their exact payload; actual snapshot provenance must stay visible.

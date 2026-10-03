@@ -77,7 +77,7 @@ test('a live found social result goes directly from arrival to opening, ahead of
         s={...reduceEvent(s,event('lists')),connection:'saved'};
     }
     assert.equal(sawKnock, true);
-    assert.deepEqual(seen.slice(0,6),['idle','stand','walk','open-door','talk-visitor','close-door']);
+    assert.deepEqual(seen.slice(0,5),['stand','walk','open-door','talk-visitor','close-door']);
     assert.equal(seen.filter((phase) => phase === 'open-door').length, 1);
     assert.equal(d.finished, true);
     assert.equal(d.sample().door, 0);

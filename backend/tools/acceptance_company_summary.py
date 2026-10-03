@@ -31,7 +31,8 @@ def run():
                XRAY_QUOTA_GUEST="0", XRAY_QUOTA_ACCOUNT="0", XRAY_QUOTA_IP="0",
                XRAY_RESEND_KEY="", XRAY_ACCEPTANCE_BLOCK_NETWORK="1", PYTHONIOENCODING="utf-8")
     os.environ.update(env)
-    from app.models import Case, RawRecord, Source, Status
+    from app.demo_presentation import bind_presentation
+    from app.models import Case, PrebuiltProvenance, RawRecord, Source, Status
     from tests.helpers import DEMO_COMPANY
     from tests.test_company_summary import report, record
 
@@ -41,6 +42,7 @@ def run():
         "savings": report("savings", "想在这里存钱", ("risk", [record("bank_list", "查到名单记录", label="金融机构名单")]), penalties="bad"),
         "unknown": report("job", "想了解这家公司的用工情况"),
         "critical": report("job", "想了解是否适合入职"),
+        "prebuilt": report("job", "我想来这里入职", penalties="bad"),
     }
     variants["critical"].signals[0].items[0].status = Status.bad
     variants["critical"].signals[0].items[0].value = "吊销"
@@ -99,13 +101,25 @@ def run():
                     case.raw = [RawRecord(id="R900", source_id="preview", kind="demo", title="虚构界面验收数据",
                                           retrieved_at="2026-10-04T00:00:00Z", as_of="2026-10-04",
                                           content={s.key: [i.model_dump() for i in s.items] for s in version.signals})]
+                    if name == "prebuilt":
+                        version.prebuilt = PrebuiltProvenance(demo_id="preview", built_at="2026-10-04 00:00")
+                        bind_presentation(case, version,
+                            title="存在监管处罚，求职需结合具体岗位判断",
+                            note="重点核实用工主体、岗位职责、考核要求与合同条款。",
+                            body="这是预制展示机制的虚构验收样本，不是对真实企业的查询结果。原始处罚条目与计数保留。",
+                            refs=["R900"])
                     (cases / f"{case.id}.json").write_text(case.model_dump_json(), encoding="utf-8")
                     page.goto(base + f"/xray/#/case/{case.id}")
-                    page.locator("[data-summary-tone]").wait_for()
+                    page.locator(".trust-context" if name == "prebuilt" else "[data-summary-tone]").wait_for()
                     headline = page.locator("#verdict-title").inner_text()
                     assert "信任度" not in headline
-                    assert page.locator(".overview-basis button").count() > 0
-                    assert page.locator(".decision-next").inner_text().find("后续可选") >= 0
+                    if name == "prebuilt":
+                        assert "存在监管处罚，求职需结合具体岗位判断" in headline
+                        assert page.locator("[data-summary-tone]").count() == 0
+                        assert "虚构验收样本" in page.locator(".overview-context").inner_text()
+                    else:
+                        assert page.locator(".overview-basis button").count() > 0
+                        assert page.locator(".decision-next").inner_text().find("后续可选") >= 0
                     if name == "job":
                         assert "劳动仲裁" in headline and "行政处罚" in headline
                     if name == "critical":
@@ -115,9 +129,12 @@ def run():
                         assert page.locator("#verdict-title").evaluate("el => el.scrollWidth <= el.clientWidth + 1")
                         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
                         page.locator("#research-overview").screenshot(path=str(out / f"{name}-{width}.png"))
-                    page.locator(".overview-basis button").first.click()
-                    page.locator("#signalDlg").wait_for(state="visible")
-                    page.locator('#signalDlg [data-act="raw"]').first.click()
+                    if name == "prebuilt":
+                        page.locator('.overview-context [data-act="goto"]').first.click()
+                    else:
+                        page.locator(".overview-basis button").first.click()
+                        page.locator("#signalDlg").wait_for(state="visible")
+                        page.locator('#signalDlg [data-act="raw"]').first.click()
                     assert page.locator("#rawDlg").is_visible()
                     assert "虚构界面验收" in page.locator("#rawDlg").inner_text()
                     checks.append({"case": name, "headline": headline, "evidence_navigation": True})
