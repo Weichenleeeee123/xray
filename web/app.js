@@ -189,11 +189,17 @@ function termPop(el, id) {
 // 固定词表以后改了措辞，复习时看到的也还是当时那一版。seen 记在哪几份报告里碰到过，按案卷去重。
 const LIB_KEY = 'xray.library';
 function libRead() {
-  try { const list = JSON.parse(localStorage.getItem(LIB_KEY) || '[]'); return Array.isArray(list) ? list : []; }
+  try {
+    const owner = localStorage.getItem('xray.library.owner');
+    if (owner && owner !== S.session?.account?.email) return [];
+    const list = JSON.parse(localStorage.getItem(LIB_KEY) || '[]'); return Array.isArray(list) ? list : [];
+  }
   catch { return []; }
 }
 function libWrite(list, push = true) {
+  const before = push && typeof LibraryActions !== 'undefined' ? libRead() : null;
   try { localStorage.setItem(LIB_KEY, JSON.stringify(list)); } catch { return false; }
+  if (before) LibraryActions.recordChange(before, list);
   if (push) libPush();
   return true;
 }
@@ -203,6 +209,11 @@ const LIB_OWNER = 'xray.library.owner';
 function libPush() {
   if (!S.session?.account) return;
   clearTimeout(libPush.t);
+  if (typeof LibraryActions !== 'undefined') {
+    LibraryActions.markPending();
+    libPush.t = setTimeout(() => { void LibraryActions.syncLegacy(); }, 400);
+    return;
+  }
   libPush.t = setTimeout(() => api('/api/me/library', {method: 'PUT', body: libRead()})
     .catch(() => toast('知识库没同步到账号，下次打开会再试', true)), 400);
 }
@@ -217,6 +228,11 @@ function libMerge(a, b) {
   return [...byId.values()].sort((x, y) => (y.savedAt || '').localeCompare(x.savedAt || ''));
 }
 async function libSync() {
+  if (typeof LibraryActions !== 'undefined') {
+    await LibraryActions.syncInitial();
+    if ($('#libList')) $('#libList').innerHTML = libraryHtml(libRead());
+    return;
+  }
   const email = S.session?.account?.email;
   if (!email) return;
   let remote;
@@ -280,7 +296,11 @@ function libraryCards(list) {
   </article>`).join('');
 }
 function libraryHtml(list) {
-  const where = S.session?.account ? `已同步到账号 ${esc(S.session.account.email)}，换设备登录也能看到。` : '收藏保存在此浏览器；登录后可以同步到账号。清除浏览器数据会丢失未同步的收藏。';
+  const syncing = typeof LibraryActions !== 'undefined' && LibraryActions.hasPending();
+  const where = S.session?.account
+    ? (syncing ? `收藏已保存在此浏览器，账号 ${esc(S.session.account.email)} 仍有内容待同步。`
+      : `当前为账号 ${esc(S.session.account.email)} 的收藏；成功同步的内容可在其他设备登录后查看。`)
+    : '收藏保存在此浏览器；登录后可以同步到账号。清除浏览器数据会丢失未同步的收藏。';
   if (!list.length) return `<div class="collection-empty library-empty">${collectionArt('library')}<h3>把没看懂的词，收进自己的知识库。</h3><p>在报告里点开带虚线的名词，再点「☆ 收藏复习」。<br>解释、依据和遇到它的报告，会一起留在这里。</p><a class="collection-button solid" href="#/cases">去看案卷 ↗</a></div><p class="collection-storage">${where}</p>`;
   const rows = visibleTerms(list);
   return `<div class="collection-toolbar"><label class="collection-search">${collectionIcon('search')}<input id="librarySearch" type="search" placeholder="搜索名词、解释或公司" aria-label="搜索收藏的名词" value="${esc(collectionView.libraryQuery)}" autocomplete="off"></label><button class="collection-button study-toggle" data-act="library-study" aria-pressed="${collectionView.study}">${collectionIcon('cards')}<span>${collectionView.study ? '结束复习' : '复习一下'}</span></button></div>
@@ -635,7 +655,8 @@ function acctHtml() {
 }
 async function acctRefresh(msg) {
   S.acctMode = 'login';
-  try { S.session = await api('/api/session'); } catch {}
+  try { S.session = await api('/api/session'); } catch { S.session = null; }
+  S.accountChanging = false;
   if (msg) toast(msg);
   await libSync();
   if (/^#\/me/.test(location.hash)) await renderMe(); else void route();
@@ -647,6 +668,11 @@ async function acctSignedOut(msg) {
 async function acctSubmit(form) {
   const btn = form.querySelector('button[type="submit"]'), f = Object.fromEntries(new FormData(form));
   btn.disabled = true;
+  const changingIdentity = ['acctForm', 'acctPw', 'acctDel', 'resetForm'].includes(form.id);
+  if (changingIdentity) {
+    S.accountChanging = true;
+    if (typeof LibraryActions !== 'undefined') LibraryActions.invalidate();
+  }
   try {
     if (form.id === 'acctForm') {
       const login = form.dataset.mode === 'login';
@@ -668,7 +694,7 @@ async function acctSubmit(form) {
       await acctRefresh('密码已重设，已登录');
     }
   } catch (e) { toast(e.message, true); }
-  finally { btn.disabled = false; }
+  finally { btn.disabled = false; if (changingIdentity) S.accountChanging = false; }
 }
 function renderReset() {
   S.case = null; useTerms(S.terms); renderTop();
@@ -1835,7 +1861,7 @@ function msgHtml(m, prev, index = 0) {
   const add = (m.suggest || []).filter(s => s.includes('加入案卷'));
   const other = (m.suggest || []).filter(s => !s.includes('加入案卷'));
   const vNote = S.case && m.version !== ver().no ? `<span>基于第 ${m.version} 版</span>` : '';
-  const answerKind = m.answer_kind === 'glossary' ? '<span>名词解释</span>' : m.answer_kind === 'clarification' ? '<span>先确认需求</span>' : m.answer_kind === 'overview' ? '<span>本版报告概览</span>' : '';
+  const answerKind = m.answer_kind === 'glossary' ? '<span>名词解释</span>' : m.answer_kind === 'clarification' ? '<span>先确认需求</span>' : m.answer_kind === 'overview' ? '<span>本版报告概览</span>' : m.answer_kind === 'library_action' ? '<span>知识库操作</span>' : '';
   const mode = answerKind + (m.mode === 'replay' ? `<span>离线回放${m.recorded_at ? ` · ${esc(fmtTime(m.recorded_at))}` : ''}</span>` : m.mode === 'template' && !answerKind ? '<span>当前为基础答复</span>' : '');
   // A report overview reuses an already generated, version-bound report. Do not
   // describe it as a fresh selective read of the underlying case materials.
@@ -1847,6 +1873,7 @@ function msgHtml(m, prev, index = 0) {
     ${other.length ? `<ul class="chat-next">${other.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
     <div class="msg-meta">${mode}${m.error_code ? '<span>本次材料处理未完成，不是企业风险结论</span>' : m.not_found ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${scope}${vNote}</div>
+    ${typeof LibraryActions !== 'undefined' ? LibraryActions.html(m, index) : ''}
     ${answerCitations(m).length ? `<div class="msg-refs chat-source-footer"><button type="button" class="linkish" data-act="chat-sources" data-index="${index}" aria-label="查看这条回答的原文出处">原文出处 ↗</button></div>` : ''}
   </div>`;
 }
@@ -1903,6 +1930,8 @@ async function ask(q) {
   const previous = pendingChat(id);
   const key = previous && JSON.stringify(previous.body) === JSON.stringify(body) ? previous.key
     : (globalThis.crypto?.randomUUID?.() || `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const libraryContext = typeof LibraryActions !== 'undefined'
+    ? LibraryActions.captureContext({requestId:key, autoEligible:!previous}) : null;
   savePendingChat(id, {key, body});
   const controller = new AbortController();
   S.chatAbort = controller;
@@ -1929,6 +1958,7 @@ async function ask(q) {
       else target.chat[index] = savedUser;
       if (!target.chat.some(m => sameMessage(m, reply))) target.chat.push(reply);
     }
+    if (libraryContext) await LibraryActions.receive(reply, libraryContext);
   } catch (e) {
     if ([400, 401, 403, 404, 422].includes(e.status)) savePendingChat(id, null);
     for (const target of targets()) {
@@ -2261,6 +2291,9 @@ document.addEventListener('click', e => {
       break;
     case 'qi-nudge': toast('先打开一份案卷，小企才有数据可答'); break;
     case 'chat-sources': openChatSources(Number(d.index)); break;
+    case 'chat-lib-save':
+      if (typeof LibraryActions !== 'undefined') void LibraryActions.handle(Number(d.index), d.term);
+      break;
     case 'cancel-chat': S.chatAbort?.abort('cancelled'); break;
     case 'recover-chat': void recoverChat(); break;
     case 'raw': if (selectRefVersion(d.version == null ? null : Number(d.version))) openRaw(d.ref, d.hl ? JSON.parse(d.hl) : []); break;
@@ -2320,7 +2353,10 @@ document.addEventListener('click', e => {
     case 'src': showSource(el, d.src); break;
     case 'acct-mode': S.acctMode = d.mode; $('#acct').innerHTML = acctHtml(); $('#acct input')?.focus(); break;
     case 'acct-logout':
-      api('/api/auth/logout', {method: 'POST'}).then(() => acctSignedOut('已退出登录')).catch(err => toast(err.message, true)); break;
+      S.accountChanging = true;
+      if (typeof LibraryActions !== 'undefined') LibraryActions.invalidate();
+      api('/api/auth/logout', {method: 'POST'}).then(() => acctSignedOut('已退出登录'))
+        .catch(err => toast(err.message, true)).finally(() => { S.accountChanging = false; }); break;
     case 'acct-merge':
       el.disabled = true;
       api('/api/auth/merge', {method: 'POST'}).then(r => acctRefresh(`已把 ${r.moved} 份案卷并进账号`))
@@ -2422,6 +2458,7 @@ function workspaceLoadingHtml(title, error = '') {
 }
 
 async function route() {
+  S.navigationEpoch = (S.navigationEpoch || 0) + 1;
   stopSupplementWatch();
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();

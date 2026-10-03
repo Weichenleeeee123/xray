@@ -297,9 +297,16 @@ def delete_account(body: DeleteIn, request: Request, response: Response) -> dict
     return {"ok": True}
 
 
+def _library_account(expected_owner: str | None) -> dict:
+    account = _account()
+    if expected_owner is not None and expected_owner.casefold() != account["email"].casefold():
+        raise HTTPException(status_code=409, detail="登录账号已变化，请刷新后再同步知识库")
+    return account
+
+
 @app.get("/api/me/library")
-def get_library() -> list[dict]:
-    return accounts.library(_account())
+def get_library(x_xray_library_owner: str | None = Header(None, max_length=254)) -> list[dict]:
+    return accounts.library(_library_account(x_xray_library_owner))
 
 
 class LibrarySeen(BaseModel):
@@ -320,8 +327,9 @@ class LibraryEntry(BaseModel):
 
 
 @app.put("/api/me/library")
-def put_library(entries: list[LibraryEntry] = Body(..., max_length=accounts.LIBRARY_MAX)) -> list[dict]:
-    return accounts.save_library(_account(), [e.model_dump() for e in entries])
+def put_library(entries: list[LibraryEntry] = Body(..., max_length=accounts.LIBRARY_MAX),
+                x_xray_library_owner: str | None = Header(None, max_length=254)) -> list[dict]:
+    return accounts.save_library(_library_account(x_xray_library_owner), [e.model_dump() for e in entries])
 
 
 def _metered(demo: bool, start):

@@ -565,10 +565,19 @@ class Quote(BaseModel):
     text: str
 
 
+class LibrarySaveAction(BaseModel):
+    """A proposed browser action; returning it does not mean storage succeeded."""
+    operation: Literal["save_terms"] = "save_terms"
+    terms: list[Term]
+    source_version: int = Field(ge=1)
+    auto_save: bool = False
+
+
 class ChatMessage(BaseModel):
-    answer_kind: Literal["glossary", "clarification", "overview"] | None = None
+    answer_kind: Literal["glossary", "clarification", "overview", "library_action"] | None = None
     answer_scope: Literal["report_snapshot"] | None = None  # 解释本版报告，不冒充重新阅读全文
     knowledge_terms: list[Term] = Field(default_factory=list)  # 本次解释的固定词表快照，不修改旧版报告
+    library_action: LibrarySaveAction | None = None
     context_mode: Literal["full", "selective"] | None = None
     error_code: Literal["context_budget", "evidence_coverage"] | None = None
     request_id: str | None = None
