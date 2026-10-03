@@ -34,12 +34,12 @@ function researchHero(c,v) {
 }
 // Every signal item belongs to exactly one axis, so the radar never drops a backend record.
 // Items not listed here fall back to their signal: risk → 经营资格, finance → 资金面, credit → 风险稳定性, reputation → 消息面.
-const RADAR_AXES = [['qualify','经营资格'],['basics','基本面'],['funds','资金面'],['stability','风险稳定性'],['news','消息面'],['claims','宣传承诺']];
+// Promises, pressure, payee and refund terms come only from material the user supplies; they stay with the risk signal
+// under 经营资格 rather than forming their own axis, which was empty for every report without material.
+const RADAR_AXES = [['qualify','经营资格'],['basics','基本面'],['funds','资金面'],['stability','风险稳定性'],['news','消息面']];
 const RADAR_ITEM_AXIS = {
   'credit.status':'basics','credit.abnormal':'basics','finance.paid_capital':'basics','finance.insured':'basics','finance.jobs':'basics',
-  'finance.amac_scale':'basics','risk.controller':'basics','risk.changes':'basics',
-  'risk.promise':'claims','risk.benchmark':'claims','risk.disclosure':'claims','risk.pressure':'claims',
-  'risk.payee':'claims','risk.refund':'claims','risk.upfront_fee':'claims'
+  'finance.amac_scale':'basics','risk.controller':'basics','risk.changes':'basics'
 };
 const RADAR_SIGNAL_AXIS = {risk:'qualify',finance:'funds',credit:'stability',reputation:'news'};
 // An axis takes the most severe status among the items actually checked; it is uncovered only when nothing was checked.
@@ -57,15 +57,22 @@ function researchRadarAxes(v) {
   return RADAR_AXES.map(([id])=>axes[id]);
 }
 function researchRadar(v) {
-  const dimensions = researchRadarAxes(v);
-  const pt=(i,r)=>[230+Math.sin(i*Math.PI/3)*r,205-Math.cos(i*Math.PI/3)*r];
-  const coords=p=>p.map(n=>n.toFixed(1)).join(',');
+  const dimensions = researchRadarAxes(v), n=dimensions.length, cx=230, cy=212;
+  const pt=(i,r)=>[cx+Math.sin(i*2*Math.PI/n)*r,cy-Math.cos(i*2*Math.PI/n)*r];
+  const coords=p=>p.map(x=>x.toFixed(1)).join(',');
   const level={ok:115,warn:78,miss:62,bad:46};
   const dots=dimensions.map((d,i)=>d.status==='none'?null:pt(i,level[d.status]||46));
+  // The outline joins the axes that have records. An axis without records (e.g. a failed lookup) is bridged by a dashed
+  // edge rather than pulling the shape to the centre, which looked like a missing corner and implied a measured value.
+  const known=dots.map((p,i)=>p?i:-1).filter(i=>i>=0);
+  const edges=known.length<2?[]:known.map((a,k)=>[a,known[(k+1)%known.length]]).slice(0,known.length===2?1:known.length);
+  const edge=([a,b])=>`<line${(a+1)%n===b?'':' class="radar-bridge" stroke-dasharray="4 5" stroke-opacity=".75"'} x1="${dots[a][0].toFixed(1)}" y1="${dots[a][1].toFixed(1)}" x2="${dots[b][0].toFixed(1)}" y2="${dots[b][1].toFixed(1)}" stroke="#dfb477" stroke-width="1.6"/>`;
+  const shape=(known.length>2?`<polygon class="radar-shape" points="${known.map(i=>coords(dots[i])).join(' ')}" fill="#dfb477" fill-opacity=".12" stroke="none"/>`:'')+edges.map(edge).join('');
   const titles = {ok:'未见异常',warn:'有待关注',bad:'有异常记录',miss:'缺应有记录',none:'未覆盖'};
   const label = d => d.failed ? '没查成' : titles[d.status];
   const count = d => d.status==='none' ? (d.open.length ? pendingNote(d.open) : '这一维没有查到数据') : `查了 ${d.checked} 项${d.unchecked?`，另有 ${pendingNote(d.open)}`:''}`;
-  return `<div class="research-radar"><div class="radar-caption"><span>企业六维轮廓</span><span>定性示意 · 不设评分</span></div><svg viewBox="0 0 460 410" role="img" aria-label="六维雷达：${dimensions.map(d=>`${d.label}${label(d)}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="230" y1="205" x2="${pt(i,132)[0]}" y2="${pt(i,132)[1]}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${dots.map((p,i)=>p?`<path d="M230 205L${coords(p)}${dots[(i+1)%6]?'L'+coords(dots[(i+1)%6]):''}Z" fill="#dfb477" fill-opacity=".12" stroke="#dfb477" stroke-width="1.6"/>`:'').join('')}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.failed?'failed':d.status}"><title>${d.label}：${label(d)}，${count(d)}</title><text x="${p[0]}" y="${p[1]-3}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0]}" y="${p[1]+17}" text-anchor="middle" fill="${d.failed?'#e3a76f':d.status==='none'?'#ac9781':d.status==='bad'?'#ed9b89':'#d4b38b'}" font-size="12">${label(d)}</text>${dots[i]?`<circle cx="${dots[i][0]}" cy="${dots[i][1]}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>依据现有记录作定性展示，取各维度最需关注的一项；位置不表示问题数量或企业优劣。虚线表示未覆盖，不用于比较投资表现。</p></div>`;
+  const tone = d => d.failed?'#e3a76f':d.status==='none'?'#ac9781':d.status==='bad'?'#ed9b89':'#d4b38b';
+  return `<div class="research-radar"><div class="radar-caption"><span>企业五维轮廓</span><span>定性示意 · 不设评分</span></div><svg viewBox="0 0 460 400" role="img" aria-label="五维雷达：${dimensions.map(d=>`${d.label}${label(d)}（${count(d)}）`).join('，')}" >${[.25,.5,.75,1].map(f=>`<polygon points="${dimensions.map((_,i)=>coords(pt(i,132*f))).join(' ')}" fill="none" stroke="#b29a80" stroke-opacity=".17"/>`).join('')}${dimensions.map((d,i)=>`<line x1="${cx}" y1="${cy}" x2="${pt(i,132)[0].toFixed(1)}" y2="${pt(i,132)[1].toFixed(1)}" stroke="#b29a80" stroke-opacity=".22" ${d.status==='none'?'stroke-dasharray="3 6"':''}/>`).join('')}${shape}${dimensions.map((d,i)=>{ const p=pt(i,175);return `<g data-axis="${d.id}" data-status="${d.failed?'failed':d.status}"><title>${d.label}：${label(d)}，${count(d)}</title><text x="${p[0].toFixed(1)}" y="${(p[1]-3).toFixed(1)}" text-anchor="middle" fill="#f4e6d2" font-size="16">${d.label}</text><text x="${p[0].toFixed(1)}" y="${(p[1]+17).toFixed(1)}" text-anchor="middle" fill="${tone(d)}" font-size="12">${label(d)}</text>${dots[i]?`<circle cx="${dots[i][0].toFixed(1)}" cy="${dots[i][1].toFixed(1)}" r="4" fill="#f1cd91"/>`:''}</g>`;}).join('')}</svg><p>依据现有记录作定性展示，取各维度最需关注的一项；位置不表示问题数量或企业优劣。虚线表示这一维暂无记录，不等于没有问题；不用于比较投资表现。</p></div>`;
 }
 // Use the saved version's deterministic one-pager, keeping every selected line and reference.
 // This is a reading layer only: all signal items and source records remain below.

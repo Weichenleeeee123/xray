@@ -81,25 +81,30 @@ test('radar axes use every signal item once and an unchecked item does not hide 
  const h=harness();
  const items=(sts,prefix='x')=>sts.map((status,i)=>({key:`${prefix}${i}`,status,label:`${prefix}${i}`}));
  h.ctx.v={signals:[
-  {key:'risk',items:[...items(['warn','warn','none','warn'],'q'),{key:'controller',status:'ok'},{key:'promise',status:'bad'}]},
+  {key:'risk',items:[...items(['warn','warn','none','warn'],'q'),{key:'controller',status:'ok'}]},
   {key:'finance',items:[...items(['ok','ok','ok','ok','ok','ok','ok','ok','ok','ok','ok'],'f'),{key:'pledges',status:'none'},{key:'paid_capital',status:'ok'}]},
   {key:'credit',items:[{key:'status',status:'ok'},{key:'penalties',status:'bad'},{key:'lawsuits',status:'none'}]},
   {key:'reputation',items:[]}]};
  const axes=JSON.parse(h.run('JSON.stringify(researchRadarAxes(v))'));
  const by=Object.fromEntries(axes.map(a=>[a.label,a]));
- assert.deepEqual(axes.map(a=>a.label),['经营资格','基本面','资金面','风险稳定性','消息面','宣传承诺']);
+ assert.deepEqual(axes.map(a=>a.label),['经营资格','基本面','资金面','风险稳定性','消息面']);
  assert.equal(by['经营资格'].status,'warn');assert.equal(by['经营资格'].unchecked,1);
  assert.equal(by['资金面'].status,'ok','eleven checked items outweigh one unchecked item');assert.equal(by['资金面'].unchecked,1);
  assert.equal(by['基本面'].status,'ok');assert.equal(by['基本面'].checked,3);
  assert.equal(by['风险稳定性'].status,'bad');
- assert.equal(by['宣传承诺'].status,'bad');
  assert.equal(by['消息面'].status,'none','nothing checked is uncovered');
  const total=h.ctx.v.signals.reduce((n,s)=>n+s.items.length,0);
  assert.equal(axes.reduce((n,a)=>n+a.checked+a.unchecked+a.quiet,0),total);
  const svg=h.run('researchRadar(v)');
  assert.match(svg,/资金面未见异常（查了 11 项，另有 1 项没查）/);
  assert.match(svg,/消息面未覆盖/);
- assert.doesNotMatch(svg,/技术面|行业表现|记录较完整/);
+ assert.doesNotMatch(svg,/技术面|行业表现|记录较完整|宣传承诺/);
+});
+test('claims read from supplied material count under 经营资格, so reports without material keep every axis',()=>{
+ const h=harness();
+ h.ctx.v={signals:[{key:'risk',items:[{key:'bank_list',status:'ok'},{key:'promise',status:'bad'},{key:'pressure',status:'warn'},{key:'payee',status:'bad'}]}]};
+ const by=Object.fromEntries(JSON.parse(h.run('JSON.stringify(researchRadarAxes(v))')).map(a=>[a.label,a]));
+ assert.equal(by['经营资格'].status,'bad');assert.equal(by['经营资格'].checked,4);
 });
 test('an axis whose items were all unchecked stays uncovered',()=>{
  const h=harness();h.ctx.v={signals:[{key:'finance',items:[{key:'pledges',status:'none'},{key:'revenue',status:'none'}]}]};
@@ -119,6 +124,21 @@ test('radar names failed lookups and pending material instead of calling them un
  assert.match(svg,/资金面没查成（2 项没查成）/);
  assert.match(svg,/经营资格未见异常（查了 1 项，另有 1 项没查成、1 项待补材料）/);
  assert.match(svg,/data-status="failed"/);
+});
+test('a full report draws a closed five-point outline; an axis without records is bridged, not dipped to the centre',()=>{
+ const h=harness();
+ const sigs=()=>[{key:'risk',items:[{key:'bank_list',status:'ok'}]},{key:'credit',items:[{key:'status',status:'ok'},{key:'penalties',status:'warn'}]},
+  {key:'finance',items:[{key:'revenue',status:'ok'}]},{key:'reputation',items:[{key:'news',status:'ok'}]}];
+ h.ctx.v={signals:sigs()};
+ let svg=h.run('researchRadar(v)');
+ assert.match(svg,/企业五维轮廓/);assert.match(svg,/五维雷达/);
+ assert.equal((svg.match(/class="radar-shape" points="([^"]+)"/)[1].split(' ')).length,5);
+ assert.doesNotMatch(svg,/radar-bridge|<path|宣传承诺|待补材料|radar-ask/);
+ h.ctx.v={signals:sigs().map(s=>s.key==='finance'?{key:'finance',items:[{key:'revenue',status:'none',gap:'failed'}]}:s)};svg=h.run('researchRadar(v)');
+ assert.equal((svg.match(/class="radar-shape" points="([^"]+)"/)[1].split(' ')).length,4);
+ assert.equal((svg.match(/radar-bridge/g)||[]).length,1,'the failed axis is crossed by one dashed edge');
+ assert.doesNotMatch(svg,/<path/,'no wedge back to the centre');
+ assert.match(svg,/资金面没查成/);
 });
 
 test('the report brief preserves all supplied summary lines and their version-bound references',()=>{
@@ -178,7 +198,7 @@ test('company overview restores the prominent conclusion beside an always-visibl
  const html=h.run('researchOverview(v)');
  const overview=html.split('<section id="research-signals"')[0];
  assert.match(overview,/企业概况/);assert.match(overview,/overview-grid/);
- assert.match(overview,/六维雷达/);assert.match(overview,/初步结论/);assert.match(overview,/需重点核实/);
+ assert.match(overview,/五维雷达/);assert.match(overview,/初步结论/);assert.match(overview,/需重点核实/);
  assert.match(overview,/data-id="risk.promise"/);assert.match(overview,/核对 &lt;合同&gt;/);
  assert.doesNotMatch(overview,/<details|report-brief|旧的统计摘要/);
  assert.match(html,/完整信号/);assert.doesNotMatch(html,/report-radar-disclosure/);
@@ -190,6 +210,6 @@ test('a historical report without a conclusion retains the radar, need and sourc
  h.ctx.glanceHtml=()=>'';
  h.ctx.v={onepager:null,signals:[],need:'核对原合同',questions:[]};
  const html=h.run('researchOverview(v)');
- assert.match(html,/现有记录尚不足以形成结论/);assert.match(html,/六维雷达/);
+ assert.match(html,/现有记录尚不足以形成结论/);assert.match(html,/五维雷达/);
  assert.match(html,/核对原合同/);assert.match(html,/data-act="tab" data-tab="raw"/);
 });
