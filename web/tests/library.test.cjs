@@ -98,5 +98,5 @@ test('blocked storage does not throw and reports failure', () => {
 
 test('library is a top-level section', () => {
   const h = harness();
-  assert.match(h.run('JSON.stringify(NAV)'), /"library","资料库"/);
+  assert.match(h.run('JSON.stringify(NAV)'), /"library","知识库"/);
 });

@@ -426,9 +426,9 @@ export default function Home() {
         <details className="office-menu">
           <summary aria-label="打开站点菜单" title="菜单"><Menu aria-hidden="true" /></summary>
           <nav className="office-nav" aria-label="站点导航">
-            <a href="/">查企</a>
+            <a href="/">企业</a>
             <a href="/xray/#/cases">案卷</a>
-            <a href="/xray/#/library">资料库</a>
+            <a href="/xray/#/library">知识库</a>
             <a href="/xray/#/me">我的</a>
             <a href="/xray/#/guide">使用说明</a>
           </nav>
