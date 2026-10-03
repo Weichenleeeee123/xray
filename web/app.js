@@ -514,6 +514,7 @@ async function renderMe(request = routeRequest) {
 
 async function renderGuide(request = routeRequest, showAccount = false) {
   document.body.classList.add('research-mode', 'dossier-shell');
+  if (showAccount) document.body.classList.add('me-mode');
   S.case = null; useTerms(S.terms); renderTop();
   $('#view').innerHTML = '<div class="home"><p class="muted">读取服务状态…</p></div>';
   let cases = null;
@@ -548,7 +549,7 @@ async function renderGuide(request = routeRequest, showAccount = false) {
   $('#view').innerHTML = shellHtml(`
   <div class="home">
     <section class="home-hero">
-      <div class="kicker">${showAccount ? '我的' : '使用说明'}</div>
+      ${showAccount ? '' : '<div class="kicker">使用说明</div>'}
       <h1>${showAccount ? '我的' : '使用说明'}</h1>
       <p>了解当前可用的资料、案卷如何保存，以及阅读报告时需要留意的范围。</p>
     </section>
@@ -2334,7 +2335,7 @@ async function route() {
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();
   researchCleanup();
-  document.body.classList.remove('research-mode', 'cases-mode', 'dossier-live', 'dossier-shell', 'collections-mode', 'knowledge-mode');
+  document.body.classList.remove('research-mode', 'cases-mode', 'dossier-live', 'dossier-shell', 'collections-mode', 'knowledge-mode', 'me-mode');
   // The research room is the only query homepage, including old #/new bookmarks.
   if (!location.hash || /^#\/(?:check|new)?\/?$/.test(location.hash)) {
     location.replace('/');
