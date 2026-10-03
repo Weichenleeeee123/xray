@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from uuid import uuid4
 
 from app.analysis.charts import build_charts
+from app.analysis.company_keywords import company_keywords
 from app.analysis.diff import diff
 from app.analysis.extract import ClaimExtractor, RuleExtractor
 from app.analysis.followup import build_questions
@@ -177,6 +178,7 @@ def build_version(no: int, trigger: str, inp: CaseIn, intake: Intake, collected:
                   sources={k: s.model_copy(deep=True) for k, s in collected.sources.items()})
     if no == 1:
         ver.judgments, ver.judgment_changes, ver.judgment_summary = update_judgments([], judges, {}, 1)
+    ver.company_keywords = company_keywords(ver, raw)
     checks = sum(len(s.items) for s in signals)
     progress.done("rules", text=f"对照了 {len(assertions)} 条说法、{checks} 项检查" if assertions else f"做了 {checks} 项检查")
     return ver

@@ -78,3 +78,18 @@ test('production dossier assets contain no preview company or preview print foot
     assert.doesNotMatch(fs.readFileSync(path.join(root,filename),'utf8'),/远山科技|独立设计预览|127\.0\.0\.1:8010/,filename);
   }
 });
+
+test('overview replaces the numeric headline with escaped version-specific company keywords',()=>{
+  const h=harness();
+  h.run(`v.raw_ids=['R1'];v.onepager={headline:'材料核对：4项需重点核实'};
+    v.company_keywords=[{label:'软件开发 <标签>',ref:'R1',basis:'登记范围'},
+      {label:'不属于本版的资质',ref:'R2',basis:'其他版本'}]`);
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/公司关键词：/);
+  assert.match(html,/软件开发 &lt;标签&gt;/);
+  assert.match(html,/data-act="raw" data-ref="R1"/);
+  assert.doesNotMatch(html,/材料核对：4项|不属于本版的资质/);
+  h.run('v.company_keywords=[]');
+  assert.match(h.run('dossierCompanyKeywords(v)'),/资料不足/);
+  assert.doesNotMatch(h.run('dossierCompanyKeywords(v)'),/高新技术|天使轮/);
+});

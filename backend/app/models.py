@@ -445,6 +445,12 @@ class PrebuiltProvenance(BaseModel):
     built_at: str | None = None          # 预制包生成时间，不是各来源的数据截止时间
 
 
+class CompanyKeyword(BaseModel):
+    label: str
+    ref: str                            # 本版原始资料；前端可直接查看出处
+    basis: str
+
+
 class Version(BaseModel):
     no: int
     created_at: str
@@ -460,6 +466,7 @@ class Version(BaseModel):
     raw_ids: list[str]                    # 本版用到的原始数据
     sources: dict[str, Source] = Field(default_factory=dict)
     company: CompanyProfile | None
+    company_keywords: list[CompanyKeyword] = Field(default_factory=list)
     license: LicenseHit
     amac: AmacHit
     assertions: list[Assertion]

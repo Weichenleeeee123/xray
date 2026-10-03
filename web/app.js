@@ -497,7 +497,7 @@ function renderLibrary() {
   document.body.classList.add('research-mode','dossier-shell','collections-mode','knowledge-mode');
   S.case = null; useTerms(S.terms); renderTop();
   collectionView.libraryQuery = ''; collectionView.libraryFilter = 'all'; collectionView.study = false;
-  $('#view').innerHTML = shellHtml(`<div class="collection-page">${collectionHeader('library')}<div class="knowledge-intro"><span>${collectionIcon('bookmark')} 收藏，是为了下次看懂</span><p>每张卡保留原来的解释，以及你在哪份报告里遇到它。</p></div><div id="libList">${libraryHtml(libRead())}</div></div>`);
+  $('#view').innerHTML = shellHtml(`<div class="collection-page">${collectionHeader('library')}<div class="knowledge-intro"><span>${collectionIcon('bookmark')} 收藏，是为了下次看懂</span></div><div id="libList">${libraryHtml(libRead())}</div></div>`);
 }
 
 // ---------- 分区四：我的 ----------
