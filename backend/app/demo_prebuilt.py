@@ -99,9 +99,11 @@ def replay(events: list[dict], cap: float = REPLAY_CAP) -> None:
         progress.emit({k: v for k, v in event.items() if k != "t"})
 
 
-def _provenance(bundle: dict) -> PrebuiltProvenance:
+def _provenance(bundle: dict, stage: dict) -> PrebuiltProvenance:
     # 只从服务端预制包取白名单字段，不转发输入或录制事件里的任意元数据。
-    return PrebuiltProvenance(demo_id=bundle.get("demo_id"), built_at=bundle.get("built_at"))
+    # A supplement may be prepared later without rebuilding the original stage.
+    return PrebuiltProvenance(demo_id=bundle.get("demo_id"),
+                             built_at=stage.get("built_at") or bundle.get("built_at"))
 
 
 def _replay_stage(stage: dict, provenance: PrebuiltProvenance) -> None:
@@ -114,7 +116,7 @@ def start_case(bundle: dict, owner: str | None) -> Case:
     """第一版：回放研究过程，交出一份新案卷（新编号，属于当前浏览器）。"""
     stage = bundle["stages"][0]
     case = Case.model_validate(stage["case"])
-    provenance = _provenance(bundle)
+    provenance = _provenance(bundle, stage)
     for version in case.versions:
         version.prebuilt = provenance.model_copy()
     case.id, case.owner_id, case.revision, case.chat = uuid4().hex[:12], owner, 0, []
@@ -140,7 +142,7 @@ def next_case(case: Case, bundle: dict, k: int) -> Case:
     version = built.versions[-1]
     if version.no != k + 1 or not set(version.raw_ids) <= old_raw.keys() | seen:
         raise ValueError("预制版本的原始记录引用不完整")
-    provenance = _provenance(bundle)
+    provenance = _provenance(bundle, stage)
     version.prebuilt = provenance
     built.versions = [v.model_copy(deep=True) for v in case.versions] + [version]
     built.raw = [r.model_copy(deep=True) for r in case.raw] + added

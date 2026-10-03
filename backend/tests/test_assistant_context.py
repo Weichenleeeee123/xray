@@ -88,7 +88,7 @@ def test_full_report_and_sixty_raw_records_survive_context_deduplication(packed_
 def test_duplicate_heavy_case_fits_existing_budget_without_dropping_evidence(packed_case, tmp_path):
     llm = FakeLLM(['{"segments":[{"kind":"fact","fact_id":"credit.status"}],"not_found":false}'], tmp_path)
     before = packed_case.model_dump_json()
-    result = answer(packed_case, ChatIn(text="请解释登记状态"), llm)
+    result = answer(packed_case, ChatIn(text="请解释登记状态"), llm, max_context_chars=120_000)
     assert result.mode == "model" and not result.not_found and len(llm.calls) == 1
     assert "credit.status" in result.citations
     blob = sent_case(llm)
@@ -212,7 +212,7 @@ def test_memory_integration_retains_lossless_packing_and_full_fallback(packed_ca
     token = privacy.OWNER.set(packed_case.owner_id)
     llm = FakeLLM(['{"segments":[{"kind":"fact","fact_id":"credit.status"}]}'], tmp_path / "llm")
     try:
-        reply = answer(packed_case, ChatIn(text="请解释登记状态"), llm)
+        reply = answer(packed_case, ChatIn(text="请解释登记状态"), llm, max_context_chars=120_000)
     finally:
         privacy.OWNER.reset(token)
     assert reply.context_mode == "full" and reply.error_code is None
@@ -222,3 +222,26 @@ def test_memory_integration_retains_lossless_packing_and_full_fallback(packed_ca
     assert data["原始数据"] == [r.model_dump(mode="json", exclude={"retrieved_at"}) for r in packed_case.raw]
     assert "sources" not in data["报告"] and "terms" not in data["报告"]
     assert packed_case.model_dump_json() == before
+
+
+def test_large_bank_sized_case_fits_default_budget_with_all_evidence(packed_case, tmp_path):
+    version = packed_case.versions[0]
+    # Match Hangzhou Bank: even after source deduplication the case exceeds 120k.
+    packed = assistant._context_json(packed_case, version, version.terms, max_chars=1)
+    packed_case.raw[-1].content["long_material"] = "证" * (122_618 - len(packed))
+    before = packed_case.model_dump_json()
+    llm = FakeLLM(['{"segments":[{"kind":"fact","fact_id":"credit.status"}]}'], tmp_path)
+    reply = answer(packed_case, ChatIn(text="请解释登记状态"), llm)
+    assert reply.error_code is None and reply.mode == "model" and len(llm.calls) == 1
+    data = json.loads(sent_case(llm))
+    assert data["原始数据"] == [r.model_dump(mode="json", exclude={"retrieved_at"}) for r in packed_case.raw]
+    assert data["报告"]["judgment_changes"] == [c.model_dump(mode="json") for c in version.judgment_changes]
+    assert data["报告"]["judgments"] == [j.model_dump(mode="json") for j in version.judgments]
+    assert packed_case.model_dump_json() == before
+
+
+def test_explicit_smaller_budget_still_guards_complete_evidence(packed_case, tmp_path):
+    packed_case.raw[-1].content = "必须完整保留的材料" * 20_000 + "末尾否定：不允许退款。"
+    llm = FakeLLM(['{"segments":[]}'], tmp_path)
+    result = answer(packed_case, ChatIn(text="请解释登记状态"), llm, max_context_chars=120_000)
+    assert result.error_code == "context_budget" and not llm.calls

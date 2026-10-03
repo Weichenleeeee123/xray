@@ -33,6 +33,45 @@ function restoreApi(h){
   h.run(source.slice(source.indexOf('async function api('),source.indexOf('// ---------- 小工具')));
 }
 
+function jobVersion(){
+  return {no:1,terms:[],scenario:'job',assertions:[],missing:[],questions:[],
+    glance:{first:['finance.insured'],short:{}},
+    signals:[{key:'finance',title:'资金',items:[{key:'insured',label:'参保',value:'7458人',status:'ok'}]}]};
+}
+
+test('saved first-question evidence renders even when scenarios fail or have not arrived',()=>{
+  const h=harness();h.ctx.v=jobVersion();
+  const html=h.run('glanceHtml(v)');
+  assert.match(html,/gl-first/);assert.match(html,/已查项暂未见异常/);assert.match(html,/7458人/);
+  assert.doesNotMatch(html,/第一问：/);
+});
+
+test('scenarios update the current first question immediately without waiting for other metadata',async()=>{
+  const h=harness();const containers=[{innerHTML:'',isConnected:true}];
+  h.ctx.document.querySelectorAll=s=>s==='[data-first-question]'?containers:[];
+  const ready=h.run('boot()');h.ctx.caseResult={...result('first'),versions:[jobVersion()]};
+  h.run(`pending['/api/cases/first'].resolve(caseResult)`);await Promise.resolve();await Promise.resolve();
+  h.run(`$('#asInput').value='正在写的问题';renderCase=()=>{throw Error('must not replace report')};
+    pending['/api/scenarios'].resolve([{id:'job',first_question:'是不是同一家',first_items:['finance.insured']}])`);
+  await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  assert.match(containers[0].innerHTML,/第一问：是不是同一家/);
+  assert.match(containers[0].innerHTML,/7458人/);
+  assert.equal(h.nodes.get('#asInput').value,'正在写的问题');
+  h.run(`for(const p of ['/api/health','/api/sources','/api/demo/cases','/api/glossary','/api/session'])pending[p].resolve(null)`);
+  await ready;
+});
+
+test('late scenarios cannot update a report after navigation away',async()=>{
+  const h=harness();const containers=[{innerHTML:'keep new page',isConnected:true}];
+  h.ctx.document.querySelectorAll=s=>s==='[data-first-question]'?containers:[];
+  const ready=h.run('boot()');h.ctx.caseResult={...result('first'),versions:[jobVersion()]};
+  h.run(`pending['/api/cases/first'].resolve(caseResult)`);await Promise.resolve();await Promise.resolve();
+  h.run(`location.hash='#/library';pending['/api/scenarios'].resolve([{id:'job',first_question:'old heading'}]);
+    for(const p of ['/api/health','/api/sources','/api/demo/cases','/api/glossary','/api/session'])pending[p].resolve(null)`);
+  await ready;
+  assert.equal(containers[0].innerHTML,'keep new page');
+});
+
 function serviceHealth(){
   return {ok:true,licensed_count:4070,licensed_as_of:'2025-06-30',registry_as_of:'1999-01-01',
     official_lists:{nfra_insurance:{title:'保险机构',count:200,as_of:'2025-03-31'}},

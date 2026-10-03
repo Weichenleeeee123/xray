@@ -96,7 +96,7 @@ function researchBrief(v) {
 }
 function researchOverview(v) {
   const html=document.createElement('div'); html.innerHTML=glanceHtml(v);
-  const first=html.querySelector('.gl-first')?.outerHTML || '<p>现有记录尚不足以形成结论。</p>';
+  const first=`<div data-first-question>${html.querySelector('.gl-first')?.outerHTML || '<p>现有记录尚不足以形成结论。</p>'}</div>`;
   html.querySelectorAll('[data-act="sigtile"]').forEach(el=>{el.setAttribute('aria-haspopup','dialog');el.setAttribute('aria-controls','signalDlg');});
   const tiles=html.querySelector('.tiles')?.innerHTML || '';
   return `<section id="research-overview" class="research-section">${researchHeading('01','企业概况','')}<div class="overview-grid">${researchRadar(v)}<div class="overview-summary"><span class="research-eyebrow">初步结论</span>${first}<div class="overview-note"><span>查询需求</span><p>${esc(v.need || v.scenario_label)}</p></div><button class="research-text-link" data-act="tab" data-tab="raw">查看资料来源 ${researchIcon()}</button></div></div></section>
