@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="research-progress.css">
 <link rel="stylesheet" href="case-design.css?v=pr12-halo-20261003">
 <link rel="stylesheet" href="case-palette.css?v=integrated-20261003-1">
-<link rel="stylesheet" href="report-workspace.css?v=library-20261003">
+<link rel="stylesheet" href="report-workspace.css?v=navigation-shell-20261004">
 <link rel="stylesheet" href="cases-workspace.css?v=archive-20261003-1">
 <link rel="stylesheet" href="dossier/styles.css?v=dossier-live-20261003">
 <link rel="stylesheet" href="dossier/report-v2.css?v=dossier-live-20261003">
@@ -29,6 +29,13 @@
 <link rel="stylesheet" href="dossier/source-records.css?v=readable-sources-20261004">
 </head>
 <body>
+<script>
+// Select the shell before parsing visible content, even if application scripts
+// or the first case request are slow. The explicit classic report stays classic.
+if (!( /^#\/case\//.test(location.hash) && new URLSearchParams(location.search).has('classic') )) {
+  document.body.classList.add('research-mode', 'report-workspace', 'dossier-shell');
+}
+</script>
 <header class="topbar" id="topbar">
   <a class="brand" href="/" aria-label="企er 首页">
     <span class="logo brand-goose qi-sprite" role="img" aria-label="小企"></span>
@@ -40,7 +47,7 @@
   <div class="top-badges" id="topBadges"></div>
 </header>
 
-<div id="view" class="view" aria-live="polite"></div>
+<div id="view" class="view" aria-live="polite"><section class="workspace-loading" role="status"><div class="workspace-loading-card"><span class="workspace-loading-kicker">企er · 工作空间</span><h1>正在打开工作空间…</h1><p>页面正在准备中，请稍候。</p><a class="linkish small" href="/">回到查询首页</a></div></section><noscript>请启用 JavaScript 以打开案卷和使用小企助手。</noscript></div>
 
 <dialog id="rawDlg" class="dlg" aria-labelledby="rawTitle"></dialog>
 <dialog id="materialDlg" class="dlg" aria-labelledby="materialTitle"></dialog>
@@ -59,7 +66,7 @@
 <script src="dossier-report.js?v=summary-context-20261004"></script>
 <script src="supplement-runs.js?v=material-appendix-20261003"></script>
 <script src="source-records.js?v=readable-sources-20261004"></script>
-<script src="app.js?v=readable-sources-20261004"></script>
 <script src="report-workspace.js?v=dossier-live-20261003"></script>
+<script src="app.js?v=readable-sources-20261004"></script>
 </body>
 </html>

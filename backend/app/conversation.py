@@ -86,6 +86,19 @@ def response_focus(question: str, scenario: str, refs: list[str]) -> str:
             "不要复述用户整句问题。需要建议时选择与本轮问题相关的行动，不机械重复产品类型问题。")
 
 
+def clarify_scope(scenario: str) -> str:
+    """An unresolved question is not an evidence deficit or a failed investigation."""
+    angle = {
+        "job": "如果继续按求职方向看，你想先了解岗位与用工情况，还是解释报告中的某条记录？",
+        "savings": "如果继续按存款或理财方向看，你想了解机构本身，还是核对某个具体产品？",
+        "investment": "如果继续按投资方向看，你想先了解企业经营情况，还是核对某个具体产品？",
+        "contract": "如果继续按合作方向看，你想先了解企业经营情况，还是核对具体履约事项？",
+        "rental": "如果继续按租房方向看，你想了解这家机构，还是核对某个房源或租赁事项？",
+        "prepaid": "如果继续按消费方向看，你想了解机构与服务，还是核对某笔费用的约定？",
+    }.get(scenario, "你想先了解这家公司做什么、看看报告要点，还是核对一个具体问题？")
+    return "我还没确定你想了解的角度，不会把这当作资料缺失或公司的问题。" + angle
+
+
 def complete_reply(reply, question: str, scenario: str):
     """Do not call a surviving unrelated fact a complete response to distress.
 

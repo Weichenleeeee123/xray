@@ -351,7 +351,7 @@ const chgTag = (id, cm) => (cm[id] ? `<span class="chg-tag ${cm[id]}" title="和
 
 function renderTop() {
   const onCase = S.case && location.hash.startsWith('#/case/');
-  const sec = onCase ? 'cases' : /^#\/reset\b/.test(location.hash) ? 'me' : (location.hash.match(/^#\/(check|cases|library|me|guide)\/?$/) || [])[1] || 'check';
+  const sec = location.hash.startsWith('#/case/') ? 'cases' : /^#\/reset\b/.test(location.hash) ? 'me' : (location.hash.match(/^#\/(check|cases|library|me|guide)\/?$/) || [])[1] || 'check';
   $('#shellNav').innerHTML = NAV.map(([k, label, hint]) =>
     `<button type="button" class="snav-b" data-act="go" data-sec="${k}" aria-current="${k === sec}" title="${esc(hint)}">${label}</button>`).join('');
   $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : sec === 'cases' ? '我的案卷' : '';
@@ -397,7 +397,7 @@ function qibarHtml() {
       <li>它不会改报告；新情况要点"加入案卷"才会重新判断</li>
       <li>它不给公司定性，也不打安全分</li>
     </ul>
-    <div class="qi-go"><a class="btn sm" href="#/check">去查一家公司</a><a class="linkish small" href="#/cases">看案卷</a></div>
+    <div class="qi-go"><a class="btn sm" href="/">去查一家公司</a><a class="linkish small" href="#/cases">看案卷</a></div>
   </div>`;
 }
 
@@ -421,7 +421,7 @@ function archiveIcon(kind) {
     arrow: 'M6 18 18 6M6 6h12v12',
     chat: 'M4 5h16v12H9l-5 4V5ZM8 9h8M8 13h5',
   };
-  return `<svg class="archive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.file}"/></svg>`;
+  return `<svg class="archive-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.file}"/></svg>`;
 }
 
 function archiveAssistantHtml() {
@@ -439,7 +439,7 @@ function archiveAssistantHtml() {
 
 function collectionIcon(kind) {
   const paths = {search:'M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm5-2 6 6',file:'M5 3h10l4 4v14H5V3Zm10 0v5h4M9 12h6M9 16h4',bookmark:'M6 3h12v18l-6-4-6 4V3Z',cards:'M7 3h13v15H7V3ZM4 7H2v15h13v-2M11 8h5m-5 4h5',folder:'M3 6h7l3 3h8v12H3V6Z',arrow:'M4 12h15m-6-6 6 6-6 6'};
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.file}"/></svg>`;
+  return `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.file}"/></svg>`;
 }
 function collectionArt(kind) {
   return `<svg class="collection-art" viewBox="0 0 210 140" fill="none" aria-hidden="true"><path d="M22 114h168" stroke="#8b795a" opacity=".4"/><g class="collection-art-pages"><path d="m62 31 87-10 10 88-87 10Z" fill="#efe5cd" stroke="#b89a62"/><path d="M49 33h92v87H49Z" fill="#faf6e9" stroke="#bfa776"/><path d="M62 53h63M62 63h39M62 75h63M62 86h51" stroke="#b7a47a"/><path d="M106 33v30l10-7 10 7V33" fill="#9d7743"/></g>${kind === 'cases' ? '<path d="M25 76V58h41l12 14h101v54H25V76Z" fill="#d5bb87" stroke="#a58754"/><path d="M25 80h154v46H25Z" fill="#dec99f" stroke="#a58754"/><path d="M47 94h61v19H47Z" fill="#f7f0dd" stroke="#b59b6c"/><path d="M55 101h42m-42 6h29" stroke="#a18b68"/><circle cx="160" cy="104" r="6" fill="#233845" stroke="#b39966"/>' : '<path d="m127 99 45-64 8 6-45 64-11 7 3-13Z" fill="#223845" stroke="#b89960"/><path d="m127 99 8 6-11 7 3-13Z" fill="#d6bc85"/><path d="m166 44 8 6" stroke="#d6bc85"/>'}</svg>`;
@@ -516,7 +516,7 @@ async function renderGuide(request = routeRequest, showAccount = false) {
   document.body.classList.add('research-mode', 'dossier-shell');
   if (showAccount) document.body.classList.add('me-mode');
   S.case = null; useTerms(S.terms); renderTop();
-  $('#view').innerHTML = '<div class="home"><p class="muted">读取服务状态…</p></div>';
+  $('#view').innerHTML = workspaceLoadingHtml('读取服务状态…');
   let cases = null;
   const caseRead = api('/api/cases', {signal: request?.signal}).then(value => {if (Array.isArray(value)) cases = value;}).catch(() => {});
   // 次数和未并入的案卷随时会变，每次进来都重读；不挡着页面，读到了只重画账号这一块
@@ -823,9 +823,11 @@ function fillDemo(id) {
 // ---------- 报告页 ----------
 
 async function openCase(id, no, request = routeRequest) {
+  setRouteMode('case');
   if (!S.case || S.case.id !== id) {
     S.case = null; S.viewNo = null;
-    $('#view').innerHTML = '<div class="home"><p class="muted">读取案卷…</p></div>';
+    renderTop();
+    $('#view').innerHTML = workspaceLoadingHtml('读取案卷…');
     try {
       const data = await api(`/api/cases/${encodeURIComponent(id)}`, {signal: request?.signal});
       if (!currentRoute(request)) return;
@@ -833,7 +835,7 @@ async function openCase(id, no, request = routeRequest) {
     }
     catch (e) {
       if (!currentRoute(request)) return;
-      $('#view').innerHTML = `<div class="home"><div class="ask-card"><h2>打不开这个案卷</h2><p class="err">${esc(e.message)}</p><button class="btn sm" data-act="retry-read">重试</button><a class="btn sm" href="#/cases">返回案卷</a></div></div>`;
+      $('#view').innerHTML = workspaceLoadingHtml('打不开这个案卷', e.message);
       return;
     }
     S.selected.clear(); S.opCache = {}; S.tab = 'signals'; S.openRest.clear();
@@ -1833,14 +1835,18 @@ function msgHtml(m, prev, index = 0) {
   const add = (m.suggest || []).filter(s => s.includes('加入案卷'));
   const other = (m.suggest || []).filter(s => !s.includes('加入案卷'));
   const vNote = S.case && m.version !== ver().no ? `<span>基于第 ${m.version} 版</span>` : '';
-  const answerKind = m.answer_kind === 'glossary' ? '<span>名词解释</span>' : m.answer_kind === 'clarification' ? '<span>先确认需求</span>' : '';
+  const answerKind = m.answer_kind === 'glossary' ? '<span>名词解释</span>' : m.answer_kind === 'clarification' ? '<span>先确认需求</span>' : m.answer_kind === 'overview' ? '<span>本版报告概览</span>' : '';
   const mode = answerKind + (m.mode === 'replay' ? `<span>离线回放${m.recorded_at ? ` · ${esc(fmtTime(m.recorded_at))}` : ''}</span>` : m.mode === 'template' && !answerKind ? '<span>当前为基础答复</span>' : '');
+  // A report overview reuses an already generated, version-bound report. Do not
+  // describe it as a fresh selective read of the underlying case materials.
+  const scope = m.answer_kind === 'overview' && m.answer_scope === 'report_snapshot'
+    ? '<span>依据已生成报告</span>' : m.context_mode === 'selective' ? '<span>按需核对相关材料</span>' : '';
   const filtered = m.has_omitted_claims === true;
   return `<div class="msg ai${m.not_found ? ' nf' : ''}${m.mode === 'guard' ? ' guard' : ''}">
     <div class="ans">${answerText(m.text)}</div>
     ${other.length ? `<ul class="chat-next">${other.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
     ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
-    <div class="msg-meta">${mode}${m.error_code ? '<span>本次材料处理未完成，不是企业风险结论</span>' : m.not_found ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${m.context_mode === 'selective' ? '<span>按需核对相关材料</span>' : ''}${vNote}</div>
+    <div class="msg-meta">${mode}${m.error_code ? '<span>本次材料处理未完成，不是企业风险结论</span>' : m.not_found ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${scope}${vNote}</div>
     ${answerCitations(m).length ? `<div class="msg-refs chat-source-footer"><button type="button" class="linkish" data-act="chat-sources" data-index="${index}" aria-label="查看这条回答的原文出处">原文出处 ↗</button></div>` : ''}
   </div>`;
 }
@@ -1902,11 +1908,14 @@ async function ask(q) {
   S.chatAbort = controller;
   S.busy = true;
   S.busyCaseId = id;
-  const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version, created_at: new Date().toISOString() };
+  const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version, request_id: key, created_at: new Date().toISOString() };
   caseData.chat.push(message);
   // 切走再回来可能重新加载了同一案卷；同步当前对象，但不触碰别的案卷。
   const targets = () => S.case && S.case.id === id && S.case !== caseData ? [caseData, S.case] : [caseData];
-  const sameMessage = (a, b) => a === b || (a.role === b.role && a.version === b.version && a.text === b.text && a.created_at === b.created_at);
+  // Fast, deterministic answers may have the same text and second-resolution
+  // timestamp. Their request identities, not their wording, distinguish turns.
+  const sameMessage = (a, b) => a === b || (a.role === b.role && a.version === b.version &&
+    (a.request_id && b.request_id ? a.request_id === b.request_id : a.text === b.text && a.created_at === b.created_at));
   S.selected.clear(); refreshSel(); refreshChat();
   $('#assist')?.classList.add('open');
   try {
@@ -2246,7 +2255,10 @@ document.addEventListener('click', e => {
   const d = el.dataset;
   switch (d.act) {
     case 'retry-read': void route(); break;
-    case 'go': location.hash = `#/${d.sec}`; break;
+    case 'go':
+      if (d.sec === 'check') location.assign('/');
+      else location.hash = `#/${d.sec}`;
+      break;
     case 'qi-nudge': toast('先打开一份案卷，小企才有数据可答'); break;
     case 'chat-sources': openChatSources(Number(d.index)); break;
     case 'cancel-chat': S.chatAbort?.abort('cancelled'); break;
@@ -2380,33 +2392,63 @@ let routeRequest = null;
 let startupReady = Promise.resolve();
 const currentRoute = request => !request || (request === routeRequest && !request.signal.aborted);
 
+function setRouteMode(section) {
+  const modern = section !== 'case' || !new URLSearchParams(location.search).has('classic');
+  const modes = {
+    'research-mode': modern, 'report-workspace': modern,
+    'dossier-live': modern && section === 'case',
+    'dossier-shell': modern && section !== 'case' && section !== 'cases',
+    'cases-mode': section === 'cases',
+    'collections-mode': section === 'cases' || section === 'library',
+    'knowledge-mode': section === 'library',
+    'me-mode': section === 'me' || section === 'reset',
+  };
+  // Apply the target state in one synchronous turn, never clear all styling
+  // and leave the previous DOM visible across an awaited read/navigation.
+  for (const [name, enabled] of Object.entries(modes)) document.body.classList.toggle(name, enabled);
+}
+
+function workspaceLoadingHtml(title, error = '') {
+  const modern = document.body.classList.contains('research-mode');
+  if (!modern) return `<div class="home"><div class="ask-card" role="${error ? 'alert' : 'status'}"><h2>${esc(title)}</h2>${error
+    ? `<p class="err">${esc(error)}</p><button class="btn" data-act="retry-read">重试</button> <a href="#/cases">返回案卷</a>`
+    : '<p class="muted">正在读取已保存的内容，请稍候。</p>'}</div></div>`;
+  return `<section class="workspace-loading" aria-busy="${!error}">
+    <div class="workspace-loading-card" role="${error ? 'alert' : 'status'}">
+      <span class="workspace-loading-kicker">企er · 工作空间</span><h1>${esc(title)}</h1>
+      ${error ? `<p class="err">${esc(error)}</p><div class="workspace-loading-actions"><button class="btn sm" data-act="retry-read">重试</button><a class="btn sm" href="#/cases">返回案卷</a></div>`
+        : '<p>正在读取已保存的内容，请稍候。</p><div class="workspace-loading-lines" aria-hidden="true"><i></i><i></i><i></i></div><a class="linkish small" href="/">回到查询首页</a>'}
+    </div></section>`;
+}
+
 async function route() {
   stopSupplementWatch();
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();
-  researchCleanup();
-  document.body.classList.remove('research-mode', 'cases-mode', 'dossier-live', 'dossier-shell', 'collections-mode', 'knowledge-mode', 'me-mode');
-  // The research room is the only query homepage, including old #/new bookmarks.
-  if (!location.hash || /^#\/(?:check|new)?\/?$/.test(location.hash)) {
+  const m = location.hash.match(/^#\/case\/([\w-]+)(?:\/v\/(\d+))?\/?$/);
+  const reset = /^#\/reset\b/.test(location.hash);
+  const sec = (location.hash.match(/^#\/(cases|library|me|guide)\/?$/) || [])[1];
+  // Includes old #/check and #/new bookmarks. Keep the departing page fully
+  // styled until the browser commits the next document, even on a slow network.
+  if (!m && !reset && !sec) {
     location.replace('/');
     return;
   }
+  researchCleanup();
   closePop();
   $$('dialog[open]').forEach(d => d.close());
-  const m = location.hash.match(/^#\/case\/([\w-]+)(?:\/v\/(\d+))?/);
+  setRouteMode(m ? 'case' : reset ? 'reset' : sec);
   if (m) {
     const sameCase = S.case && S.case.id === m[1];
     await openCase(m[1], m[2] ? +m[2] : null, request);
     if (currentRoute(request) && !sameCase) window.scrollTo(0, 0);
     return;
   }
-  if (/^#\/reset\b/.test(location.hash)) { renderReset(); return; }
-  const sec = (location.hash.match(/^#\/(cases|library|me|guide)\/?$/) || [])[1];
+  if (reset) { renderReset(); return; }
   if (sec === 'cases') await renderCases(request);
   else if (sec === 'library') renderLibrary();
   else if (sec === 'me') await renderMe(request);
   else if (sec === 'guide') await renderGuide(request);
-  else { location.replace('/'); return; }
   if (currentRoute(request)) window.scrollTo(0, 0);
 }
 

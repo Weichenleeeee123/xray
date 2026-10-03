@@ -3,10 +3,16 @@ import re
 
 from app.models import Case, Version
 from app.conversation import GUIDES, WORRY
+from app.dialogue_routing import requires_evidence
 from . import builder
 from .models import CaseMemory, RetrievalResult
 
 TRANSACTION = {"withdrawal", "fees", "term", "parties", "payee"}
+# An explicit fact/safety question still needs evidence even if the topic
+# dictionary has no entry. Ambiguous language, however, is not a full-case audit.
+FACT_CHECK = re.compile(r"\d|多少|谁|何时|何地|哪年|哪天|是否|有没有|有无|为什么|"
+                        r"安全|靠谱|可靠|放心|值得信任|诈骗|骗子|真假|真的吗|真实吗|"
+                        r"倒闭|破产|跑路|亏|赔|担保|保证|风险|合法|违法|买卖|违约")
 
 
 def condition_excerpts(leaf: str) -> list[str]:
@@ -98,7 +104,15 @@ def retrieve(case: Case, v: Version, owner: str, memory: CaseMemory, question: s
     if requested & TRANSACTION:
         requested.update(TRANSACTION)  # Exit, fee, time, parties and payee are one verification bundle.
     if not requested and not support:
-        broad = True  # Unknown intent is not a license to retrieve nothing and say "no risk".
+        broad = broad or bool(refs) or bool(FACT_CHECK.search(query)) or requires_evidence(query, case.case.company_name)
+        if not broad:
+            # No evidence was read and no assessment was made. In particular,
+            # do not label an empty retrieval 'complete' or 'nothing wrong'.
+            return RetrievalResult(intent="clarification", topics=[], complete=False,
+                reasons=["question_scope_unresolved"], context={
+                    "读取方式": "待确认问题范围；尚未读取企业证据，不形成企业判断。",
+                    "允许引用的条目": [],
+                })
     intent = "support" if support else "overview" if broad else "targeted"
     chosen = set() if support else {c.card_id for c in memory.cards if broad or set(c.topics) & requested}
     chosen.update(r for r in refs if r in by_id)

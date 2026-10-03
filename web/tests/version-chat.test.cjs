@@ -6,9 +6,9 @@ const path = require('node:path');
 
 function harness() {
   const listeners = {};
-  const node = { classList: { add() {}, remove() {}, contains() { return false; } }, hidden: true, open: false, close() {}, scrollIntoView() {}, offsetWidth: 1 };
-  const ctx = vm.createContext({ console, FormData, AbortController, CSS: { escape: s => s }, history: { replaceState() {} }, location: { hash: '#/case/c/v/1' },
-    setTimeout: () => 0, clearTimeout() {}, document: { querySelector: () => node, querySelectorAll: () => [], addEventListener: (k, f) => { listeners[k] = f; } },
+  const node = { classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } }, hidden: true, open: false, close() {}, scrollIntoView() {}, offsetWidth: 1 };
+  const ctx = vm.createContext({ console, FormData, AbortController, URLSearchParams, CSS: { escape: s => s }, history: { replaceState() {} }, location: { hash: '#/case/c/v/1' },
+    setTimeout: () => 0, clearTimeout() {}, document: { body: node, querySelector: () => node, querySelectorAll: () => [], addEventListener: (k, f) => { listeners[k] = f; } },
     window: { addEventListener() {}, matchMedia: () => ({ matches: false }) } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8').replace(/boot\(\);\s*$/, ''), ctx);
   const run = code => vm.runInContext(code, ctx);
