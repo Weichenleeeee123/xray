@@ -836,6 +836,7 @@ async function openCase(id, no, request = routeRequest) {
   if (S.viewNo !== next) S.selected.clear();
   S.viewNo = next;
   renderCase();
+  if (pendingSupplement(id)) void resumeSupplement();
 }
 
 function renderCase() {
@@ -849,6 +850,7 @@ function renderCase() {
   $('#view').innerHTML = `
   <div class="case-layout">
     <div class="report" id="report">
+      <div id="supplementNotice">${supplementNoticeHtml()}</div>
       ${isDesignReview() ? dossierReport(c, v) : caseHead(c, v) + conclusionHtml(v) + chartsHtml(v)}
       ${!isDesignReview() ? `${v.no > 1 ? `<button type="button" class="chg-banner" data-act="tab" data-tab="changes"><b>第 ${v.no} 版 · ${esc(v.trigger_label)}</b><span>${esc((SHOW_JUDGMENTS && v.judgment_summary) || v.change_summary || '')}</span><em>看变化 →</em></button>` : ''}${tabsHtml(v)}<div class="panel" id="panel" role="tabpanel">${panelHtml(v)}</div>` : ''}
       ${isDesignReview() ? researchDisclaimer() : '<footer class="foot">结论来自公开记录和固定规则，AI 只负责读材料和说人话。这里不打安全分，也不给公司定性；"没查"不等于没问题，"查了没有"也只代表在那份数据里没有。</footer>'}
@@ -1937,6 +1939,7 @@ function openContract() {
 }
 
 function openSupplement(opt = {}) {
+  if (pendingSupplement(S.case?.id)) { void resumeSupplement(); return; }
   const kind = opt.kind || 'material';
   const photo = !!opt.photo;                 // 拍合同进来：只收照片，手机直接开相机
   const dlg = $('#supDlg');
@@ -1950,7 +1953,7 @@ function openSupplement(opt = {}) {
       <p class="small muted">材料仅用于你的私人案卷，不会自动发布为评价。仅此浏览器可访问，清除浏览器数据后不能自动恢复。</p>
       ${photo ? `<p class="sup-note">照片只证明你手上确实有这份纸。写了什么要看读出来的文字；签没签、对方认不认、照片有没有被改过，都不算验证过。所以这一版里，合同上的说法会记成「材料里写的」，和查询结果分开列。</p>` : ''}
       <div id="supMat"${kind === 'material' ? '' : ' hidden'}><div class="mat-tools">${camOn ? `<span class="btn sm cam file-btn">📷 拍照 / 选照片（可多张）<input type="file" id="supCam" accept="image/*" capture="environment" multiple></span>` : ''}<span class="btn sm ghost file-btn">上传图片 / PDF / Word<input type="file" id="supFile" accept=".txt,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp"></span><span class="muted small" id="supRead"></span></div></div>
-      <div id="supScen"${kind === 'need' ? '' : ' hidden'}><div class="small muted">场景（不选就从新需求里识别）</div><div class="chips" style="margin:4px 0 10px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="sup-scen" data-id="${esc(s.id)}" aria-pressed="false">${esc(s.label)}</button>`).join('')}</div></div>
+      <div id="supScen"${kind === 'need' ? '' : ' hidden'}><div class="small muted">场景（不选就从新需求里识别）</div><div class="chips" style="margin:4px 0 10px">${S.scenarios.map(s => `<button type="button" class="chip" data-act="sup-scen" data-id="${esc(s.id)}" aria-pressed="${s.id === opt.scenario}">${esc(s.label)}</button>`).join('')}</div></div>
       <input class="big-inp sm" name="title" id="supTitleIn" placeholder="${kind === 'reply' ? '例如：业务员的微信回复' : '材料名称，例如：认购协议'}" value="${esc(opt.title || '')}"${kind === 'need' ? ' hidden' : ''}>
       <textarea class="big-inp sm" name="text" rows="8" required placeholder="${kind === 'need' ? '例如：我收到这家公司的 offer，让我去做理财顾问' : '把文字贴在这里'}">${esc(opt.text || '')}</textarea>
       ${demo && demo.supplements.length ? `<div class="sup-demo"><span class="muted">演示案例准备好的补充：</span><div class="chips">${demo.supplements.map((s, i) => `<button type="button" class="chip" data-act="sup-fill" data-i="${i}">${esc(SUP_KIND[s.kind].label)}：${esc(s.title || s.text.slice(0, 18))}</button>`).join('')}</div></div>` : ''}
@@ -1958,7 +1961,7 @@ function openSupplement(opt = {}) {
     </div>
     <div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">取消</button><button type="submit" class="btn sm" id="supGo">生成新版报告</button></div>
   </form>`;
-  dlg.dataset.kind = kind; dlg.dataset.scen = '';
+  dlg.dataset.kind = kind; dlg.dataset.scen = opt.scenario || '';
   if (!dlg.open) dlg.showModal();
   $('#supForm textarea').focus();
   const readIn = files => readMaterials([...files], { note: $('#supRead'), form: $('#supForm'),
@@ -2001,40 +2004,103 @@ function setSupKind(kind) {
   $('#supScen').hidden = kind !== 'need';
   $('#supTitleIn').hidden = kind === 'need';
 }
+// Pending data is scoped by case; no material or browser credentials go in the URL.
+let supplementClient = null;
+function supplementTasks() {
+  if (!supplementClient) supplementClient = SupplementRuns.create({
+    api: (path, opts) => api(path, opts), randomUUID: () => crypto.randomUUID(),
+    storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value), removeItem: key => localStorage.removeItem(key) },
+  });
+  return supplementClient;
+}
+function pendingSupplement(id) {
+  return id && typeof SupplementRuns !== 'undefined' ? supplementTasks().pending(id) : null;
+}
+function supplementNoticeHtml() {
+  return pendingSupplement(S.case?.id) ? '<div class="old-banner" role="status">有一次补充分析待查看。<button type="button" class="linkish" data-act="sup-resume">查看任务进度 / 结果</button></div>' : '';
+}
+function refreshSupplementNotice() {
+  const notice = $('#supplementNotice');
+  if (notice) notice.innerHTML = supplementNoticeHtml();
+}
+function stopSupplementWatch() {
+  S.supplementRequest?.abort();
+  S.supplementRequest = null;
+  S.supplementBusy = false;
+}
 async function submitSupplement(e) {
   e.preventDefault();
-  if (S.supplementBusy) { toast('已有补充信息正在处理，请稍候或到「案卷」查看'); return; }
+  if (S.supplementBusy) { toast('已有补充信息正在处理，请稍候或查看任务进度'); return; }
+  if (pendingSupplement(S.case?.id)) return resumeSupplement();
   const dlg = $('#supDlg'), f = e.target;
   const kind = dlg.dataset.kind, text = f.text.value.trim();
   if (!text) { $('#supErr').textContent = '请填写内容'; return; }
   const body = { kind, text, title: kind === 'need' ? null : (f.title.value.trim() || null), scenario: kind === 'need' ? (dlg.dataset.scen || null) : null };
-  const go = $('#supGo');
-  const caseId = S.case.id, route = location.hash;
-  const host = document.createElement('div'), scrollBody = f.querySelector('.dlg-body');
-  scrollBody.append(host);
-  const waiting = ResearchProgress.mount(host, S.case.case.company_name);
-  scrollBody.scrollTop = scrollBody.scrollHeight;
-  S.supplementBusy = true;
-  go.disabled = true; go.textContent = '正在重新判断…';
+  try { supplementTasks().prepare(S.case.id, body); }
+  catch (err) { $('#supErr').textContent = err.message; return; }
+  return resumeSupplement();
+}
+async function resumeSupplement() {
+  const record = pendingSupplement(S.case?.id);
+  if (!record) return;
+  const dlg = $('#supDlg');
+  if (S.supplementBusy && S.supplementWatchCase === record.caseId) {
+    if (!dlg.open) dlg.showModal();
+    return;
+  }
+  stopSupplementWatch();
+  const request = S.supplementRequest = new AbortController();
+  S.supplementBusy = true; S.supplementWatchCase = record.caseId;
+  S.supplementTerminal = null;
+  const caseId = record.caseId, route = location.hash;
+  dlg.innerHTML = `<div class="dlg-in">
+    <div class="dlg-head"><div><div class="kicker">二次分析</div><h3 id="supTitle">补充分析进度</h3></div><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div>
+    <div class="dlg-body"><p>刷新页面或暂时离开后，回到本案卷会接着查看这次任务。</p>
+      <p class="small muted">${esc(SUP_KIND[record.body.kind]?.label || '补充信息')} · ${esc(record.body.title || record.body.text.slice(0, 60))}</p>
+      <div id="supProgress"></div><p id="supErr" class="err" role="status" aria-live="polite"></p></div>
+    <div class="dlg-foot"><button type="button" class="btn ghost sm" data-act="close-dlg">暂时收起</button><button type="button" id="supResume" class="btn sm" data-act="sup-resume" hidden>恢复进度 / 结果</button><button type="button" id="supEdit" class="btn sm" data-act="sup-edit" hidden>检查材料并重新提交</button></div>
+  </div>`;
+  if (!dlg.open) dlg.showModal();
+  refreshSupplementNotice();
+  const waiting = ResearchProgress.mount($('#supProgress'), S.case.case.company_name);
+  const stillHere = () => S.supplementRequest === request && !request.signal.aborted && S.case?.id === caseId && location.hash === route;
   try {
-    const c = await ResearchProgress.readCaseStream(`/api/cases/${encodeURIComponent(caseId)}/supplements/stream`, body, { onEvent: waiting.onEvent });
-    if (!S.case || S.case.id !== caseId || location.hash !== route || !f.isConnected || !dlg.open) {
-      toast('新版报告已生成，可以在「案卷」查看'); return;
-    }
+    const result = await supplementTasks().follow(record, { signal: request.signal, onEvent: event => { if (stillHere()) waiting.onEvent(event); } });
+    if (!stillHere()) return;
+    if (!dlg.open) { toast('新版报告已生成，点「查看任务进度 / 结果」打开'); return; }
+    supplementTasks().clear(record);
+    const c = result.case, version = result.version;
     S.case = c; S.opCache = {}; S.tab = 'changes';
     S.selected.clear(); S.reviews = null;
     dlg.close();
-    const target = `#/case/${c.id}/v/${c.current}`;
-    if (location.hash === target) { S.viewNo = c.current; renderCase(); } else location.hash = target;
-    setTimeout(() => { const t = $('.chg-banner'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
-    toast(`已生成第 ${c.current} 版`);
+    const target = `#/case/${c.id}/v/${version}`;
+    if (location.hash === target) { S.viewNo = version; renderCase(); } else location.hash = target;
+    toast(`已生成第 ${version} 版`);
   } catch (err) {
-    if (f.isConnected && dlg.open && S.case?.id === caseId) $('#supErr').textContent = '没生成出来：' + err.message;
-    else toast('补充信息的连接已结束，请到「案卷」确认结果', true);
+    if (!stillHere()) return;
+    $('#supProgress .research-current').textContent = err.terminal ? '任务已停止，请确认结果后再提交' : '连接中断，进度待确认';
+    $('#supProgress .kicker').textContent = '补充分析 · 等待恢复';
+    $('#supProgress .research-wait').setAttribute('aria-busy', 'false');
+    $('#supErr').textContent = err.terminal ? err.message : '暂时无法确认结果：' + err.message + ' 恢复时会继续查看同一次任务。';
+    $('#supResume').hidden = false;
+    $('#supEdit').hidden = !err.terminal;
+    if (err.terminal) S.supplementTerminal = record;
   } finally {
-    waiting.stop(); host.remove(); S.supplementBusy = false;
-    go.disabled = false; go.textContent = '生成新版报告';
+    waiting.stop();
+    if (S.supplementRequest === request) {
+      S.supplementRequest = null; S.supplementBusy = false;
+      if (S.case?.id === caseId) refreshSupplementNotice();
+    }
   }
+}
+function editFailedSupplement() {
+  const record = S.supplementTerminal;
+  if (!record || record.caseId !== S.case?.id || S.supplementBusy) return;
+  try { supplementTasks().clear(record); }
+  catch (err) { $('#supErr').textContent = err.message; return; }
+  S.supplementTerminal = null;
+  openSupplement(record.body);
+  refreshSupplementNotice();
 }
 
 // ---------- 打印 ----------
@@ -2117,6 +2183,8 @@ document.addEventListener('click', e => {
     case 'open-assist': $('#assist').classList.add('open'); setTimeout(() => { const t = $('#asForm textarea'); if (t) t.focus(); }, 50); break;
     case 'close-assist': $('#assist').classList.remove('open'); break;
     case 'contract': openContract(); break;
+    case 'sup-resume': void resumeSupplement(); break;
+    case 'sup-edit': editFailedSupplement(); break;
     case 'supplement': openSupplement({ kind: d.kind, text: d.text, title: d.title }); break;
     case 'sup-kind': setSupKind(d.kind); break;
     case 'pick-company': { const f = $('#caseForm'); S.form.resolved = d.name; f.company.value = d.name; $('#nameCands').hidden = true; f.requestSubmit(); } break;
@@ -2169,6 +2237,7 @@ let startupReady = Promise.resolve();
 const currentRoute = request => !request || (request === routeRequest && !request.signal.aborted);
 
 async function route() {
+  stopSupplementWatch();
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();
   researchCleanup();
