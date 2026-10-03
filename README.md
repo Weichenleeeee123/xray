@@ -16,7 +16,11 @@
 
 ## 报告页面
 
-报告采用黄铜蓝柜配色、左侧章节导航和紧凑布局。小企助手由顶栏按钮展开：桌面端与报告并排，窄屏下独占一行。报告区块和助手边界加强，补充资料、来源查看与问答仍使用原有功能；未包含视觉样例的对比工具和只读限制。品牌图标与小企动画沿用当前版本。
+报告先呈现本次需求、需要核实的事项、查到的记录、待确认项与下一步问题，再按章节展开详细依据。重复记录可展开，来源和日期保留；保存的历史版本可从标题旁切换。小企助手由顶栏按钮展开，回答引用绑定回答时的版本；有表述未通过依据校验时会提示已省略。预制示例明确说明本次未重新联网查询。
+
+手机首页保留研究室插画，在下方提供可触控的查询表单。首屏先加载预览图，空闲时只升级当前可见素材，查询时让出带宽。性能测量条件与剩余网络延迟见 [性能与部署记录](docs/2026-10-03-performance-and-deployment.md)。
+
+产品路演使用 [五分钟 PPT v04](output/pitch-product/企er-产品路演-5分钟-v04.pptx)、[逐页讲稿](output/pitch-product/逐页讲稿-5分钟.md) 与 [上台操作卡](output/pitch-product/上台操作卡.md)。主线讲产品解决什么问题、如何工作和差异点，案例只用约 35 秒证明功能。原案例演示材料继续保留。
 
 ## 快速开始
 
@@ -57,7 +61,7 @@ npm run dev -- --port 3000
 刷新恢复时会读回原任务的完整输入。网络中断可点“继续查看本次查询”，它只查询已有任务、不重复提交；确认“重新查询”才创建新任务。暂时无法读回报告时，报告册的重试只重新核对保存，不重跑研究。历史任务若没有保存原输入，会要求回首页确认需求，不会擅自换成默认需求。新增运行输入保存在已忽略的 `backend/data/runs/*.input.json`，不放到地址栏。
 
 - 不配 Key 也能用：规则照常出结论，需求识别退回关键词，小企退回模板回答，工商登记显示"没查"。
-- 测试：先构建首页，再在 `backend` 里跑 `.venv\Scripts\python -m pytest`（不连网、不扣费，数量以运行结果为准）；仓库根目录跑 `node --test web/tests/*.test.cjs`（27 个）。研究室另有 `node --experimental-strip-types --test research-room/tests/*.test.mjs`（26 个；Node 22.18 以上可省掉这个参数）。
+- 测试：先构建首页，再在 `backend` 里跑 `.venv\Scripts\python -m pytest`（不连网、不扣费）；仓库根目录跑 `node --test web/tests/*.test.cjs`。研究室另有 `node --experimental-strip-types --test research-room/tests/*.test.mjs`。数量以运行结果为准；需要保留全部测试文件时，为 pytest 指定从未使用过的 `--basetemp`，并设 `-o tmp_path_retention_count=999 -o tmp_path_retention_policy=all`。
 - 断网演示：`.env` 里设 `XRAY_LLM_MODE=replay`，只用录好的模型响应，界面标"离线回放"。
 
 配置项、接口和数据来源的完整说明见 [backend/README.md](backend/README.md)。

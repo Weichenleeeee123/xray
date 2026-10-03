@@ -1,6 +1,6 @@
 # qier.asia 部署与维护
 
-当前验收版本：`20261002T230700Z-81cddc8`，发布于 2026-10-03 07:07 左右（Asia/Taipei），已包含浏览器私有案卷、加载优化和新版报告摘要。详细记录见 [性能与部署](2026-10-03-performance-and-deployment.md)。
+当前验收版本：`20261003T023800Z-253bdb9`，发布于 2026-10-03 10:38 左右（Asia/Taipei），包含加载优化、报告摘要与版本切换、预制来源说明和大案卷问答修复。详细记录见 [性能与部署](2026-10-03-performance-and-deployment.md)。
 
 > 当前站点无需登录，案卷、材料、聊天和生成结果按浏览器身份隔离。无法确认归属的历史案卷隐藏但保留，只有主动提交的评价公开。`XRAY_PRIVATE_DIR` 已持久化；公网验证了 HttpOnly、Secure、SameSite=Lax 和 API 的 private/no-store。维护时仍需遵循 [小企与私有案卷交接](2026-10-03-assistant-privacy-handoff.md)。
 
@@ -8,7 +8,8 @@
 
 ## 访问与架构
 
-- 网站：https://qier.asia ，另支持 https://www.qier.asia 。两个域名的 A 记录均为 `47.82.79.13`。
+- 网站：https://qier.asia ，另支持 https://www.qier.asia 。Cloudflare DNS 中两个 A 记录均指向 `47.82.79.13`，已开启代理；公网解析会返回 Cloudflare 边缘地址。
+- 2026-10-03 10:49 已验证 Cloudflare 接管、Universal SSL、Full (strict)，以及两个域名静态缓存命中和 API 绕过缓存。详见 [本轮性能与发布记录](2026-10-03-performance-and-deployment.md)。
 - 阿里云轻量应用服务器，中国香港，Ubuntu 24.04，2 核、1GB 内存、30GB 系统盘；增加了 1GB swap。
 - 首页在开发机执行 `research-room` 的 `npm run build:home` 后上传。服务器运行单个 FastAPI/Uvicorn 进程，同时提供首页、报告、演示页和 API。
 - Caddy 在 80/443 端口处理 HTTP→HTTPS、自动申请/续期证书和反向代理。Uvicorn 仅监听 `127.0.0.1:8000`。
@@ -22,7 +23,7 @@
 | 路径 | 用途 |
 |---|---|
 | `/opt/qier/releases/20261002T152239Z` | 本次部署的代码、页面和公开资料 |
-| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261002T230700Z-81cddc8` |
+| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261003T023800Z-253bdb9` |
 | `/opt/qier/venv` | 独立 Python 环境 |
 | `/opt/qier/current/requirements-deployed.txt` | 服务器实际安装的完整依赖版本 |
 | `/etc/qier/backend.env` | 私有模型/企查查配置，由 systemd 加载，不在网站静态目录中 |
