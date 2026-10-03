@@ -1,6 +1,6 @@
 # qier.asia 部署与维护
 
-当前验收版本：`20261003T044254Z-4dd8fa6`，发布于 2026-10-03 12:44 左右（Asia/Taipei），在五维雷达版本上合入 [PR #12](https://github.com/Weichenleeeee123/xray/pull/12)（小企开门与查询收尾动画、报告目录光效）。详见文末；更早的发布见 [性能与部署](2026-10-03-performance-and-deployment.md)。
+当前验收版本：`20261003T052451Z-7ac82b1`，发布于 2026-10-03 13:26 左右（Asia/Taipei），在 PR #12 版本上加入资料库（名词收藏复习）。详见文末；更早的发布见 [性能与部署](2026-10-03-performance-and-deployment.md)。
 
 > 当前站点无需登录，案卷、材料、聊天和生成结果按浏览器身份隔离。无法确认归属的历史案卷隐藏但保留，只有主动提交的评价公开。`XRAY_PRIVATE_DIR` 已持久化；公网验证了 HttpOnly、Secure、SameSite=Lax 和 API 的 private/no-store。维护时仍需遵循 [小企与私有案卷交接](2026-10-03-assistant-privacy-handoff.md)。
 
@@ -23,7 +23,7 @@
 | 路径 | 用途 |
 |---|---|
 | `/opt/qier/releases/20261002T152239Z` | 本次部署的代码、页面和公开资料 |
-| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261003T044254Z-4dd8fa6` |
+| `/opt/qier/current` | 当前版本链接，指向 `/opt/qier/releases/20261003T052451Z-7ac82b1` |
 | `/opt/qier/venv` | 独立 Python 环境 |
 | `/opt/qier/current/requirements-deployed.txt` | 服务器实际安装的完整依赖版本 |
 | `/etc/qier/backend.env` | 私有模型/企查查配置，由 systemd 加载，不在网站静态目录中 |
@@ -138,3 +138,12 @@ systemctl reload caddy
 - 运行数据与私有配置先备份为 `/var/backups/qier/qier-before-20261003T044254Z-4dd8fa6.tar.gz`，旧链接保留为 `/opt/qier/current.before-4dd8fa6`，配置备份为 `/etc/qier/backend.env.before-4dd8fa6-*`。
 - 验证：后端 537、报告页 91、研究室 98 项测试与类型检查通过；候选版本冒烟时 A、B、C 示例均由预制包回放、无“没查成”。切换后公网健康接口报告新版本，首页哈希一致，新样式与脚本 `cf-cache-status: MISS` 且含新代码；浏览器打开公网报告为五维雷达，无失败请求。
 - 同时清理分支：本地只保留 `main`，远端只有 `main`（PR #12 的分支合并后已删除）。删除工作区前，工作区独有的报告、运行记录、缓存与路演文件已复制到开发机被忽略的 `.tmp/worktree-archive/`；Codex 未提交的代码保存为本地标签 `archive/codex-office-live-research-wip`。Codex 工作区里的 `node_modules` 等是指向主项目和 `D:/codex-artifacts` 的目录联接，删除前已先单独移除联接，目标未受影响。
+
+## 2026-10-03 13:26 资料库发布
+
+- 发布提交 `7ac82b1`，服务器版本 `/opt/qier/releases/20261003T052451Z-7ac82b1`，`XRAY_RELEASE_ID` 同名。以上一版本为底，只覆盖 `web/` 和 `research-room/app/page.tsx`；首页按本次提交重新构建（`index-5NGHxHZL.js`）。后端代码与依赖未变。
+- 新功能：名词弹窗可以「收藏复习」，新分区「资料库」（`#/library`）。收藏只存在浏览器的 localStorage 里（`xray.library`），不经过服务器，不跨设备。设计见 [资料库设计](2026-10-03-library-design.md)。
+- 同时修复：新配色下名词弹窗里"对你意味着什么"那段字几乎看不见；窄屏（420px 以下）的四个分区和状态徽标挤在一起。
+- 版本号：`app.js`、`style.css`、`case-palette.css`、`report-workspace.css` 改为 `?v=library-20261003`。
+- 运行数据与私有配置先备份为 `/var/backups/qier/qier-before-20261003T052451Z-7ac82b1.tar.gz`；旧链接保留为 `/opt/qier/current.before-7ac82b1`，配置备份为 `/etc/qier/backend.env.before-7ac82b1-*`。
+- 验证：报告页 100 项、研究室 98 项测试通过；候选版本冒烟时，A、B、C 三个示例都由预制包回放，没有"没查成"。切换后公网健康接口报告新版本，首页哈希一致；公网新脚本 `cf-cache-status: MISS`，内容是新代码。在公网浏览器里实际操作了一遍：「我的」页面词表收藏 → 资料库显示 → 移出 → 空状态，首页菜单有「资料库」。测完已清掉测试收藏，没有在生产环境新建案卷。
