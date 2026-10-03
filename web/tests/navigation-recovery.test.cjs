@@ -203,13 +203,13 @@ test('case row escapes every dynamic field and does not clip a long company name
 });
 
 test('leaving cases clears its mode before rendering the next page',async()=>{
-  for(const destination of ['me','case/second']){
+  for(const destination of ['me','library','case/second']){
     const h=harness();h.run(`location.hash='#/cases'`);const list=h.run('route()');
     h.run(`pending['/api/cases'].resolve([])`);await list;
     h.run(`location.hash='#/${destination}'`);const next=h.run('route()');
     assert.equal(h.run(`document.body.classList.contains('cases-mode')`),false);
     if(destination==='me') h.run(`pending['/api/cases'].resolve([])`);
-    else {h.ctx.caseResult=result('second');h.run(`pending['/api/cases/second'].resolve(caseResult)`);}
+    else if(destination!=='library') {h.ctx.caseResult=result('second');h.run(`pending['/api/cases/second'].resolve(caseResult)`);}
     await next;
   }
 });
