@@ -492,6 +492,9 @@ class ReportOverview(BaseModel):
     """企业概况、计数与轮廓共用的公司记录范围；材料和用户评价另行展示。"""
     schema_version: Literal[1] = 1
     status: Literal["ok", "warn", "bad", "none"]
+    trust_level: Literal["high", "pending", "low", "unknown"] = "unknown"
+    trust_label: str = "资料较少"
+    trust_note: str = "需谨慎判断"
     headline: str
     detail: str
     counts: OverviewCounts

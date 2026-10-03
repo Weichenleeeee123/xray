@@ -305,5 +305,14 @@ body.research-mode.report-workspace.dossier-live .inspection-boundary { font-siz
   body.research-mode.report-workspace.dossier-live .decision-dossier .decision-eyebrow { font-size:12px; }
 }
 
-body.research-mode.report-workspace.dossier-live #verdict-title.has-normal-basics .verdict-phrase:first-child { color:#41715f; }
-body.research-mode.report-workspace.dossier-live #verdict-title.has-normal-basics .verdict-phrase + .verdict-phrase { display:block; font-size:.78em; margin-top:3px; }
+/* Degree and qualifier are separate server fields; the browser never infers a rating from prose. */
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-high { color:#41715f; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-pending { color:#946d36; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-low { color:#a05240; }
+body.research-mode.report-workspace.dossier-live .verdict-answer.trust-unknown { color:#857653; }
+body.research-mode.report-workspace.dossier-live .trust-label { display:block; font-size:clamp(28px,3.3cqw,38px); font-weight:700; line-height:1.35; letter-spacing:.03em; }
+body.research-mode.report-workspace.dossier-live .trust-note { display:block; font:500 clamp(14px,1.6cqw,18px)/1.7 var(--sans); margin-top:6px; letter-spacing:0; color:#7b7867; }
+body.research-mode.report-workspace.dossier-live .trust-high.s-warn .trust-note { color:#936d35; }
+body.research-mode.report-workspace.dossier-live .trust-low .trust-note { color:#a05240; }
+body.research-mode.report-workspace.dossier-live .decision-dossier .verdict-answer:has(.trust-label) { align-items:flex-start; margin:16px 0 10px; }
+body.research-mode.report-workspace.dossier-live .verdict-answer:has(.trust-label) .verdict-mark { margin-top:5px; }

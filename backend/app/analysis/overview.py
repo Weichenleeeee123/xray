@@ -22,6 +22,12 @@ MATERIAL_ITEMS = {
 # These records are emitted only when a specific finding exists, not as a
 # routine check. Absence of the optional finding is not a failed source query.
 OPTIONAL_KEY_ITEMS = {"risk.amac_tips"}
+# Scenario first_items select the initial question, not the complete evidence
+# needed to assess trust. These routine registry checks apply across scenarios.
+TRUST_CORE_KEYS = {
+    "credit.status": "登记状态", "credit.penalties": "行政处罚", "credit.abnormal": "经营异常名录",
+    "credit.serious_illegal": "严重违法失信名单", "credit.dishonest": "失信被执行人",
+}
 CATEGORY = {Status.ok: "normal", Status.warn: "attention", Status.bad: "abnormal",
             Status.miss: "unknown", Status.none: "unknown"}
 # A duplicate can never erase a warning, definite anomaly or uncovered source.
@@ -68,14 +74,37 @@ def build_overview(version: Version) -> ReportOverview:
     key_items = [by_id[key] for key in expected_keys if key in by_id]
     key_complete = bool(key_items) and not missing_keys and all(i.category == "normal" for i in key_items)
     if counts.abnormal:
-        status, headline = "bad", "发现异常记录，建议重点核实"
+        status = "bad"
     elif counts.attention:
         status = "warn"
-        headline = "基础核查正常，另有事项需了解" if key_complete else "有事项需了解，建议进一步核实"
     elif counts.normal and key_complete:
-        status, headline = "ok", "已核验信息整体正常"
+        status = "ok"
     else:
-        status, headline = "none", "资料尚不完整，建议进一步核实"
+        status = "none"
+
+    # Trust requires the common registry checks AND the user's scenario checks.
+    # A quiet/reference/not-applicable marker on a common core item is not a
+    # completed check; retain the original grouping but leave trust unresolved.
+    trust_keys = set(TRUST_CORE_KEYS) | expected_keys
+    trust_items = [by_id[key] for key in trust_keys if key in by_id]
+    trust_missing = trust_keys - by_id.keys()
+    trust_unknown = any(i.category == "unknown" for i in trust_items)
+    trust_attention = any(i.category == "attention" for i in trust_items)
+    core_gaps = [key for key in TRUST_CORE_KEYS if key not in by_id or by_id[key].category == "unknown"]
+    # Missing core evidence means uncertainty, never a low trust result;
+    # confirmed anomalies retain priority over positive records and gaps.
+    if status == "bad":
+        trust_level, trust_label, trust_note = "low", "信任度较低", "需要注意风险"
+    elif trust_missing or trust_unknown:
+        trust_level, trust_label, trust_note = "unknown", "资料较少", "需谨慎判断"
+    elif trust_attention:
+        trust_level, trust_label, trust_note = "pending", "信任度待确认", "建议先核实关键事项"
+    elif counts.attention:
+        trust_level, trust_label = "high", "信任度较高"
+        trust_note = "部分事项仍需核实" if counts.attention > 1 else "个别事项仍需核实"
+    else:
+        trust_level, trust_label, trust_note = "high", "信任度较高", "已查信息未见明显异常"
+    headline = f"{trust_label}，{trust_note}"
     detail = (f"本版适用公司核查 {len(items)} 项：{counts.normal} 项已核验正常，"
               f"{counts.attention} 项需了解，{counts.abnormal} 项异常记录，{counts.unknown} 项待核实。")
     if missing_keys:
@@ -86,7 +115,10 @@ def build_overview(version: Version) -> ReportOverview:
         detail += "关键公司资料仍有缺口。"
     elif counts.unknown:
         detail += "正常仅指已核验项目，其余缺口仍需补查。"
-    return ReportOverview(status=status, headline=headline, detail=detail, counts=counts, items=items)
+    if core_gaps:
+        detail += f"信任度判断所需的核心核查尚有 {len(core_gaps)} 项未完成：{'、'.join(TRUST_CORE_KEYS[key] for key in core_gaps)}。"
+    return ReportOverview(status=status, trust_level=trust_level, trust_label=trust_label, trust_note=trust_note,
+                          headline=headline, detail=detail, counts=counts, items=items)
 
 
 def refresh_overviews(case: Case) -> Case:

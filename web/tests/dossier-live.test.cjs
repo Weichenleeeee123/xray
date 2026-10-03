@@ -31,7 +31,7 @@ test('live questions keep arbitrary counts, full wording, escaping and original 
 test('overview uses the server snapshot for the verdict, all four counts and evidence links',()=>{
   const h=harness();
   h.run(`v.glance.first=['credit.status'];
-    v.overview={schema_version:1,status:'warn',headline:'基础核查正常，另有事项需了解',detail:'2 项正常；1 项一般关注；1 项待核实。',
+    v.overview={schema_version:1,status:'warn',trust_level:'high',trust_label:'信任度较高',trust_note:'个别事项仍需核实',headline:'信任度较高，个别事项仍需核实',detail:'2 项正常；1 项一般关注；1 项待核实。',
       counts:{normal:2,attention:1,abnormal:0,unknown:1},items:[
       {id:'credit.status',label:'登记状态',text:'存续',status:'ok',category:'normal',axis:'basics'},
       {id:'credit.penalties',label:'处罚查询',text:'未见记录',status:'ok',category:'normal',axis:'stability'},
@@ -40,7 +40,7 @@ test('overview uses the server snapshot for the verdict, all four counts and evi
   const groups=JSON.parse(h.run('JSON.stringify(Object.fromEntries(Object.entries(dossierGroups(v)).map(([k,a])=>[k,a.length])))'));
   assert.deepEqual(groups,{normal:2,attention:1,abnormal:0,unknown:1});
   const html=h.run('dossierOverview(v)');
-  assert.match(html,/基础核查正常，/);assert.match(html,/另有事项需了解/);
+  assert.match(html,/class="trust-label">信任度较高/);assert.match(html,/class="trust-note">个别事项仍需核实/);assert.match(html,/data-trust-level="high"/);
   assert.match(html,/4 项公司记录/);assert.doesNotMatch(html,/有异常，需注意风险|资料较少，需警惕/);
   assert.match(html,/data-group="attention"/);assert.match(html,/data-id="reputation.news_negative"/);
   assert.match(html,/时间待核实 &lt;报道&gt;/);
@@ -137,7 +137,7 @@ test('browser never substitutes an optimistic or alarming verdict for the backen
   const h=harness();
   h.run(`v.signals=[{key:'credit',items:[{key:'status',status:'ok'}]}]`);
   assert.equal(h.run('dossierTrustAnswer(v)[1]'),'概况待更新，请刷新报告');
-  for(const [status,headline] of [['ok','已核验信息整体正常'],['none','资料尚不完整，建议进一步核实'],['bad','发现异常记录，建议重点核实']]) {
+  for(const [status,headline] of [['ok','信任度较高，已查信息未见明显异常'],['none','资料较少，需谨慎判断'],['bad','信任度较低，需要注意风险']]) {
     h.ctx.snapshot={schema_version:1,status,headline,detail:'说明 <范围>',items:[],counts:{normal:0,attention:0,abnormal:0,unknown:0}};
     h.run('v.overview=snapshot');
     assert.equal(h.run('dossierTrustAnswer(v)[1]'),headline);
@@ -151,7 +151,7 @@ test('browser never substitutes an optimistic or alarming verdict for the backen
 test('materials and user opinions cannot overwrite a company overview or its radar',()=>{
   const h=harness();h.run(`v.signals=[{key:'risk',items:[{key:'payee',status:'bad',source:'material'}]},
     {key:'reputation',items:[{key:'user_reviews',status:'warn'}]}];
-    v.overview={schema_version:1,status:'ok',headline:'已核验信息整体正常',detail:'1 项正常',counts:{normal:1,attention:0,abnormal:0,unknown:0},
+    v.overview={schema_version:1,status:'ok',trust_level:'high',trust_label:'信任度较高',trust_note:'已查信息未见明显异常',headline:'信任度较高，已查信息未见明显异常',detail:'1 项正常',counts:{normal:1,attention:0,abnormal:0,unknown:0},
       items:[{id:'credit.status',label:'登记',text:'存续',status:'ok',category:'normal',axis:'basics'}]};`);
   assert.equal(h.run('dossierTrustAnswer(v)[0]'),'ok');
   assert.equal(h.run("researchRadarAxes(v).find(a=>a.id==='qualify').checked"),0);
@@ -175,4 +175,38 @@ test('an inapplicable licence is labelled explicitly and does not increase clear
     {key:'amac',status:'ok',gap:'not_applicable'}]}]`);
   assert.match(h.run('dossierSignal(v.signals[0],0,v)'),/1 项已核验/);
   assert.doesNotMatch(h.run('dossierSignal(v.signals[0],0,v)'),/2 项已核验/);
+});
+
+test('degree, qualifier and tone come from structured backend fields, including low trust and insufficient data',()=>{
+  const h=harness();
+  for(const [level,label,note,status] of [
+    ['high','信任度较高','个别事项仍需核实','warn'],
+    ['pending','信任度待确认','建议先核实关键事项','warn'],
+    ['low','信任度较低','需要注意风险','bad'],
+    ['unknown','资料较少','需谨慎判断','warn']]) {
+    h.ctx.result={schema_version:1,status,trust_level:level,trust_label:label,trust_note:note,
+      headline:label+'，'+note,detail:'核查范围',items:[],counts:{normal:0,attention:0,abnormal:0,unknown:0}};
+    h.run('v.overview=result');
+    const html=h.run('dossierOverview(v)');
+    assert.ok(html.includes('data-trust-level="'+level+'"'));
+    assert.ok(html.includes('<span class="trust-label">'+label+'</span>'));
+    assert.ok(html.includes('<span class="trust-note">'+note+'</span>'));
+    assert.doesNotMatch(html,/has-normal-basics|基础核查正常|信任度\d+|可信度较高/);
+  }
+  h.run(`v.overview.trust_label='资料 <标记>';v.overview.trust_note='待核实 <说明>'`);
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/资料 &lt;标记&gt;/);assert.match(html,/待核实 &lt;说明&gt;/);
+});
+
+test('insufficient core evidence opens the uncovered records even when another record needs attention',()=>{
+  const h=harness();
+  h.run(`v.overview={schema_version:1,status:'warn',trust_level:'unknown',trust_label:'资料较少',trust_note:'需谨慎判断',
+    headline:'资料较少，需谨慎判断',detail:'核心资料仍有缺口',counts:{normal:1,attention:1,abnormal:0,unknown:1},items:[
+    {id:'credit.status',label:'登记状态',text:'存续',status:'ok',category:'normal',axis:'basics'},
+    {id:'credit.dishonest',label:'失信核查',text:'未覆盖',status:'none',category:'unknown',axis:'stability'},
+    {id:'reputation.news',label:'报道',text:'需了解',status:'warn',category:'attention',axis:'news'}]}`);
+  const html=h.run('dossierOverview(v)');
+  assert.match(html,/data-inspection="unknown"/);
+  assert.match(html,/data-group="unknown" aria-controls="dossier-inspection">查看判断依据/);
+  assert.match(html,/data-id="credit.dishonest"/);
 });
