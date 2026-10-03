@@ -6,7 +6,11 @@ const vm=require('node:vm');
 
 function harness(){
   const nodes=new Map(), listeners={}, timers=[];
-  const node=()=>({innerHTML:'',textContent:'',hidden:true,isConnected:true,open:true,dataset:{},close(){this.open=false;},classList:{add(){},remove(){},contains(){return false;}}});
+  const node=()=>{
+    const classes=new Set();
+    return {innerHTML:'',textContent:'',hidden:true,isConnected:true,open:true,dataset:{},attributes:{},setAttribute(k,v){this.attributes[k]=v;},getAttribute(k){return this.attributes[k];},close(){this.open=false;},
+      classList:{add(...names){names.forEach(n=>classes.add(n));},remove(...names){names.forEach(n=>classes.delete(n));},contains(n){return classes.has(n);}}};
+  };
   const ctx=vm.createContext({FormData,AbortController,URLSearchParams,console,
     setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout(){},
     location:{hash:'#/case/first',search:'',replace(){}},
@@ -140,6 +144,74 @@ test('late list response cannot update a different page or replace its case cach
   h.run(`$('#caseList').innerHTML='left behind'`);
   h.run(`pending['/api/cases'].resolve([{id:'stale',company_name:'stale'}])`);await list;
   assert.equal(h.nodes.get('#caseList').innerHTML,'left behind');assert.equal(h.run('S.cases.length'),0);
+});
+
+test('cases use the approved workspace without the browser visibility badge or sample companies',async()=>{
+  const h=harness();h.run(`location.hash='#/cases';S.selected.add('old-report-ref')`);
+  const work=h.run('route()');
+  const loading=h.nodes.get('#view').innerHTML;
+  assert.equal(h.run(`document.body.classList.contains('cases-mode')`),true);
+  assert.equal(h.run(`document.body.classList.contains('research-mode')`),true);
+  assert.match(loading,/archive-heading/);assert.match(loading,/assist open/);
+  assert.match(loading,/读取案卷/);assert.match(loading,/aria-busy="true"/);
+  assert.match(loading,/尚未选择案卷/);
+  assert.doesNotMatch(loading,/仅此浏览器可见|跨设备暂不互通|示例数据|云杉|青禾|星桥|old-report-ref|asForm/);
+  h.run(`pending['/api/cases'].resolve([{id:'saved-case',company_name:'真实返回的企业',versions:3,need:'核对合同',scenario_label:'签约',created_at:'2026-10-03T08:42:00'}])`);
+  await work;
+  const rows=h.nodes.get('#caseList').innerHTML;
+  assert.match(rows,/href="#\/case\/saved-case"/);assert.match(rows,/真实返回的企业/);
+  assert.match(rows,/3 个版本/);assert.match(rows,/核对合同/);assert.match(rows,/08:42.*新建/);
+  assert.equal(h.nodes.get('#caseCount').textContent,'01');
+  assert.equal(h.nodes.get('#caseList').getAttribute('aria-busy'),'false');
+});
+
+test('empty cases show a real homepage link and zero only after a successful read',async()=>{
+  const h=harness();h.run(`location.hash='#/cases'`);const work=h.run('route()');
+  assert.match(h.nodes.get('#view').innerHTML,/id="caseCount"[^>]*>—/);
+  h.run(`pending['/api/cases'].resolve([])`);await work;
+  assert.equal(h.nodes.get('#caseCount').textContent,'00');
+  assert.match(h.nodes.get('#caseList').innerHTML,/还没有案卷/);
+  assert.match(h.nodes.get('#caseList').innerHTML,/href="\/"/);
+});
+
+test('failed or malformed cases retain previous data and offer retry instead of a fake empty list',async()=>{
+  for(const response of ['null','{}','[]']){
+    const h=harness();h.run(`location.hash='#/cases';S.cases=[{id:'kept'}]`);const work=h.run('route()');
+    h.run(response==='[]'?`pending['/api/cases'].reject(new Error('<network error>'))`:`pending['/api/cases'].resolve(${response})`);
+    await work;
+    const html=h.nodes.get('#caseList').innerHTML;
+    assert.match(html,/读不到案卷列表/);assert.match(html,/已保存的案卷不会因此清空/);
+    assert.match(html,/data-act="retry-read"/);assert.doesNotMatch(html,/还没有案卷|<network error>/);
+    assert.equal(h.run('S.cases[0].id'),'kept');
+    assert.equal(h.nodes.get('#caseList').getAttribute('aria-busy'),'false');
+    h.run('globalThis.retryRoute=route;route=()=>globalThis.retryWork=retryRoute()');
+    h.listeners['document:click']({target:{closest:()=>({dataset:{act:'retry-read'}})}});
+    h.run(`pending['/api/cases'].resolve([])`);await h.ctx.retryWork;
+    assert.equal(h.nodes.get('#caseCount').textContent,'00');
+    assert.doesNotMatch(h.nodes.get('#caseList').innerHTML,/读不到案卷列表/);
+  }
+});
+
+test('case row escapes every dynamic field and does not clip a long company name or need',()=>{
+  const h=harness();
+  h.ctx.input={id:'id\"<unsafe>',company_name:'<img src=x onerror=alert(1)>',need:'<script>bad</script>'.repeat(30),versions:'<b>2</b>',scenario_label:'<svg>合作',created_at:'2026-10-03T08:42:00" onload="bad'};
+  const html=h.run('caseRow(input,12)');
+  assert.doesNotMatch(html,/<img|<script|<b>2|<svg>合作|datetime="[^"]*" onload/);
+  assert.match(html,/&lt;img/);assert.match(html,/id%22%3Cunsafe%3E/);
+  assert.equal((html.match(/&lt;script&gt;bad&lt;\/script&gt;/g)||[]).length,30);
+  assert.match(html,/<small>13<\/small>/);
+});
+
+test('leaving cases clears its mode before rendering the next page',async()=>{
+  for(const destination of ['me','case/second']){
+    const h=harness();h.run(`location.hash='#/cases'`);const list=h.run('route()');
+    h.run(`pending['/api/cases'].resolve([])`);await list;
+    h.run(`location.hash='#/${destination}'`);const next=h.run('route()');
+    assert.equal(h.run(`document.body.classList.contains('cases-mode')`),false);
+    if(destination==='me') h.run(`pending['/api/cases'].resolve([])`);
+    else {h.ctx.caseResult=result('second');h.run(`pending['/api/cases/second'].resolve(caseResult)`);}
+    await next;
+  }
 });
 
 test('late global glossary preserves the viewed versions own terms and does not rerender it',async()=>{

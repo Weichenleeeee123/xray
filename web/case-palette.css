@@ -94,9 +94,11 @@ body.research-mode .research-flow .flow-primary .flow-label {border-color:rgb(18
 body.research-mode .research-flow .flow-preview {border-left-color:rgb(184 139 76 / calc(.22 + var(--pass)*.5))}
 body.research-mode .research-flow .flow-stop:hover .flow-label,
 body.research-mode .research-flow .flow-stop:focus-visible .flow-label {filter:none;border-color:var(--qier-brass)}
-/* Paper labels glow at the edge without bleaching their surface or text. */
+/* Keep each surface's contrast through hover, keyboard focus and pointer-down.
+ * The inherited dark-skin hover color must never reach paper labels. */
 body.research-mode .research-flow .flow-secondary .flow-label,
-body.research-mode .research-flow .flow-secondary:is(:hover,:focus-visible) .flow-label {filter:none;color:var(--qier-navy)}
+body.research-mode .research-flow .flow-secondary:is(:hover,:focus-visible,:active) .flow-label {filter:none;color:var(--qier-navy);text-shadow:none}
+body.research-mode .research-flow .flow-primary:is(:hover,:focus-visible,:active) .flow-label {filter:none;color:var(--qier-paper);text-shadow:none}
 body.research-mode .mini-trace i {background:var(--qier-brass)}
 body.research-mode .mini-trace i:nth-child(4n) {background:var(--qier-navy)}
 body.research-mode .flow-stop[data-section=inquiry] .flow-preview strong svg {color:var(--amber)}

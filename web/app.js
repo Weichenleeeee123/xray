@@ -291,7 +291,7 @@ function renderTop() {
   const sec = onCase ? 'cases' : (location.hash.match(/^#\/(check|cases|library|me)/) || [])[1] || 'check';
   $('#shellNav').innerHTML = NAV.map(([k, label, hint]) =>
     `<button type="button" class="snav-b" data-act="go" data-sec="${k}" aria-current="${k === sec}" title="${esc(hint)}">${label}</button>`).join('');
-  $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : '';
+  $('#caseStrip').innerHTML = onCase ? `<span title="${esc(S.case.case.company_name)}">${esc(S.case.case.company_name)}</span>` : sec === 'cases' ? '我的案卷' : '';
   const llm = S.health && S.health.llm;
   let b = '';
   if (llm) {
@@ -380,36 +380,71 @@ async function renderCheck(request = routeRequest) {
 
 // ---------- 分区二：案卷 ----------
 
+function archiveIcon(kind) {
+  const paths = {
+    file: 'M5 3h9l5 5v13H5V3ZM14 3v6h5M9 13h6M9 17h4',
+    arrow: 'M6 18 18 6M6 6h12v12',
+    chat: 'M4 5h16v12H9l-5 4V5ZM8 9h8M8 13h5',
+  };
+  return `<svg class="archive-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[kind] || paths.file}"/></svg>`;
+}
+
+function archiveAssistantHtml() {
+  return `<div class="as-head"><div class="as-heading"><h3>小企 <span class="qi-role">报告助手</span></h3><p>理解你的顾虑，结合案卷核对事实。</p></div><button class="as-x" type="button" data-act="close-assist" aria-label="收起小企">×</button></div>
+    <div class="as-body archive-assistant-body">
+      <div class="archive-qi-welcome">${qiSpriteHtml()}<span>等你选一份案卷</span></div>
+      <h2>接着上次，<br>一起把疑问弄清楚。</h2>
+      <p class="archive-assistant-lede">打开左边的一份案卷，我就能结合对应报告，帮你理解记录、核对新材料。</p>
+      <div class="archive-prompt-label">你可以从这些问题开始</div>
+      <div class="chips archive-chips">${['为什么这一条需要留意？','新材料改变了哪些判断？','下一步该向对方确认什么？'].map(q => `<button class="chip" type="button" data-act="qi-nudge">${esc(q)}<span aria-hidden="true">↗</span></button>`).join('')}</div>
+      <div class="archive-assistant-note">${archiveIcon('chat')}<p>关键事实可以回看出处。<br>还没核实的，会和已知信息分开说。</p></div>
+    </div>
+    <div class="archive-assistant-bottom"><span class="archive-status-dot"></span>尚未选择案卷 · 暂不读取具体材料</div>`;
+}
+
 async function renderCases(request = routeRequest) {
   S.case = null; useTerms(S.terms); renderTop();
-  $('#view').innerHTML = shellHtml(`
-  <div class="home">
-    <section class="home-hero">
-      <div class="kicker">案卷</div>
+  document.body.classList.add('research-mode', 'cases-mode');
+  $('#view').innerHTML = `<div class="case-layout">
+  <main class="report" id="report">
+    <section class="archive-heading">
+      <div class="archive-topline"><span class="archive-eyebrow"><i></i> 企业研究档案 / 案卷</span><a class="research-button" href="/">＋ 查一家公司</a></div>
       <h1>查过的公司</h1>
-      <p>每查一家就留一份案卷。补材料、贴对方的回复、改需求，都记在同一份里，按版排下去，改动逐条列出。点开就是那份报告。</p>
+      <p>从上次的疑问继续。报告、补充材料和每一次变化，都保留在同一份案卷里。</p>
     </section>
-    <div class="cases" id="caseList"><p class="muted">读取案卷…</p></div>
-    <p class="lists-line">按新建时间排列，打开案卷可查看历次变化。</p>
-  </div>`);
+    <section aria-labelledby="archive-list-title">
+      <div class="archive-list-heading"><h2 id="archive-list-title">已保存的案卷 <span id="caseCount" aria-label="当前列表案卷数量">—</span></h2><span>按新建时间排列</span></div>
+      <div class="archive-list" id="caseList" aria-busy="true"><div class="archive-state" role="status">读取案卷…</div></div>
+    </section>
+    <footer class="archive-footer">${archiveIcon('file')}<p>拿到新合同、付款信息或对方回复？<br><span>打开对应案卷，补充材料后继续核对；旧版报告仍可回看。</span></p></footer>
+  </main>
+  <aside class="assist open" id="assist" aria-label="小企助手">${archiveAssistantHtml()}</aside>
+  </div>`;
   try {
-    const cases = (await api('/api/cases', {signal: request?.signal})) || [];
+    const cases = await api('/api/cases', {signal: request?.signal});
     if (!currentRoute(request)) return;
+    if (!Array.isArray(cases)) throw new Error('列表内容格式不正确，请重试');
     S.cases = cases;
+    $('#caseCount').textContent = String(cases.length).padStart(2, '0');
     $('#caseList').innerHTML = S.cases.length
       ? S.cases.map(caseRow).join('')
-      : '<div class="empty-case"><p>还没有案卷。查一家公司，这里就会留一份。</p><a class="btn sm" href="#/check">去查一家公司</a></div>';
+      : '<div class="archive-state empty-case"><h3>还没有案卷</h3><p>查一家公司，这里就会保存报告，方便之后补材料、看变化。</p><a class="research-button" href="/">去查一家公司</a></div>';
   } catch (e) {
     if (!currentRoute(request)) return;
-    $('#caseList').innerHTML = `<p class="err">读不到案卷列表：${esc(e.message)}</p><button class="btn sm" data-act="retry-read">重试</button>`;
+    $('#caseList').innerHTML = `<div class="archive-state"><p class="err" role="alert">读不到案卷列表：${esc(e.message)}</p><p>已保存的案卷不会因此清空。</p><button class="research-button" type="button" data-act="retry-read">重试</button></div>`;
+  } finally {
+    if (currentRoute(request)) $('#caseList')?.setAttribute('aria-busy', 'false');
   }
 }
 
-function caseRow(c) {
-  return `<a class="case-row" href="#/case/${esc(c.id)}">
-    <div class="cr-h"><b>${esc(c.company_name)}</b><span class="cr-n">${c.versions} 版</span></div>
-    ${c.need ? `<div class="cr-need">“${esc(c.need)}”</div>` : ''}
-    <div class="cr-m"><span>${esc(c.scenario_label)}</span><span>${esc(fmtTime(c.created_at))} 新建</span><span class="cr-go">打开 →</span></div>
+function caseRow(c, index = 0) {
+  return `<a class="archive-row" href="#/case/${esc(encodeURIComponent(c.id))}">
+    <span class="archive-file">${archiveIcon('file')}<small>${String(index + 1).padStart(2, '0')}</small></span>
+    <div class="archive-row-body"><div class="archive-row-title"><h3>${esc(c.company_name)}</h3><span class="archive-versions">${esc(c.versions)} 个版本</span></div>
+      ${c.need ? `<p class="archive-need"><span>本次关注</span>${esc(c.need)}</p>` : ''}
+      <div class="archive-row-meta">${c.scenario_label ? `<span class="archive-scenario">${esc(c.scenario_label)}</span>` : ''}${c.created_at ? `<time datetime="${esc(c.created_at)}">${esc(fmtTime(c.created_at))} 新建</time>` : '<span>新建时间未记录</span>'}</div>
+    </div>
+    <span class="archive-open">打开报告 ${archiveIcon('arrow')}</span>
   </a>`;
 }
 
@@ -1994,7 +2029,7 @@ async function route() {
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();
   researchCleanup();
-  document.body.classList.remove("research-mode");
+  document.body.classList.remove('research-mode', 'cases-mode');
   // The research room owns the homepage. The old full-material form remains at #/new.
   if (!location.hash || /^#\/(?:check)?\/?$/.test(location.hash)) {
     location.replace('/');

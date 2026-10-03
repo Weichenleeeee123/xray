@@ -12,6 +12,10 @@
   const icon = key => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${icons[key]}"/></svg>`;
   sidebar.innerHTML = `<div class="workspace-nav-label">工作空间</div><div class="workspace-global-nav"></div><div class="workspace-nav-label workspace-chapter-label">本份报告</div><nav class="workspace-chapters" aria-label="报告目录">${[['overview','企业概况'],['signals','四个信号'],['inquiry','问询与复核'],['details','详细信息']].map(([key,label],i)=>`<button type="button" class="workspace-chapter${i<2?' is-primary':''}" data-act="section" data-section="${key}" ${i===0?'aria-current="location"':''}>${icon(key)}<span>${label}</span><small aria-hidden="true">0${i+1}</small></button>`).join('')}</nav><div class="workspace-sidebar-foot"><i></i><span>小企研究室</span></div>`;
   document.body.append(sidebar);
+  const archiveNote = document.createElement('div');
+  archiveNote.className = 'archive-sidebar-note';
+  archiveNote.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg><b>你的私人档案</b><p>上传的材料和对话<br>不会自动公开。</p>';
+  sidebar.insertBefore(archiveNote, sidebar.querySelector('.workspace-sidebar-foot'));
   const shellNav = document.getElementById('shellNav');
   const topbar = document.getElementById('topbar');
   const assistantButton = document.createElement('button');
