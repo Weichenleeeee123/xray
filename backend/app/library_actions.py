@@ -10,17 +10,19 @@ from app.sources.collect import now
 
 
 _PREFIX = r"(?:(?:请|麻烦|劳驾)(?:你)?)?(?:帮我|替我|给我|我想|我要)?"
-_DESTINATION = r"(?:我的)?(?:知识库|收藏夹)"
+_DESTINATION = r"(?:我的)?(?:知识库|收藏夹)(?:里|中)?"
 _COMMANDS = [re.compile(_PREFIX + command) for command in (
     r"(?:把|将)(?P<target>.+?)(?:收藏|保存)(?:到|进|入)?" + _DESTINATION,
-    r"(?:把|将)(?P<target>.+?)(?:收进|收入|存入|加入|记进|记入)" + _DESTINATION,
+    r"(?:把|将)(?P<target>.+?)(?:收进|收入|存入|存到|加入|加到|加进|记进|记入|记到|记在|记录到|记录进|记录在)" + _DESTINATION,
     r"(?:把|将)(?P<target>.+?)(?:收藏(?:一下|起来)?|保存(?:一下|下来)?|记下来|记录下来)",
     r"(?:收藏|保存)(?:一下)?(?P<target>.+?)(?:(?:到|进|入)" + _DESTINATION + r")?",
+    r"(?:记录|记|存)(?:一下)?(?P<target>.+?)(?:到|进|入|在)" + _DESTINATION,
 )]
 _POINTERS = {
     "这一词", "这个词", "这词", "该词", "这个名词", "这一名词", "这个术语", "该术语",
     "这个词条", "这条解释", "这个解释", "刚才的解释", "刚才解释的词", "刚才那个词",
     "刚才讲的词", "上一个词", "上面那个词", "这些词", "这几个词", "刚才的词",
+    "刚刚的解释", "刚才这个词", "刚刚那个词", "上面的解释",
 }
 # Keep clauses, negation, conditions, reported speech and company investigations
 # out of the small imperative grammar, including when punctuation is omitted.
@@ -29,7 +31,7 @@ _CLAUSE = re.compile(
     r"应该|吗|呢|如何|怎么|为什么|什么|有没有|有无|多少|多大|多高|多低|看看|"
     r"这家|该公司|这公司|本公司|它|你|"
     r"然后|顺便|并|还有|以及|同时|之后|之前|的话|告诉|说|再|或|但|查|核对|分析|判断|"
-    r"收藏|保存|记下来|收进|存入|"
+    r"收藏|保存|记下来|收进|存入|记到|记在|记录到|记录在|加到|加进|(?:不|未|没)$|"
     r"[和与及]"
 )
 

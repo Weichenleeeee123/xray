@@ -1,8 +1,8 @@
 """Small, explicit conversational routes; never a substitute for company evidence.
 
 Only a whole-message definition or an ambiguous investment opener can take an
-early route. Mixed questions and selected factual entries keep the normal
-evidence/coverage pipeline. No model-classified 'intent' can waive those checks.
+early route. Mixed questions keep the normal evidence/coverage pipeline.
+No model-classified 'intent' can waive those checks.
 """
 import re
 
@@ -16,8 +16,8 @@ def _clean(text: str) -> str:
 
 _PREFIX = r"(?:(?:请问|请|麻烦|能不能|能|可以|我想知道|我想问|我想了解|告诉我|帮我|给我|问一下))*"
 _DEFINITION = re.compile(
-    _PREFIX + r"(?:什么是|什么叫|何为|怎么理解|(?:用大白话|通俗地)?解释(?:一下)?)(?P<before>.+?)(?:这个词(?:的意思|的含义)?|的意思|的含义)?(?:吗|呢)?$"
-    r"|" + _PREFIX + r"(?P<after>.+?)(?:这个词)?(?:是什么意思|是什么|啥意思|什么意思|指什么|怎么理解|的含义|的意思)(?:吗|呢)?$"
+    _PREFIX + r"(?:什么是|什么叫|何为|怎么理解|(?:用大白话|通俗地)?解释(?:一下|下)?)(?P<before>.+?)(?:这个词(?:的意思|的含义)?|的意思|的含义)?(?:吗|呢)?$"
+    r"|" + _PREFIX + r"(?P<after>.+?)(?:这个词)?(?:是什么意思|是什么|是啥意思|啥意思|什么意思|指什么|怎么理解|的含义|的意思)(?:吗|呢)?$"
     r"|" + _PREFIX + r"(?P<compare>.+?)(?:有什么区别|的区别)(?:吗|呢)?$"
 )
 _NOT_A_TERM = re.compile(
@@ -27,14 +27,26 @@ _NOT_A_TERM = re.compile(
 )
 
 
-def definition_terms(text: str) -> list[Term] | None:
+def term_names(terms: list[Term] = ()) -> dict[str, Term]:
+    """Curated names win; report-only definitions retain their stored origin."""
+    names = {}
+    for term in current_terms(terms):
+        for name in (term.term, *term.aliases):
+            names.setdefault(name, term)
+    for term in load_glossary():
+        for name in (term.term, *term.aliases):
+            names[name] = term
+    return names
+
+
+def definition_terms(text: str, terms: list[Term] = ()) -> list[Term] | None:
     """None: company/mixed question; []: pure but unknown term; else snapshots.
 
-    Only curated terms are definition evidence. Historical model-generated
-    report explanations are not silently promoted to general knowledge.
+    Report-only definitions may be selected, but keep model origin; callers
+    must label them unreviewed and must not treat them as company evidence.
     """
     query = _clean(text)
-    names = {name: term for term in load_glossary() for name in (term.term, *term.aliases)}
+    names = term_names(terms)
     match = _DEFINITION.fullmatch(query)
     # A bare report label ("登记状态") can request this company's actual value;
     # do not silently turn it into a generic definition.

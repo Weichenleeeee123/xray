@@ -126,7 +126,7 @@ def test_selective_unresolved_scope_clarifies_and_then_concrete_followup_reads_a
         case = add(owned(400), "material", "另页例外：退款需扣除服务费，超出合同期限不予退款。")
         gateway = FakeLLM([], tmp_path / "llm")
         msg = answer(case, ChatIn(text="暂时没想好，随便聊聊"), gateway, max_context_chars=1)
-        assert msg.answer_kind == "clarification" and not msg.error_code and not msg.not_found
+        assert msg.answer_kind == "conversation" and not msg.error_code and not msg.not_found
         assert not msg.citations and not gateway.calls
         case.chat.append(ChatMessage(role="user", text="你觉得这家公司怎么样", version=case.current, created_at="now"))
         msg = answer(case, ChatIn(text="那退款时要注意什么"), gateway)
