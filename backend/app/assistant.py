@@ -7,7 +7,7 @@
 - 模板回答：按问题里的关键词找到相关条目，原样念出来。
 - 用户评价（source user_reviews）可以引用，但只是"有用户说"；越界检查不把评价原文算作记录，
   评价里写了"非法集资"，助手也不能借它说出口。
-- 纯术语问题独立使用人工词表；混合问题保留版本词表中的补充项，已知词义以当前人工修订为准。新回答保存知识快照，不改历史报告；词表不能给企业定性放行。
+- 纯术语问题复用本版报告解释，人工词表优先，AI 补充保留来源；新回答保存知识快照，不改历史报告。词表和普通对话都不能给企业定性放行。
 """
 import json
 import re
@@ -28,10 +28,12 @@ from app import privacy
 from app.case_memory.store import MemoryStore
 from app.case_memory.retriever import retrieve, condition_excerpts
 from app.case_memory.builder import tags as memory_topics
-from app.question_routing import definition_terms, needs_investment_clarification, current_terms
+from app.question_routing import needs_investment_clarification, current_terms
 from app.dialogue_routing import classify_dialogue
 from app.assistant_overview import build_overview_reply
 from app.library_actions import build_library_reply
+from app.term_explanations import build_term_reply
+from app.conversation_agent import respond as conversation_reply, has_new_material
 
 log = logging.getLogger("xray.assistant")
 
@@ -652,6 +654,10 @@ def answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
         REQUEST_CONTEXT_LIMIT.reset(size_token)
         log.info("assistant_finished mode=%s elapsed_ms=%d", config.ASSISTANT_CONTEXT_MODE,
                  (time.monotonic() - started) * 1000)
+    if has_new_material(q.text) and not result.answer_kind and not result.error_code and result.mode != "guard":
+        from app.models import AssistantAction
+        result = result.model_copy(update={"actions": [*result.actions,
+            AssistantAction(type="offer_material", label="加入案卷，重新判断", version=result.version)]})
     if result.answer_kind or GUARD.search(q.text) or "超出本次模型上下文预算" in result.text or "没查到可用的引用" in result.text:
         return result
     version = next((v for v in case.versions if v.no == result.version), case.versions[-1])
@@ -679,26 +685,26 @@ def _answer(case: Case, q: ChatIn, llm: LLM, *, version_no: int | None = None,
     library_reply = build_library_reply(case, v, q.text, refs)
     if library_reply is not None:
         return library_reply
-    # A definition is not a company investigation: use only vetted, snapshotted
-    # knowledge, without loading/truncating company evidence or changing rules.
-    knowledge = definition_terms(q.text)
-    if knowledge is not None:
-        if not knowledge:
-            return ChatMessage(text="这个词还没有对应到可核对的解释。你可以贴一下它所在的完整句子，"
-                                    "我先帮你确认词义，再区分它与这家公司的实际情况。",
-                mode="template", answer_kind="clarification", **base)
-        entries = glossary_entries(knowledge)
-        display = {term_ref(t): f"{t.plain}\n\n{t.why}" if t.why else t.plain for t in knowledge}
-        definition = _ModelAnswer(segments=[_Segment(fact_id=term_ref(t)) for t in knowledge])
-        text, cites, quotes, dropped = validate(definition, entries, fact_display=display)
-        return ChatMessage(text=text, citations=cites, quotes=quotes, dropped=dropped,
-            knowledge_terms=knowledge, mode="template", answer_kind="glossary", **base)
+    definition = build_term_reply(case, v, q, llm)
+    if definition is not None:
+        return definition
     if needs_investment_clarification(q.text, refs):
         # No enterprise facts or safety verdict are emitted. Concrete financial
         # questions, mixed questions and selected entries still take the path below.
         clarification = _ModelAnswer(segments=[_Segment(kind="clarify", guide_id="investment.type")])
         text, cites, quotes, dropped = validate(clarification, {}, user_text=q.text)
         return ChatMessage(text=text, mode="template", answer_kind="clarification", **base)
+    # Pure conversation has its own small context and output contract. A model
+    # asking for enterprise evidence returns None and cannot bypass the verifier.
+    previous = next((m for m in reversed(case.chat) if m.role == "assistant" and m.version == v.no), None)
+    source_refs = previous.citations if previous else []
+    if source_refs:
+        allowed = citable(case, v)
+        source_refs = [ref for ref in source_refs if ref in allowed]
+    ordinary = conversation_reply(case, v, q, llm, allowed_refs=source_refs,
+                                  max_context_chars=max_context_chars)
+    if ordinary is not None:
+        return ordinary
     dialogue = classify_dialogue(q.text, refs, case.case.company_name,
         history=[m.text for m in case.chat if m.role == "user" and m.version == v.no][-HISTORY:])
     if dialogue in {"overview", "impression"}:

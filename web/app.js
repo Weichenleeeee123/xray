@@ -52,7 +52,7 @@ const SUP_KIND = {
 const S = {
   health: null, scenarios: [], sources: [], demos: [], cases: [],
   terms: [], termById: new Map(), termByName: new Map(), termRe: null,
-  case: null, viewNo: null, selected: new Set(), busy: false, busyCaseId: null, audience: 'family', opCache: {},
+  case: null, viewNo: null, selected: new Set(), termContext: null, busy: false, busyCaseId: null, audience: 'family', opCache: {},
   tab: 'signals', openRest: new Set(), showText: false,
   reviews: null, rvStars: 0, rvRel: null,   // 这家公司现在的评价（不随版本变）；写评价表单里选的星级和身份
   form: { userScenario: null, showScen: false, dirty: {}, intake: null },
@@ -172,16 +172,19 @@ function termText(text, seen = new Set()) {
 }
 const termify = label => termText(label);
 const termBasis = t => { const src = t.basis && srcOf(t.basis); return (src ? src.name : t.law) || ''; };
-function termPopHtml(t) {
+function termPopHtml(t, entryRef = '') {
   const basis = termBasis(t);
   const note = t.origin === 'model' ? 'AI 解释：词表里没有这个词，报告生成时由模型补充，没有经过人工核对。' : (basis ? `依据：${basis}` : '');
-  return `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}${libBtn(t.id)}`;
+  const ask = S.case && /^#\/case\//.test(location.hash) && ver()
+    ? `<button type="button" class="linkish term-ask" data-act="ask-term" data-term="${esc(t.id)}" data-version="${ver().no}"${entryRef ? ` data-ref="${esc(entryRef)}"` : ''}>问小企</button>` : '';
+  return `<h5>${esc(t.term)}</h5><p>${esc(t.plain)}</p>${t.why ? `<p class="pw">${esc(t.why)}</p>` : ''}${note ? `<p class="pb">${esc(note)}</p>` : ''}<div class="term-pop-actions">${libBtn(t.id)}${ask}</div>`;
 }
 function termPop(el, id) {
   const t = termOf(id);
   if (!t) return;
   libNote(id);
-  popAt(el, termPopHtml(t));
+  const entryRef = el?.closest?.('[data-item]')?.dataset.item || '';
+  popAt(el, termPopHtml(t, entryRef));
 }
 
 // ---------- 知识库：看不懂的名词收藏起来，回头复习 ----------
@@ -851,6 +854,7 @@ function fillDemo(id) {
 async function openCase(id, no, request = routeRequest) {
   setRouteMode('case');
   if (!S.case || S.case.id !== id) {
+    clearTermContext(false);
     S.case = null; S.viewNo = null;
     renderTop();
     $('#view').innerHTML = workspaceLoadingHtml('读取案卷…');
@@ -868,7 +872,7 @@ async function openCase(id, no, request = routeRequest) {
     S.reviews = null; S.rvStars = 0; S.rvRel = null;
   }
   const next = no && S.case.versions.some(v => v.no === no) ? no : S.case.current;
-  if (S.viewNo !== next) S.selected.clear();
+  if (S.viewNo !== next) { S.selected.clear(); clearTermContext(false); }
   S.viewNo = next;
   renderCase();
   if (pendingSupplement(id)) void resumeSupplement();
@@ -1683,7 +1687,7 @@ function tabFor(id) {
 function selectRefVersion(version) {
   if (version == null || version === ver().no) return true;
   if (!S.case.versions.some(v => v.no === version)) { toast(`案卷里没有第 ${version} 版`); return false; }
-  S.viewNo = version; S.selected.clear(); S.openRest.clear();
+  S.viewNo = version; S.selected.clear(); S.openRest.clear(); clearTermContext(false);
   history.replaceState(null, '', `#/case/${S.case.id}/v/${version}`);
   renderCase();
   return true;
@@ -1777,8 +1781,52 @@ function assistHtml() {
   <form class="as-input" id="asForm"><textarea class="box" name="q" rows="2" maxlength="2000" placeholder="想了解报告，或对下一步有顾虑？（Enter 发送）" aria-label="提问"></textarea><button class="btn sm" type="submit">问</button></form>`;
 }
 function selHtml() {
-  if (!S.selected.size) return '<span class="muted">想问某一条？点报告里那一条右边的"问"。</span>';
-  return `<span class="muted">针对：</span>${[...S.selected].map(id => `<span class="sel-chip">${esc(refLabel(id))}<button type="button" data-act="unsel" data-id="${esc(id)}" aria-label="取消选中 ${esc(refLabel(id))}">×</button></span>`).join('')}`;
+  const context = activeTermContext();
+  const term = context ? `<span class="sel-chip term-context"><button type="button" class="linkish" data-act="term" data-term="${esc(context.term_id)}">名词：${esc(context.term)} · 第 ${context.version} 版</button><button type="button" data-act="clear-term-context" aria-label="取消名词上下文 ${esc(context.term)}">×</button></span>` : '';
+  if (!S.selected.size && !term) return '<span class="muted">想问某一条？点报告里那一条右边的"问"。</span>';
+  return `<span class="muted">针对：</span>${term}${[...S.selected].map(id => `<span class="sel-chip">${esc(refLabel(id))}<button type="button" data-act="unsel" data-id="${esc(id)}" aria-label="取消选中 ${esc(refLabel(id))}">×</button></span>`).join('')}`;
+}
+function clearTermContext(refresh = true) {
+  S.termContext = null;
+  S.termContextEpoch = (S.termContextEpoch || 0) + 1;
+  if (refresh) refreshSel();
+}
+function activeTermContext() {
+  const context = S.termContext;
+  if (!context) return null;
+  if (context.caseId !== S.case?.id || context.version !== ver()?.no || !/^#\/case\//.test(location.hash)) {
+    clearTermContext(false); return null;
+  }
+  return context;
+}
+function termQuestionMatches(q, context) {
+  const text = String(q || '').trim();
+  return !!text && (text === context.draft || [context.term, ...(context.aliases || [])].some(name => name && text.includes(name))
+    || /^(?:这个(?:词|名词|术语)?|它|这)(?:是什么意思|是什么|怎么理解|在这里是什么意思)[？?。!！]*$/.test(text)
+    || /^(?:能不能|可以)?(?:再)?(?:举个例子|解释一下|说简单点|简单说说)(?:吗)?[？?。!！]*$/.test(text));
+}
+function termContextForQuestion(q) {
+  const context = activeTermContext();
+  if (!context) return null;
+  if (!termQuestionMatches(q, context)) { clearTermContext(); return null; }
+  return {term_id:context.term_id, ...(context.entry_ref ? {entry_ref:context.entry_ref} : {})};
+}
+function prepareTermQuestion(id, version, entryRef = '') {
+  if (!S.case || version !== ver()?.no || !/^#\/case\//.test(location.hash)) return;
+  const t = (ver().terms || []).find(term => term.id === id) || S.terms.find(term => term.id === id);
+  if (!t) return;
+  const target = entryRef && chatActionTarget({ref:entryRef, version}, version);
+  clearTermContext(false);
+  S.termContext = {caseId:S.case.id, version, term_id:t.id, term:t.term, aliases:t.aliases || [],
+    draft:`${t.term}是什么意思？`, ...(target ? {entry_ref:target.ref} : {})};
+  closePop();
+  // A glossary popup may live inside a modal report detail. Close that modal so
+  // its focus trap does not hide the assistant's visible, editable question.
+  $$('dialog[open]').forEach(dialog => dialog.close());
+  $('#assist')?.classList.add('open');
+  refreshSel();
+  const textarea = $('#asForm textarea');
+  if (textarea) { textarea.value = S.termContext.draft; textarea.focus(); }
 }
 function chatHtml() {
   const chat = S.case.chat;
@@ -1853,26 +1901,79 @@ function openChatSources(index) {
   dlg.innerHTML = `<div class="dlg-in"><div class="dlg-head"><h3 id="rawTitle">原文出处 · 第 ${m.version} 版</h3><button type="button" class="dlg-x" data-act="close-dlg" aria-label="关闭">×</button></div><div class="dlg-body">${chatSourcesHtml(m) || '<p>暂无可打开的原始记录。</p>'}</div></div>`;
   if (!dlg.open) dlg.showModal();
 }
+function chatActionTarget(action, messageVersion) {
+  if (!action || typeof action.ref !== 'string' || !Number.isInteger(messageVersion)) return null;
+  const version = action.version ?? messageVersion;
+  if (version !== messageVersion || !Number.isInteger(version) || version < 1) return null;
+  const target = parseRef(action.ref, version), v = S.case?.versions.find(v => v.no === version);
+  if (!v || target.version !== version || !isId(action.ref)) return null;
+  const id = target.id;
+  // Validate against the saved version before creating a control, and again
+  // when clicked. A well-formed id alone is not evidence that an entry exists.
+  let kind = null, exists = false;
+  if (/^R\d+$/.test(id)) exists = (v.raw_ids || []).includes(id) && !!rawById(id);
+  else if (/^A\d+$/.test(id)) { kind = 'assertion'; exists = (v.assertions || []).some(item => item.id === id); }
+  else if (/^M\d+$/.test(id)) { kind = 'missing'; exists = (v.missing || []).some(item => item.id === id); }
+  else if (/^Q\d+$/.test(id)) { kind = 'question'; exists = (v.questions || []).some(item => item.id === id); }
+  else if (id.startsWith('term.')) exists = [...(v.terms || []), ...S.terms].some(term => term.id === id.slice(5));
+  else { kind = 'signal'; exists = (v.signals || []).some(signal => (signal.items || []).some(item => `${signal.key}.${item.key}` === id)); }
+  const encoded = action.ref.match(/^v:\d+:(assertion|missing|question|signal):/);
+  if (!exists || (encoded && encoded[1] !== kind)) return null;
+  return {ref:action.ref, version};
+}
+function canOfferMaterial(action, message, previous) {
+  return previous?.role === 'user' && typeof previous.text === 'string' && !!previous.text.trim()
+    && Number.isInteger(message.version) && previous.version === message.version
+    && (action.version == null || action.version === message.version)
+    && !!S.case?.versions.some(version => version.no === message.version);
+}
+function chatActionsHtml(m, prev, index) {
+  if (!Array.isArray(m.actions)) return '';
+  const buttons = m.actions.map((action, actionIndex) => {
+    if (!action || typeof action.label !== 'string' || !action.label.trim() || action.label.length > 120) return '';
+    if (action.type === 'open_ref' && !chatActionTarget(action, m.version)) return '';
+    if (action.type === 'offer_material' && !canOfferMaterial(action, m, prev)) return '';
+    if (!['open_ref', 'open_library', 'offer_material'].includes(action.type)) return '';
+    return `<button type="button" class="linkish" data-act="chat-action" data-index="${index}" data-action-index="${actionIndex}">${esc(action.label)}</button>`;
+  }).filter(Boolean);
+  return buttons.length ? `<div class="chat-actions">${buttons.join('')}</div>` : '';
+}
+function handleChatAction(index, actionIndex, anchor) {
+  if (!Number.isInteger(index) || !Number.isInteger(actionIndex) || index < 0 || actionIndex < 0) return;
+  const message = S.case?.chat[index], action = message?.actions?.[actionIndex];
+  if (message?.role !== 'assistant' || !action) return;
+  if (action.type === 'open_ref') {
+    const target = chatActionTarget(action, message.version);
+    if (target) gotoItem(target.ref, target.version, anchor);
+    else toast('这条操作对应的报告条目暂不可用');
+  } else if (action.type === 'open_library') location.hash = '#/library';
+  else if (action.type === 'offer_material') {
+    const previous = S.case.chat[index - 1];
+    if (canOfferMaterial(action, message, previous)) openSupplement({kind:'reply', text:previous.text});
+  }
+}
 function msgHtml(m, prev, index = 0) {
   if (m.role === 'user') {
     return `<div class="msg me"><div class="bubble">${esc(m.text)}</div>
       ${m.refs && m.refs.length ? `<div class="msg-refs">针对 ${m.refs.map(id => goLink(id, m.version)).join('')}</div>` : ''}</div>`;
   }
-  const add = (m.suggest || []).filter(s => s.includes('加入案卷'));
-  const other = (m.suggest || []).filter(s => !s.includes('加入案卷'));
-  const vNote = S.case && m.version !== ver().no ? `<span>基于第 ${m.version} 版</span>` : '';
+  const conversation = m.answer_kind === 'conversation';
+  const reportSnapshot = m.answer_scope === 'report_snapshot' && (conversation || m.answer_kind === 'overview');
+  const suggestions = conversation ? [] : (m.suggest || []);
+  const notFound = !conversation && m.not_found;
+  const vNote = (!conversation || reportSnapshot) && S.case && m.version !== ver().no ? `<span>基于第 ${m.version} 版</span>` : '';
   const answerKind = m.answer_kind === 'glossary' ? '<span>名词解释</span>' : m.answer_kind === 'clarification' ? '<span>先确认需求</span>' : m.answer_kind === 'overview' ? '<span>本版报告概览</span>' : m.answer_kind === 'library_action' ? '<span>知识库操作</span>' : '';
-  const mode = answerKind + (m.mode === 'replay' ? `<span>离线回放${m.recorded_at ? ` · ${esc(fmtTime(m.recorded_at))}` : ''}</span>` : m.mode === 'template' && !answerKind ? '<span>当前为基础答复</span>' : '');
-  // A report overview reuses an already generated, version-bound report. Do not
-  // describe it as a fresh selective read of the underlying case materials.
-  const scope = m.answer_kind === 'overview' && m.answer_scope === 'report_snapshot'
-    ? '<span>依据已生成报告</span>' : m.context_mode === 'selective' ? '<span>按需核对相关材料</span>' : '';
+  const mode = answerKind + (m.mode === 'replay' ? `<span>离线回放${m.recorded_at ? ` · ${esc(fmtTime(m.recorded_at))}` : ''}</span>` : m.mode === 'template' && !answerKind && !conversation ? '<span>当前为基础答复</span>' : '');
+  // Overview, checklist and source tools reuse a saved report snapshot. Do not
+  // describe them as fresh selective reads of the underlying case materials.
+  const scope = reportSnapshot ? '<span>依据已生成报告</span>' : conversation ? ''
+    : m.context_mode === 'selective' ? '<span>按需核对相关材料</span>' : '';
   const filtered = m.has_omitted_claims === true;
-  return `<div class="msg ai${m.not_found ? ' nf' : ''}${m.mode === 'guard' ? ' guard' : ''}">
+  return `<div class="msg ai${notFound ? ' nf' : ''}${m.mode === 'guard' && (!conversation || m.error_code) ? ' guard' : ''}">
     <div class="ans">${answerText(m.text)}</div>
-    ${other.length ? `<ul class="chat-next">${other.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
-    ${add.length && prev && prev.role === 'user' ? `<div class="add-case">你提到的像是新情况。<button type="button" class="btn sm" data-act="supplement" data-kind="reply" data-text="${esc(prev.text)}">加入案卷，重新判断</button></div>` : ''}
-    <div class="msg-meta">${mode}${m.error_code ? '<span>本次材料处理未完成，不是企业风险结论</span>' : m.not_found ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${scope}${vNote}</div>
+    ${suggestions.length ? `<ul class="chat-next">${suggestions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
+    ${chatActionsHtml(m, prev, index)}
+    <div class="msg-meta">${mode}${m.error_code ? '<span>本次材料处理未完成，不是企业风险结论</span>' : notFound ? '<span>部分信息仍待核实</span>' : filtered ? '<span>部分表述未获依据支持，已省略</span>' : ''}${scope}${vNote}</div>
     ${typeof LibraryActions !== 'undefined' ? LibraryActions.html(m, index) : ''}
     ${answerCitations(m).length ? `<div class="msg-refs chat-source-footer"><button type="button" class="linkish" data-act="chat-sources" data-index="${index}" aria-label="查看这条回答的原文出处">原文出处 ↗</button></div>` : ''}
   </div>`;
@@ -1927,6 +2028,10 @@ async function ask(q) {
   const caseData = S.case, id = caseData.id, version = ver().no, selected = [...S.selected];
   const refs = selected.map(ref => chatRef(ref, version));
   const body = {text:q, refs, version};
+  const termContext = termContextForQuestion(q);
+  const termSelection = termContext ? {...S.termContext} : null;
+  const navigationEpoch = S.navigationEpoch || 0;
+  if (termContext) body.term_context = termContext;
   const previous = pendingChat(id);
   const key = previous && JSON.stringify(previous.body) === JSON.stringify(body) ? previous.key
     : (globalThis.crypto?.randomUUID?.() || `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -1937,7 +2042,8 @@ async function ask(q) {
   S.chatAbort = controller;
   S.busy = true;
   S.busyCaseId = id;
-  const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version, request_id: key, created_at: new Date().toISOString() };
+  const message = { role: 'user', text: q, refs, citations: [], quotes: [], suggest: [], version,
+    ...(termContext ? {term_context:termContext} : {}), request_id: key, created_at: new Date().toISOString() };
   caseData.chat.push(message);
   // 切走再回来可能重新加载了同一案卷；同步当前对象，但不触碰别的案卷。
   const targets = () => S.case && S.case.id === id && S.case !== caseData ? [caseData, S.case] : [caseData];
@@ -1945,7 +2051,9 @@ async function ask(q) {
   // timestamp. Their request identities, not their wording, distinguish turns.
   const sameMessage = (a, b) => a === b || (a.role === b.role && a.version === b.version &&
     (a.request_id && b.request_id ? a.request_id === b.request_id : a.text === b.text && a.created_at === b.created_at));
-  S.selected.clear(); refreshSel(); refreshChat();
+  S.selected.clear(); clearTermContext(false);
+  const termContextEpoch = S.termContextEpoch;
+  refreshSel(); refreshChat();
   $('#assist')?.classList.add('open');
   try {
     const reply = await api(`/api/cases/${encodeURIComponent(id)}/chat`, { method: 'POST', body,
@@ -1966,6 +2074,8 @@ async function ask(q) {
       if (index !== -1) target.chat.splice(index, 1);
     }
     if (S.case && S.case.id === id && ver().no === version) {
+      if (termSelection && !controller.signal.aborted && (S.navigationEpoch || 0) === navigationEpoch
+          && S.termContextEpoch === termContextEpoch) S.termContext = termSelection;
       selected.forEach(r => S.selected.add(r)); refreshSel();
       const ta = $('#asForm textarea'); if (ta) ta.value = q;
     }
@@ -2291,10 +2401,11 @@ document.addEventListener('click', e => {
       break;
     case 'qi-nudge': toast('先打开一份案卷，小企才有数据可答'); break;
     case 'chat-sources': openChatSources(Number(d.index)); break;
+    case 'chat-action': handleChatAction(Number(d.index), Number(d.actionIndex), el); break;
     case 'chat-lib-save':
       if (typeof LibraryActions !== 'undefined') void LibraryActions.handle(Number(d.index), d.term);
       break;
-    case 'cancel-chat': S.chatAbort?.abort('cancelled'); break;
+    case 'cancel-chat': clearTermContext(); S.chatAbort?.abort('cancelled'); break;
     case 'recover-chat': void recoverChat(); break;
     case 'raw': if (selectRefVersion(d.version == null ? null : Number(d.version))) openRaw(d.ref, d.hl ? JSON.parse(d.hl) : []); break;
     case 'goto': gotoItem(d.id, d.version == null ? null : Number(d.version), el); break;
@@ -2317,6 +2428,8 @@ document.addEventListener('click', e => {
       $('#onepager').innerHTML = opBody(currentOp(ver()), ver()); loadOnepager(ver()); break;
     case 'print': printOnepager(); break;
     case 'term': termPop(el, d.term); break;
+    case 'ask-term': prepareTermQuestion(d.term, Number(d.version), d.ref || ''); break;
+    case 'clear-term-context': clearTermContext(); break;
     case 'lib-toggle': {
       const on = libToggle(d.term);
       if (on === null) { toast('这个浏览器存不了收藏'); break; }
@@ -2362,9 +2475,9 @@ document.addEventListener('click', e => {
       api('/api/auth/merge', {method: 'POST'}).then(r => acctRefresh(`已把 ${r.moved} 份案卷并进账号`))
         .catch(err => { el.disabled = false; toast(err.message, true); }); break;
     case 'close-pop': closePop(); break;
-    case 'ask': ask(d.q); break;
+    case 'ask': clearTermContext(); ask(d.q); break;
     case 'open-assist': $('#assist').classList.add('open'); setTimeout(() => { const t = $('#asForm textarea'); if (t) t.focus(); }, 50); break;
-    case 'close-assist': $('#assist').classList.remove('open'); break;
+    case 'close-assist': clearTermContext(); $('#assist').classList.remove('open'); break;
     case 'contract': openContract(); break;
     case 'material-open': openMaterialAnalysis(d.analysis); break;
     case 'material-raw': openRaw(d.ref, []); break;
@@ -2398,7 +2511,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.matches('[role="link"][data-act]')) { e.preventDefault(); e.target.click(); }
-  if (e.key === 'Escape') { closePop(); const a = $('#assist'); if (a && a.classList.contains('open') && !$('dialog[open]')) a.classList.remove('open'); }
+  if (e.key === 'Escape') { closePop(); const a = $('#assist'); if (a && a.classList.contains('open') && !$('dialog[open]')) { clearTermContext(); a.classList.remove('open'); } }
   if (e.target.matches('#asForm textarea') && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault(); const q = e.target.value; e.target.value = ''; ask(q);
   }
@@ -2459,6 +2572,7 @@ function workspaceLoadingHtml(title, error = '') {
 
 async function route() {
   S.navigationEpoch = (S.navigationEpoch || 0) + 1;
+  clearTermContext(false);
   stopSupplementWatch();
   routeRequest?.abort('navigation');
   const request = routeRequest = new AbortController();
@@ -2520,10 +2634,12 @@ async function boot() {
 }
 document.addEventListener('input', event => {
   if (event.isComposing) return;
+  if (event.target.matches?.('#asForm textarea')) termContextForQuestion(event.target.value);
   if (event.target.id === 'caseSearch') {collectionView.caseQuery=event.target.value;renderCaseCollection();}
   if (event.target.id === 'librarySearch') {collectionView.libraryQuery=event.target.value;refreshLibraryCards();}
 });
 document.addEventListener('compositionend', event => {
+  if (event.target.matches?.('#asForm textarea')) termContextForQuestion(event.target.value);
   if (event.target.id === 'caseSearch') {collectionView.caseQuery=event.target.value;renderCaseCollection();}
   if (event.target.id === 'librarySearch') {collectionView.libraryQuery=event.target.value;refreshLibraryCards();}
 });

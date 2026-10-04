@@ -107,13 +107,13 @@ def test_old_version_uses_its_own_generated_terms_not_later_terms(tmp_path):
     case = add(case, "reply", flyer("manyinghe_reply.txt"))
     case.versions[1].terms = [Term(id="gnew", term="清算周期", plain="完成清算所需的时间。", origin="model")]
     before = case.model_dump_json()
-    out = {"segments": [{"text": "赎回窗口是允许申请赎回的时间范围。", "citations": ["term.gold"]}]}
-    fake = FakeLLM([json.dumps(out)], tmp_path)
+    fake = FakeLLM([], tmp_path)
     result = answer(case, ChatIn(text="赎回窗口是什么意思", refs=["v:1:assertion:A2"]), fake)
-    assert result.mode == "model" and result.version == 1 and not result.not_found
+    assert result.mode == "template" and result.version == 1 and not result.not_found
     assert result.citations == ["term.gold"]
-    context_message = fake.calls[0][2]["content"]
-    assert "term.gold" in context_message and "term.gnew" not in context_message and "清算周期" not in context_message
+    assert result.knowledge_terms == case.versions[0].terms
+    assert result.knowledge_terms[0].origin == "model" and "未人工复核" in result.text
+    assert "term.gnew" not in result.citations and "清算周期" not in result.text and not fake.calls
     assert case.model_dump_json() == before
 
 

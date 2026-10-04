@@ -266,7 +266,7 @@ class Signal(BaseModel):
 
 
 class Term(BaseModel):
-    """名词解释。人工写好的固定词表（app/glossary.json），报告标注和助手回答共用，不让模型现编。"""
+    """名词解释快照；固定词表与模型补充严格保留各自来源。"""
     id: str                              # 助手引用时写作 term.<id>
     term: str
     aliases: list[str] = Field(default_factory=list)  # 报告里也按这些写法认出它
@@ -573,10 +573,19 @@ class LibrarySaveAction(BaseModel):
     auto_save: bool = False
 
 
+class AssistantAction(BaseModel):
+    """A proposed UI action, separate from evidence and free-text suggestions."""
+    type: Literal["open_ref", "open_library", "offer_material"]
+    label: str = Field(min_length=1, max_length=120)
+    ref: str | None = Field(default=None, max_length=160)
+    version: int | None = Field(default=None, ge=1)
+
+
 class ChatMessage(BaseModel):
-    answer_kind: Literal["glossary", "clarification", "overview", "library_action"] | None = None
+    answer_kind: Literal["glossary", "clarification", "overview", "library_action", "conversation"] | None = None
     answer_scope: Literal["report_snapshot"] | None = None  # 解释本版报告，不冒充重新阅读全文
-    knowledge_terms: list[Term] = Field(default_factory=list)  # 本次解释的固定词表快照，不修改旧版报告
+    knowledge_terms: list[Term] = Field(default_factory=list)  # 本次解释的来源快照，版本由 version 标识
+    actions: list[AssistantAction] = Field(default_factory=list)
     library_action: LibrarySaveAction | None = None
     context_mode: Literal["full", "selective"] | None = None
     error_code: Literal["context_budget", "evidence_coverage"] | None = None
@@ -677,11 +686,19 @@ class ResolveIn(BaseModel):
     by: str = Field("用户", min_length=1, max_length=80)
 
 
+class TermContext(BaseModel):
+    """Browser focus identifiers only; explanations must be resolved server-side."""
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    term_id: str = Field(min_length=1, max_length=120)
+    entry_ref: str | None = Field(default=None, min_length=1, max_length=160)
+
+
 class ChatIn(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     text: str = Field(min_length=1, max_length=2000)
     refs: list[str] = Field(default_factory=list, max_length=40)
     version: int | None = Field(default=None, ge=1, strict=True)  # 正在浏览的版本；不选条目也能问旧版
+    term_context: TermContext | None = None
 
 
 class ReadResult(BaseModel):
